@@ -97,30 +97,21 @@ def H_i_i(det_i: Determinant) -> float:
 
 def H_i_j_single(li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spin):
     #https://arxiv.org/abs/1311.6244
-    
     #NOT TESTED /!\
     
-    li = (1,2,3)
-    lj = (1,3,5)
-
     m, p = list(set(li).symmetric_difference(set(lj)))
     res = H_mono(m,p)
 
-    for i in li:
-        res += ( H_bi(m,i,p,i)  -  H_bi(m,i,i,p) ) 
-      
-    for i in lk:
-        res += H_bi(m,i,p,i)
-    
-    phase = 1.
+    res += sum ( H_bi(m,i,p,i)  -  H_bi(m,i,i,p) for i in li)
+    res += sum ( H_bi(m,i,p,i)  -  H_bi(m,i,i,p) for i in lk)
 
+    phase = 1.
     for l, idx in ( (li,m), (lj,p) ):
         for v in l:
             phase = -phase
             if v == idx:
                 break
     
-    sys.exit()
     return phase*res
 
 def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:

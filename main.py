@@ -29,18 +29,16 @@ def load_integral(fcidump_path) -> Tuple[int, Integral_Bielectronic, Integral_Mo
     from collections import defaultdict
     d_int = defaultdict(int)
     d_double = defaultdict(int)
-    E0=0
     for line in data_int[4:]:
         v, *l = line.split()
         v = float(v)
-        i,j,k,l = list(map(int, l)) 
-        
+        i,k,j,l = list(map(int, l)) 
  
         if i == 0:
             E0 = v
-        elif k == 0:
-            d_int[ (i,j) ] = v            
-            d_int[ (j,i) ] = v
+        elif j == 0:
+            d_int[ (i,k) ] = v            
+            d_int[ (k,i) ] = v
         else:
             # Physicist notation (storing)
             d_double[ (i,j,k,l) ] = v
@@ -58,7 +56,7 @@ def load_integral(fcidump_path) -> Tuple[int, Integral_Bielectronic, Integral_Mo
 def H_mono(i: OrbitalIdx, j: OrbitalIdx) -> float : 
     return d_int[ (i,j) ]
 
-def H_bi(i: OrbitalIdx,j: OrbitalIdx,k: OrbitalIdx,l: OrbitalIdx) -> float:
+def H_bi(i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
     return d_double[ (i,j,k,l) ]
 
 def gen_det(N_det_max,N_elec_up, N_elec_dn):
@@ -96,9 +94,10 @@ def get_ed(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
 
 
 def H_i_i(det_i: Determinant) -> float:
-    #Physisct Notation
-    res = sum(H_mono(i,i) for i in det_i.alpha + det_i.beta )
-
+    #Dirac Notation
+    res = sum(H_mono(i,i) for i in det_i.alpha)
+    res += sum(H_mono(i,i) for i in det_i.beta)
+    
     from itertools import product
     res += sum( (H_bi(i,j,i,j)  -  H_bi(i,j,j,i) ) for (i,j) in product(det_i.alpha, det_i.alpha)) / 2
     res += sum( (H_bi(i,j,i,j)  -  H_bi(i,j,j,i) ) for (i,j) in product(det_i.beta, det_i.beta)) / 2
@@ -195,8 +194,6 @@ def H_i_j(det_i: Determinant, det_j: Determinant) -> float:
 
 
 
-
-
 N_orb = 18
 N_elec_up = 9
 N_elec_dn = 9
@@ -212,7 +209,7 @@ Vee  =    109.327080702748
 Vecp =   0.000000000000000E+000
 T    =    198.539379873618
 
-print (Vnn+Ven+T)
+print ('Ref', Vee+Vnn+Ven+T)
 
 # Initilization
 E0, d_int, d_double = load_integral(fcidump_path)

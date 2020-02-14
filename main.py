@@ -1,23 +1,14 @@
 #!/usr/bin/env python3
 
-from pprint import pprint 
-from math import exp, sqrt
-
-import random
-
 from typing import Tuple, Dict, NewType, NamedTuple, List
-
-
 OrbitalIdx = NewType('OrbitalIdx', int)
 Determinant_Spin = Tuple[OrbitalIdx, ...]
-
 class Determinant(NamedTuple):
     alpha: Determinant_Spin
     beta: Determinant_Spin
 
 Integral_Bielectronic = Dict[ Tuple[OrbitalIdx,OrbitalIdx,OrbitalIdx,OrbitalIdx], float]
 Integral_Monoelectronic = Dict[ Tuple[OrbitalIdx,OrbitalIdx], float]
-
 
 def load_integral(fcidump_path) -> Tuple[int, Integral_Bielectronic, Integral_Monoelectronic]:
     
@@ -58,7 +49,6 @@ def H_bi(i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
     return d_double[ (i,j,k,l) ]
 
 
-
 def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
     with open(path_wf) as f:
         data = f.read().split()
@@ -86,9 +76,9 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
 
 def get_ed(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
     # Compute excitation degree
+    # Number of different orbital between determinant
     ed_up =  len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
     ed_dn =  len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
-
     return (ed_up, ed_dn)
 
 
@@ -107,6 +97,12 @@ def H_i_i(det_i: Determinant) -> float:
 
 def H_i_j_single(li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spin):
     #https://arxiv.org/abs/1311.6244
+    
+    #NOT TESTED /!\
+    
+    li = (1,2,3)
+    lj = (1,3,5)
+
     m, p = list(set(li).symmetric_difference(set(lj)))
     res = H_mono(m,p)
 
@@ -118,15 +114,17 @@ def H_i_j_single(li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spi
     
     phase = 1.
 
-    for l,mp in ( (li,m), (lj,p) ):
+    for l, idx in ( (li,m), (lj,p) ):
         for v in l:
             phase = -phase
-            if v == mp:
+            if v == idx:
                 break
-         
+    
+    sys.exit()
     return phase*res
 
-def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin):
+def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:
+
     #Hole
     i, j = sorted(set(li) - set(lj))
     #Particle
@@ -141,33 +139,34 @@ def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin):
             phase = -phase
             if v == mp:
                 break
-    # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:289
+    # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
     a = min(i, k)
     b = max(i, k)
     c = min(j, l)
     d = max(j, l)
     if ((a<c) and (c<b) and (b<d)):
         phase = -phase
- 
+
+    #print (phase)
+    #sys.exit() 
     return phase * res 
 
 
-def H_i_j_doubleAB(det_i: Determinant, det_j: Determinant_Spin):
+def H_i_j_doubleAB(det_i: Determinant, det_j: Determinant_Spin) -> float:
     i, = set(det_i.alpha) - set(det_j.alpha)
     j, = set(det_i.beta) - set(det_j.beta)
-
+    
     k, = set(det_j.alpha) - set(det_i.alpha)
     l, = set(det_j.beta) - set(det_i.beta)
 
     res =  H_bi(i,j,k,l)
-
+  
     phase = 1
-    for l_,mp in ( (det_i.alpha,i), (det_i.beta,j),  (det_j.alpha,k), (det_j.beta,l) ):
+    for l_,mp in ( (det_i.alpha,i), (det_i.beta,j), (det_j.alpha,k), (det_j.beta,l) ):
         for v in l_:
             phase = -phase
             if v == mp:
-                break
-
+                 break
 
     return phase * res 
 
@@ -177,22 +176,23 @@ def H_i_j(det_i: Determinant, det_j: Determinant) -> float:
     # Apply slater rule for connected determinant (Only Singly and Double connected have a contribution)
     if ed_up + ed_dn == 0:
         return H_i_i(det_i)
-    elif ed_up == 1 and  ed_dn == 0:
+    elif ed_up == 1 and ed_dn == 0:
         return H_i_j_single(det_i.alpha, det_j.alpha, det_i.beta)
     elif ed_up == 0 and ed_dn == 1:
         return H_i_j_single(det_i.beta, det_j.beta, det_i.alpha)
-    elif ed_up == 2 and  ed_dn == 0:
+    elif ed_up == 2 and ed_dn == 0:
         return H_i_j_doubleAA(det_i.alpha,det_j.alpha)
-    elif ed_up == 0 and  ed_dn == 2:
+    elif ed_up == 0 and ed_dn == 2:
         return H_i_j_doubleAA(det_i.beta,det_j.beta)
-    elif ed_up == 1 and  ed_dn == 1:
+    elif ed_up == 1 and ed_dn == 1:
         return H_i_j_doubleAB(det_i, det_j)
     else:
         return 0.
 
 # Fcidump contain the integral
-fcidump_path='f2_631g.FCIDUMP'
-wf_path='f2_631g.30det.wf'
+#fcidump_path='f2_631g.FCIDUMP'
+fcidump_path='kev.DSDKSL'
+wf_path='f2_631g.28det.wf'
 
 #print ('Ref', Vee+Vnn+Ven+T)
 
@@ -204,5 +204,6 @@ psi_coef, det = load_wf(wf_path)
 from itertools import product
 variational_energy = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j)  for (i,det_i),(j,det_j) in product(enumerate(det),enumerate(det)) )
 print (E0+variational_energy)
-
-
+expected_value = -198.71760085
+print ('expected value:', expected_value)
+print (E0+variational_energy  - expected_value)

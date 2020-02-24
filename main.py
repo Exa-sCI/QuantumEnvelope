@@ -10,43 +10,46 @@ class Determinant(NamedTuple):
 Integral_Bielectronic = Dict[ Tuple[OrbitalIdx,OrbitalIdx,OrbitalIdx,OrbitalIdx], float]
 Integral_Monoelectronic = Dict[ Tuple[OrbitalIdx,OrbitalIdx], float]
 
-def load_integral(fcidump_path) -> Tuple[int, Integral_Bielectronic, Integral_Monoelectronic]:
+#                         
+# |   _   _.  _| o ._   _  
+# |_ (_) (_| (_| | | | (_| 
+#                       _| 
+
+def load_integral_monoegral(fcidump_path) -> Tuple[int, Integral_Bielectronic, Integral_Monoelectronic]:
     
     with open(fcidump_path) as f:
         data_int = f.readlines()
 
+    # Only non zero integrale are stored in the fci_dump.
+    # Hence we use a defaultdict to handle the sparticity
     from collections import defaultdict
-    d_int = defaultdict(int)
-    d_double = defaultdict(int)
+    d_integral_mono = defaultdict(int)
+    d_integral_bi = defaultdict(int)
     for line in data_int[4:]:
         v, *l = line.split()
         v = float(v)
+        # Transofrm to Diract Notation
         i,k,j,l = list(map(int, l)) 
  
         if i == 0:
             E0 = v
         elif j == 0:
-            d_int[ (i,k) ] = v            
-            d_int[ (k,i) ] = v
+            # Expend the symetrie 
+            d_integral_mono[ (i,k) ] = v            
+            d_integral_mono[ (k,i) ] = v
         else:
             # Physicist notation (storing)
-            d_double[ (i,j,k,l) ] = v
-            d_double[ (i,l,k,j) ] = v
-            d_double[ (j,i,l,k) ] = v
-            d_double[ (j,k,l,i) ] = v
-            d_double[ (k,j,i,l) ] = v
-            d_double[ (k,l,i,j) ] = v
-            d_double[ (l,i,j,k) ] = v
-            d_double[ (l,k,j,i) ] = v
+            # Expend the 8-fold symetrie
+            d_integral_bi[ (i,j,k,l) ] = v
+            d_integral_bi[ (i,l,k,j) ] = v
+            d_integral_bi[ (j,i,l,k) ] = v
+            d_integral_bi[ (j,k,l,i) ] = v
+            d_integral_bi[ (k,j,i,l) ] = v
+            d_integral_bi[ (k,l,i,j) ] = v
+            d_integral_bi[ (l,i,j,k) ] = v
+            d_integral_bi[ (l,k,j,i) ] = v
 
-    return E0, d_int, d_double
-
-
-def H_mono(i: OrbitalIdx, j: OrbitalIdx) -> float : 
-    return d_int[ (i,j) ]
-
-def H_bi(i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
-    return d_double[ (i,j,k,l) ]
+    return E0, d_integral_mono, d_integral_bi
 
 
 def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
@@ -59,12 +62,11 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
         return zip(*args)
 
     def decode_det(str_):
-        for i,v in enumerate(str_):
+        for i,v in enumerate(str_, start=1):
             if v == '+':
-                yield i+1
+                yield i
 
-    det = []
-    psi_coef = []
+    det = []; psi_coef = []
     for (coef, det_i, det_j) in grouper(data,3):
         psi_coef.append(float(coef))
         det.append ( Determinant( tuple(decode_det(det_i)), tuple(decode_det(det_j) ) ) )
@@ -72,11 +74,38 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
     return psi_coef, det
 
 
+#
+#  _                                        
+# /   _  ._ _  ._     _|_  _. _|_ o  _  ._  
+# \_ (_) | | | |_) |_| |_ (_|  |_ | (_) | | 
+#              |                            
 
+# ~
+# Integral
+# ~
+
+def H_mono(i: OrbitalIdx, j: OrbitalIdx) -> float :
+    # Assume symetrie
+    return d_integral_mono[ (i,j) ]
+
+def H_bi(i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
+    # Assume that *all* the integral are in the global_varaible `d_integral_bi`
+    # In this function we don't use any symetrie or sparticity to reduce the storage, this is N4.
+    # For large system (N>800) the sparticity should reduce the storage requirement
+    return d_integral_bi[ (i,j,k,l) ]
+
+# ~
+# Slater condom Rule
+# ~
 
 def get_ed(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
     # Compute excitation degree
     # Number of different orbital between determinant
+    '''
+    >>> get_ed(Determinant(alpha=(1, 2), beta=(1, 2)),
+    ...       Determinant(alpha=(1, 3), beta=(5, 7)) )
+    (1, 2)
+    '''
     ed_up =  len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
     ed_dn =  len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
     return (ed_up, ed_dn)
@@ -88,30 +117,34 @@ def H_i_i(det_i: Determinant) -> float:
     res += sum(H_mono(i,i) for i in det_i.beta)
     
     from itertools import product
-    res += sum( (H_bi(i,j,i,j)  -  H_bi(i,j,j,i) ) for (i,j) in product(det_i.alpha, det_i.alpha)) / 2
-    res += sum( (H_bi(i,j,i,j)  -  H_bi(i,j,j,i) ) for (i,j) in product(det_i.beta, det_i.beta)) / 2
+
+    res += sum( (H_bi(i,j,i,j) - H_bi(i,j,j,i) ) for (i,j) in product(det_i.alpha, det_i.alpha)) / 2
+    res += sum( (H_bi(i,j,i,j) - H_bi(i,j,j,i) ) for (i,j) in product(det_i.beta, det_i.beta)) / 2
        
     res += sum( H_bi(i,j,i,j) for (i,j) in product(det_i.alpha, det_i.beta))
  
     return res
 
-def H_i_j_single(li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spin):
+def H_i_j_single(li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spin) -> float:
     #https://arxiv.org/abs/1311.6244
     #NOT TESTED /!\
     
+    # Interaction 
     m, p = list(set(li).symmetric_difference(set(lj)))
     res = H_mono(m,p)
 
     res += sum ( H_bi(m,i,p,i)  -  H_bi(m,i,i,p) for i in li)
     res += sum ( H_bi(m,i,p,i)  -  H_bi(m,i,i,p) for i in lk)
 
-    phase = 1.
+    # Phase
+    phase = 1
     for l, idx in ( (li,m), (lj,p) ):
         for v in l:
             phase = -phase
             if v == idx:
                 break
-    
+
+    # Result    
     return phase*res
 
 def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:
@@ -122,9 +155,10 @@ def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:
     k, l = sorted(set(lj) - set(li))
 
     res = ( H_bi(i,j,k,l)  -  H_bi(i,j,l,k) )
+
     # Compute phase. See paper to have a loopless algorithm
     # https://arxiv.org/abs/1311.6244
-    phase = 1.
+    phase = 1
     for l_,mp in ( (li,i), (lj,j),  (lj,k), (li,l) ):
         for v in l_:
             phase = -phase
@@ -138,8 +172,6 @@ def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:
     if ((a<c) and (c<b) and (b<d)):
         phase = -phase
 
-    #print (phase)
-    #sys.exit() 
     return phase * res 
 
 
@@ -161,40 +193,46 @@ def H_i_j_doubleAB(det_i: Determinant, det_j: Determinant_Spin) -> float:
 
     return phase * res 
 
-def H_i_j(det_i: Determinant, det_j: Determinant) -> float:
+def H_i_j(det_i: Determinant, det_j: Determinant, det_int, d_integral_bi) -> float:
 
     ed_up, ed_dn = get_ed(det_i, det_j)
-    # Apply slater rule for connected determinant (Only Singly and Double connected have a contribution)
+    # Apply slater-Condon rules
+    # (https://en.wikipedia.org/wiki/Slater%E2%80%93Condon_rules)
+
+    # No excitation
     if ed_up + ed_dn == 0:
         return H_i_i(det_i)
+    # Single excitation
     elif ed_up == 1 and ed_dn == 0:
         return H_i_j_single(det_i.alpha, det_j.alpha, det_i.beta)
     elif ed_up == 0 and ed_dn == 1:
         return H_i_j_single(det_i.beta, det_j.beta, det_i.alpha)
+    # Double excitation
     elif ed_up == 2 and ed_dn == 0:
         return H_i_j_doubleAA(det_i.alpha,det_j.alpha)
     elif ed_up == 0 and ed_dn == 2:
         return H_i_j_doubleAA(det_i.beta,det_j.beta)
     elif ed_up == 1 and ed_dn == 1:
         return H_i_j_doubleAB(det_i, det_j)
+    # More than doubly excited, no contribution
     else:
         return 0.
 
-# Fcidump contain the integral
-#fcidump_path='f2_631g.FCIDUMP'
-fcidump_path='kev.DSDKSL'
-wf_path='f2_631g.28det.wf'
 
-#print ('Ref', Vee+Vnn+Ven+T)
+if __name__ == "__main__":
+    # Fcidump contain the integral
+    #fcidump_path='f2_631g.FCIDUMP'
+    fcidump_path='kev.DSDKSL'
+    wf_path='f2_631g.28det.wf'
 
-# Initilization
-E0, d_int, d_double = load_integral(fcidump_path)
-psi_coef, det = load_wf(wf_path)
+    # Initilization
+    E0, d_integral_mono, d_integral_bi = load_integral_monoegral(fcidump_path)
+    psi_coef, det = load_wf(wf_path)
 
-# Computation of the Energy
-from itertools import product
-variational_energy = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j)  for (i,det_i),(j,det_j) in product(enumerate(det),enumerate(det)) )
-print (E0+variational_energy)
-expected_value = -198.71760085
-print ('expected value:', expected_value)
-print (E0+variational_energy  - expected_value)
+    # Computation of the Energy
+    from itertools import product
+    variational_energy = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j, d_integral_mono, d_integral_bi)  for (i,det_i),(j,det_j) in product(enumerate(det),enumerate(det)) )
+    print (E0+variational_energy)
+    expected_value = -198.71760085
+    print ('expected value:', expected_value)
+    print (E0+variational_energy  - expected_value)

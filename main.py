@@ -292,7 +292,7 @@ if __name__ == "__main__":
     psi_coef, det = load_wf(wf_path)
 
     # Computation of the Energy of the input wave function (variational energy)
-    E_var = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j, d_one_e_integral, d_two_e_integral)
+    E_var = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j)
                 for (i,det_i),(j,det_j) in product(enumerate(det),enumerate(det)) )
     print (E0+E_var)
     expected_value = -198.71760085

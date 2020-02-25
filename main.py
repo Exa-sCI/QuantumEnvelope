@@ -161,6 +161,52 @@ def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
     ed_dn =  len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
     return (ed_up, ed_dn)
 
+def get_phase_idx_single_exc(det_i: Determinant_Spin, det_j: Determinant_Spin) -> Tuple[int,int,int]:
+    '''phase, hole, particle of <I|H|J> when I and J differ by exactly one orbital
+       h is occupied only in I
+       p is occupied only in J'''
+    
+    h, = set(det_i) - set(det_j)
+    p, = set(det_j) - set(det_i)
+
+    phase=1
+    for det, idx in ((det_i,h),(det_j,p)):
+        for occ in det:
+            phase = -phase
+            if occ == idx:
+                break
+    return (phase,h,p)
+
+def get_phase_idx_double_exc(det_i: Determinant_Spin, det_j: Determinant_Spin) -> Tuple[int,int,int,int,int]:
+    '''phase, holes, particles of <I|H|J> when I and J differ by exactly two orbitals
+       h1, h2 are occupied only in I
+       p1, p2 are occupied only in J'''
+    
+    #Hole
+    h1, h2 = sorted(set(det_i) - set(det_j))
+    #Particle
+    p1, p2 = sorted(set(det_j) - set(det_i))
+
+    # Compute phase. See paper to have a loopless algorithm
+    # https://arxiv.org/abs/1311.6244
+    phase = 1
+    for l_,mp in ( (det_i,h1), (det_j,p1),  (det_j,p2), (det_i,h2) ):
+        for v in l_:
+            phase = -phase
+            if v == mp:
+                break
+    # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
+#    a = min(h1, p1)
+    b = max(h1, p1)
+    c = min(h2, p2)
+ #   d = max(h2, p2)
+    #if ((a<c) and (c<b) and (b<d)):
+    if (c<b):
+        phase = -phase
+
+    return (phase,h1,h2,p1,p2)
+
+
 
 def H_i_i(det_i: Determinant) -> float:
     '''Diagonal element of the Hamiltonian : <I|H|I>.'''
@@ -180,19 +226,11 @@ def H_i_j_single(li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spi
     # NOT TESTED /!\
     
     # Interaction 
-    m, p = list(set(li).symmetric_difference(set(lj)))
+    phase, m, p = get_phase_idx_single_exc(li,lj)
     res = H_one_e(m,p)
 
     res += sum ( H_two_e(m,i,p,i)  -  H_two_e(m,i,i,p) for i in li)
     res += sum ( H_two_e(m,i,p,i)  -  H_two_e(m,i,i,p) for i in lk)
-
-    # Phase
-    phase = 1
-    for l, idx in ( (li,m), (lj,p) ):
-        for v in l:
-            phase = -phase
-            if v == idx:
-                break
 
     # Result    
     return phase*res
@@ -202,28 +240,13 @@ def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:
     '''<I|H|J>, when I and J differ by exactly two orbitals within
        the same spin.'''
 
+    phase,h1,h2,p1,p2 = get_phase_idx_double_exc(li,lj)
     #Hole
     i, j = sorted(set(li) - set(lj))
     #Particle
     k, l = sorted(set(lj) - set(li))
 
-    res = ( H_two_e(i,j,k,l)  -  H_two_e(i,j,l,k) )
-
-    # Compute phase. See paper to have a loopless algorithm
-    # https://arxiv.org/abs/1311.6244
-    phase = 1
-    for l_,mp in ( (li,i), (lj,j),  (lj,k), (li,l) ):
-        for v in l_:
-            phase = -phase
-            if v == mp:
-                break
-    # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
-    a = min(i, k)
-    b = max(i, k)
-    c = min(j, l)
-    d = max(j, l)
-    if ((a<c) and (c<b) and (b<d)):
-        phase = -phase
+    res = ( H_two_e(h1,h2,p1,p2)  -  H_two_e(h1,h2,p2,p1) )
 
     return phase * res 
 
@@ -231,22 +254,13 @@ def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:
 def H_i_j_doubleAB(det_i: Determinant, det_j: Determinant_Spin) -> float:
     '''<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
        one beta spin-orbital.'''
-    i, = set(det_i.alpha) - set(det_j.alpha)
-    j, = set(det_i.beta) - set(det_j.beta)
+
+    phaseA, hA, pA = get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+    phaseB, hB, pB = get_phase_idx_single_exc(det_i.beta, det_j.beta)
+
+    res =  H_two_e(hA,hB,pA,pB)
     
-    k, = set(det_j.alpha) - set(det_i.alpha)
-    l, = set(det_j.beta) - set(det_i.beta)
-
-    res =  H_two_e(i,j,k,l)
-  
-    phase = 1
-    for l_,mp in ( (det_i.alpha,i), (det_i.beta,j), (det_j.alpha,k), (det_j.beta,l) ):
-        for v in l_:
-            phase = -phase
-            if v == mp:
-                 break
-
-    return phase * res 
+    return phaseA * phaseB * res 
 
 
 def H_i_j(det_i: Determinant, det_j: Determinant) -> float:

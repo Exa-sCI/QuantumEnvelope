@@ -1,70 +1,146 @@
 #!/usr/bin/env python3
 
+# Types
+# -----
+
 from typing import Tuple, Dict, NewType, NamedTuple, List
+
+# Orbital index (1,2,...,Norb)
 OrbitalIdx = NewType('OrbitalIdx', int)
+
+
+# Two-electron integral :
+# $<ij|kl> = \int \int \phi_i(r_1) \phi_j(r_2) \frac{1}{|r_1 - r_2|} \phi_k(r_1) \phi_l(r_2) dr_1 dr_2$
+
+Two_electron_integral = Dict[ Tuple[OrbitalIdx,OrbitalIdx,OrbitalIdx,OrbitalIdx], float]
+
+
+# One-electron integral :
+# $<i|h|k> = \int \phi_i(r) (-\frac{1}{2} \Delta + V_en ) \phi_k(r) dr$
+
+One_electron_integral = Dict[ Tuple[OrbitalIdx,OrbitalIdx], float]
+
 Determinant_Spin = Tuple[OrbitalIdx, ...]
 class Determinant(NamedTuple):
+    '''Slater determinant: Product of 2 determinants.
+       One for $\alpha$ electrons and one for \beta electrons.'''
     alpha: Determinant_Spin
     beta: Determinant_Spin
 
-Integral_Bielectronic = Dict[ Tuple[OrbitalIdx,OrbitalIdx,OrbitalIdx,OrbitalIdx], float]
-Integral_Monoelectronic = Dict[ Tuple[OrbitalIdx,OrbitalIdx], float]
+# -------
 
-#                         
-# |   _   _.  _| o ._   _  
-# |_ (_) (_| (_| | | | (_| 
-#                       _| 
 
-def load_integral_monoegral(fcidump_path) -> Tuple[int, Integral_Bielectronic, Integral_Monoelectronic]:
+from collections import defaultdict
+from itertools   import product
+
+
+
+
+# ~
+# Integrals of the Hamiltonian over molecular orbitals
+# ~
+
+
+def load_integrals(fcidump_path) -> Tuple[int, Two_electron_integral, One_electron_integral]:
+    '''Read all the Hamiltonian integrals from the data file.
+       Returns: (E0, d_one_e_integral, d_two_e_integral).
+       E0 : a float containing the nuclear repulsion energy (V_nn),
+       d_one_e_integral : a dictionary of one-electron integrals,
+       d_two_e_integral : a dictionary of two-electron integrals.
+       '''
     
     with open(fcidump_path) as f:
         data_int = f.readlines()
 
-    # Only non zero integrale are stored in the fci_dump.
-    # Hence we use a defaultdict to handle the sparticity
-    from collections import defaultdict
-    d_integral_mono = defaultdict(int)
-    d_integral_bi = defaultdict(int)
+    # Only non-zero integrals are stored in the fci_dump.
+    # Hence we use a defaultdict to handle the sparsity
+    d_one_e_integral = defaultdict(int)
+    d_two_e_integral = defaultdict(int)
     for line in data_int[4:]:
         v, *l = line.split()
         v = float(v)
-        # Transofrm to Diract Notation
+        # Transform from Mulliken (ik|jl) to Dirac's <ij|kl> notation
+        # (swap indices)
         i,k,j,l = list(map(int, l)) 
  
         if i == 0:
             E0 = v
         elif j == 0:
-            # Expend the symetrie 
-            d_integral_mono[ (i,k) ] = v            
-            d_integral_mono[ (k,i) ] = v
+            # One-electron integrals are symmetric (when real, not complex)
+            d_one_e_integral[ (i,k) ] = v            
+            d_one_e_integral[ (k,i) ] = v
         else:
-            # Physicist notation (storing)
-            # Expend the 8-fold symetrie
-            d_integral_bi[ (i,j,k,l) ] = v
-            d_integral_bi[ (i,l,k,j) ] = v
-            d_integral_bi[ (j,i,l,k) ] = v
-            d_integral_bi[ (j,k,l,i) ] = v
-            d_integral_bi[ (k,j,i,l) ] = v
-            d_integral_bi[ (k,l,i,j) ] = v
-            d_integral_bi[ (l,i,j,k) ] = v
-            d_integral_bi[ (l,k,j,i) ] = v
+            # Two-electron integrals have many permutation symmetries:
+            # Exchange r1 and r2 (indices i,k and j,l)
+            # Exchange i,k (if complex, with a minus sign)
+            # Exchange j,l (if complex, with a minus sign)
+            d_two_e_integral[ (i,j,k,l) ] = v
+            d_two_e_integral[ (i,l,k,j) ] = v
+            d_two_e_integral[ (j,i,l,k) ] = v
+            d_two_e_integral[ (j,k,l,i) ] = v
+            d_two_e_integral[ (k,j,i,l) ] = v
+            d_two_e_integral[ (k,l,i,j) ] = v
+            d_two_e_integral[ (l,i,j,k) ] = v
+            d_two_e_integral[ (l,k,j,i) ] = v
 
-    return E0, d_integral_mono, d_integral_bi
+    return E0, d_one_e_integral, d_two_e_integral
 
+
+def H_one_e(i: OrbitalIdx, j: OrbitalIdx) -> float :
+    '''One-electron part of the Hamiltonian: Kinetic energy (T) and
+       Nucleus-electron potential (V_{en}). This matrix is symmetric.'''
+    return d_one_e_integral[ (i,j) ]
+
+
+def H_two_e(i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
+    '''Assume that *all* the integrals are in the global_variable
+       `d_two_e_integral` In this function, for simplicity we don't use any
+       symmetry sparse representation.  For real calculations, symmetries and
+       storing only non-zeros needs to be implemented to avoid an explosion of
+       the memory requirements.'''
+    return d_two_e_integral[ (i,j,k,l) ]
+
+
+
+
+
+# Now, we consider the Hamiltonian matrix in the basis of Slater determinants.
+# Slater-Condon rules are used to compute the matrix elements <I|H|J> where I
+# and J are Slater determinants.
+# 
+# ~
+# Slater-Condon Rules
+# ~
+#
+# https://en.wikipedia.org/wiki/Slater%E2%80%93Condon_rules
+# https://arxiv.org/abs/1311.6244
+#
+# * H is symmetric
+# * If I and J differ by more than 2 orbitals, <I|H|J> = 0, so the number of
+#   non-zero elements of H is bounded by N_det x ( N_alpha x (N_orb - N_alpha))^2,
+#   where N_det is the number of determinants, N_alpha is the number of
+#   alpha-spin electrons (N_alpha >= N_beta), and N_orb is the number of
+#   molecular orbitals.  So the number of non-zero elements scales linearly with
+#   the number of selected determinant.
+#
 
 def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
+    '''Read the input file :
+       Representation of the Slater determinants (basis) and
+       vector of coefficients in this basis (wave function).'''
+
     with open(path_wf) as f:
         data = f.read().split()
-
-    def grouper(iterable, n):
-        "Collect data into fixed-length chunks or blocks"
-        args = [iter(iterable)] * n
-        return zip(*args)
 
     def decode_det(str_):
         for i,v in enumerate(str_, start=1):
             if v == '+':
                 yield i
+
+    def grouper(iterable, n):
+        "Collect data into fixed-length chunks or blocks"
+        args = [iter(iterable)] * n
+        return zip(*args)
 
     det = []; psi_coef = []
     for (coef, det_i, det_j) in grouper(data,3):
@@ -74,36 +150,11 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
     return psi_coef, det
 
 
-#
-#  _                                        
-# /   _  ._ _  ._     _|_  _. _|_ o  _  ._  
-# \_ (_) | | | |_) |_| |_ (_|  |_ | (_) | | 
-#              |                            
-
-# ~
-# Integral
-# ~
-
-def H_mono(i: OrbitalIdx, j: OrbitalIdx) -> float :
-    # Assume symetrie
-    return d_integral_mono[ (i,j) ]
-
-def H_bi(i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
-    # Assume that *all* the integral are in the global_varaible `d_integral_bi`
-    # In this function we don't use any symetrie or sparticity to reduce the storage, this is N4.
-    # For large system (N>800) the sparticity should reduce the storage requirement
-    return d_integral_bi[ (i,j,k,l) ]
-
-# ~
-# Slater condom Rule
-# ~
-
-def get_ed(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
-    # Compute excitation degree
-    # Number of different orbital between determinant
-    '''
-    >>> get_ed(Determinant(alpha=(1, 2), beta=(1, 2)),
-    ...       Determinant(alpha=(1, 3), beta=(5, 7)) )
+def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
+    '''Compute the excitation degree, the number of orbitals which differ
+       between the two determinants.
+    >>> get_exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
+    ...                Determinant(alpha=(1, 3), beta=(5, 7)) )
     (1, 2)
     '''
     ed_up =  len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
@@ -112,29 +163,28 @@ def get_ed(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
 
 
 def H_i_i(det_i: Determinant) -> float:
-    #Dirac Notation
-    res = sum(H_mono(i,i) for i in det_i.alpha)
-    res += sum(H_mono(i,i) for i in det_i.beta)
+    '''Diagonal element of the Hamiltonian : <I|H|I>.'''
+    res  = sum(H_one_e(i,i) for i in det_i.alpha)
+    res += sum(H_one_e(i,i) for i in det_i.beta)
     
-    from itertools import product
-
-    res += sum( (H_bi(i,j,i,j) - H_bi(i,j,j,i) ) for (i,j) in product(det_i.alpha, det_i.alpha)) / 2
-    res += sum( (H_bi(i,j,i,j) - H_bi(i,j,j,i) ) for (i,j) in product(det_i.beta, det_i.beta)) / 2
+    res += sum( (H_two_e(i,j,i,j) - H_two_e(i,j,j,i) ) for (i,j) in product(det_i.alpha, det_i.alpha)) / 2
+    res += sum( (H_two_e(i,j,i,j) - H_two_e(i,j,j,i) ) for (i,j) in product(det_i.beta, det_i.beta)) / 2
        
-    res += sum( H_bi(i,j,i,j) for (i,j) in product(det_i.alpha, det_i.beta))
+    res += sum( H_two_e(i,j,i,j) for (i,j) in product(det_i.alpha, det_i.beta))
  
     return res
 
+
 def H_i_j_single(li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spin) -> float:
-    #https://arxiv.org/abs/1311.6244
-    #NOT TESTED /!\
+    '''<I|H|J>, when I and J differ by exactly one orbital.'''
+    # NOT TESTED /!\
     
     # Interaction 
     m, p = list(set(li).symmetric_difference(set(lj)))
-    res = H_mono(m,p)
+    res = H_one_e(m,p)
 
-    res += sum ( H_bi(m,i,p,i)  -  H_bi(m,i,i,p) for i in li)
-    res += sum ( H_bi(m,i,p,i)  -  H_bi(m,i,i,p) for i in lk)
+    res += sum ( H_two_e(m,i,p,i)  -  H_two_e(m,i,i,p) for i in li)
+    res += sum ( H_two_e(m,i,p,i)  -  H_two_e(m,i,i,p) for i in lk)
 
     # Phase
     phase = 1
@@ -147,14 +197,17 @@ def H_i_j_single(li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spi
     # Result    
     return phase*res
 
+
 def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:
+    '''<I|H|J>, when I and J differ by exactly two orbitals within
+       the same spin.'''
 
     #Hole
     i, j = sorted(set(li) - set(lj))
     #Particle
     k, l = sorted(set(lj) - set(li))
 
-    res = ( H_bi(i,j,k,l)  -  H_bi(i,j,l,k) )
+    res = ( H_two_e(i,j,k,l)  -  H_two_e(i,j,l,k) )
 
     # Compute phase. See paper to have a loopless algorithm
     # https://arxiv.org/abs/1311.6244
@@ -176,13 +229,15 @@ def H_i_j_doubleAA(li: Determinant_Spin, lj: Determinant_Spin) -> float:
 
 
 def H_i_j_doubleAB(det_i: Determinant, det_j: Determinant_Spin) -> float:
+    '''<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
+       one beta spin-orbital.'''
     i, = set(det_i.alpha) - set(det_j.alpha)
     j, = set(det_i.beta) - set(det_j.beta)
     
     k, = set(det_j.alpha) - set(det_i.alpha)
     l, = set(det_j.beta) - set(det_i.beta)
 
-    res =  H_bi(i,j,k,l)
+    res =  H_two_e(i,j,k,l)
   
     phase = 1
     for l_,mp in ( (det_i.alpha,i), (det_i.beta,j), (det_j.alpha,k), (det_j.beta,l) ):
@@ -193,46 +248,55 @@ def H_i_j_doubleAB(det_i: Determinant, det_j: Determinant_Spin) -> float:
 
     return phase * res 
 
-def H_i_j(det_i: Determinant, det_j: Determinant, det_int, d_integral_bi) -> float:
 
-    ed_up, ed_dn = get_ed(det_i, det_j)
-    # Apply slater-Condon rules
-    # (https://en.wikipedia.org/wiki/Slater%E2%80%93Condon_rules)
+def H_i_j(det_i: Determinant, det_j: Determinant) -> float:
+    '''General function to dispatch the evaluation of H_ij'''
 
-    # No excitation
+    ed_up, ed_dn = get_exc_degree(det_i, det_j)
+
+    # Same determinant -> Diagonal element
     if ed_up + ed_dn == 0:
         return H_i_i(det_i)
+
     # Single excitation
-    elif ed_up == 1 and ed_dn == 0:
+    elif (ed_up, ed_dn) == (1, 0):
         return H_i_j_single(det_i.alpha, det_j.alpha, det_i.beta)
-    elif ed_up == 0 and ed_dn == 1:
+    elif (ed_up, ed_dn) == (0, 1):
         return H_i_j_single(det_i.beta, det_j.beta, det_i.alpha)
-    # Double excitation
-    elif ed_up == 2 and ed_dn == 0:
+
+    # Double excitation of same spin
+    elif (ed_up, ed_dn) == (2, 0):
         return H_i_j_doubleAA(det_i.alpha,det_j.alpha)
-    elif ed_up == 0 and ed_dn == 2:
+    elif (ed_up, ed_dn) == (0, 2):
         return H_i_j_doubleAA(det_i.beta,det_j.beta)
-    elif ed_up == 1 and ed_dn == 1:
+
+    # Double excitation of opposite spins
+    elif (ed_up, ed_dn) == (1, 1):
         return H_i_j_doubleAB(det_i, det_j)
-    # More than doubly excited, no contribution
+
+    # More than doubly excited, zero
     else:
         return 0.
 
 
 if __name__ == "__main__":
-    # Fcidump contain the integral
+
     #fcidump_path='f2_631g.FCIDUMP'
     fcidump_path='kev.DSDKSL'
     wf_path='f2_631g.28det.wf'
 
-    # Initilization
-    E0, d_integral_mono, d_integral_bi = load_integral_monoegral(fcidump_path)
+    # Load integrals
+    E0, d_one_e_integral, d_two_e_integral = load_integrals(fcidump_path)
+
+    # Load wave function
     psi_coef, det = load_wf(wf_path)
 
-    # Computation of the Energy
-    from itertools import product
-    variational_energy = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j, d_integral_mono, d_integral_bi)  for (i,det_i),(j,det_j) in product(enumerate(det),enumerate(det)) )
-    print (E0+variational_energy)
+    # Computation of the Energy of the input wave function (variational energy)
+    E_var = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j, d_one_e_integral, d_two_e_integral)
+                for (i,det_i),(j,det_j) in product(enumerate(det),enumerate(det)) )
+    print (E0+E_var)
     expected_value = -198.71760085
     print ('expected value:', expected_value)
-    print (E0+variational_energy  - expected_value)
+    print (E0+E_var  - expected_value)
+    assert (E0+E_var == expected_value)
+

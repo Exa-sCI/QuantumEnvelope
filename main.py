@@ -176,14 +176,12 @@ class Hamiltonian(object):
         res += sum ( self.H_two_e(m,i,p,i)  -  self.H_two_e(m,i,i,p) for i in li)
         res += sum ( self.H_two_e(m,i,p,i)  -  self.H_two_e(m,i,i,p) for i in lk)
     
+        from itertools import takewhile
         # Phase
         phase = 1
-        for l, idx in ( (li,m), (lj,p) ):
-            for v in l:
+        for d, idx in (li,m), (lj,p):
+            for _ in takewhile(lambda x: x != idx, d):
                 phase = -phase
-                if v == idx:
-                    break
-    
         # Result    
         return phase*res
 
@@ -191,7 +189,7 @@ class Hamiltonian(object):
     def H_i_j_doubleAA(self, li: Determinant_Spin, lj: Determinant_Spin) -> float:
         '''<I|H|J>, when I and J differ by exactly two orbitals within
            the same spin.'''
-    
+
         #Hole
         i, j = sorted(set(li) - set(lj))
         #Particle
@@ -199,14 +197,14 @@ class Hamiltonian(object):
     
         res = ( self.H_two_e(i,j,k,l)  -  self.H_two_e(i,j,l,k) )
     
+        from itertools import takewhile
         # Compute phase. See paper to have a loopless algorithm
         # https://arxiv.org/abs/1311.6244
         phase = 1
-        for l_,mp in ( (li,i), (lj,j),  (lj,k), (li,l) ):
-            for v in l_:
+        for d, idx in (li,i), (lj,j), (lj,k), (li,l):
+            for _ in takewhile(lambda x: x != idx, d):
                 phase = -phase
-                if v == mp:
-                    break
+
         # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
         a = min(i, k)
         b = max(i, k)
@@ -221,6 +219,7 @@ class Hamiltonian(object):
     def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant_Spin) -> float:
         '''<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
            one beta spin-orbital.'''
+
         i, = set(det_i.alpha) - set(det_j.alpha)
         j, = set(det_i.beta) - set(det_j.beta)
         
@@ -228,17 +227,17 @@ class Hamiltonian(object):
         l, = set(det_j.beta) - set(det_i.beta)
     
         res =  self.H_two_e(i,j,k,l)
-      
+
+        from itertools   import takewhile 
+
         phase = 1
-        for l_,mp in ( (det_i.alpha,i), (det_i.beta,j), (det_j.alpha,k), (det_j.beta,l) ):
-            for v in l_:
+        for d,idx in ( (det_i.alpha,i), (det_i.beta,j), (det_j.alpha,k), (det_j.beta,l) ):
+            for _ in takewhile(lambda x: x != idx, d):
                 phase = -phase
-                if v == mp:
-                     break
     
         return phase * res 
  
-    def H_i_j(self, det_i: Determinant, det_j: Determinant, d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral) -> float:
+    def H_i_j(self, det_i: Determinant, det_j: Determinant) -> float:
         '''General function to dispatch the evaluation of H_ij'''
     
         ed_up, ed_dn = get_exc_degree(det_i, det_j)
@@ -271,9 +270,8 @@ def E_var(psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
     norm2 = sum(c*c for c in psi_coef)
     from itertools import product
     lewis = Hamiltonian(d_one_e_integral,d_two_e_integral)
-    r = sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j, d_one_e_integral, d_two_e_integral) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
+    r = sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
     return r / norm2
-
 
 import unittest
 class TestVariationalEnergy(unittest.TestCase):
@@ -281,13 +279,10 @@ class TestVariationalEnergy(unittest.TestCase):
     def load_and_compute(self,fcidump_path,wf_path):
         # Load integrals
         E0, d_one_e_integral, d_two_e_integral = load_integrals(fcidump_path)
-    
         # Load wave function
         psi_coef, psi_det = load_wf(wf_path)
-    
         # Computation of the Energy of the input wave function (variational energy)
         return E0 + E_var(psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
-
 
     def test_f2_631g_10det(self):
         fcidump_path='f2_631g.FCIDUMP'

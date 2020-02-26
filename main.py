@@ -249,13 +249,13 @@ def H_i_j_doubleAB(det_i: Determinant, det_j: Determinant_Spin) -> float:
     return phase * res 
 
 
-def H_i_j(det_i: Determinant, det_j: Determinant) -> float:
+def H_i_j(det_i: Determinant, det_j: Determinant, d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral) -> float:
     '''General function to dispatch the evaluation of H_ij'''
 
     ed_up, ed_dn = get_exc_degree(det_i, det_j)
 
     # Same determinant -> Diagonal element
-    if ed_up + ed_dn == 0:
+    if (ed_up,ed_dn) == (0,0):
         return H_i_i(det_i)
 
     # Single excitation
@@ -278,25 +278,23 @@ def H_i_j(det_i: Determinant, det_j: Determinant) -> float:
     else:
         return 0.
 
+def E_var(psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
+    norm2 = sum(c*c for c in psi_coef)
+    r = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j, d_one_e_integral, d_two_e_integral) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
+    return r / norm2
 
 if __name__ == "__main__":
 
-    #fcidump_path='f2_631g.FCIDUMP'
-    fcidump_path='kev.DSDKSL'
-    wf_path='f2_631g.28det.wf'
+    fcidump_path='f2_631g.FCIDUMP'
+    wf_path='f2_631g.10det.wf'
 
     # Load integrals
     E0, d_one_e_integral, d_two_e_integral = load_integrals(fcidump_path)
 
     # Load wave function
-    psi_coef, det = load_wf(wf_path)
+    psi_coef, psi_det = load_wf(wf_path)
 
     # Computation of the Energy of the input wave function (variational energy)
-    E_var = sum(psi_coef[i] * psi_coef[j] * H_i_j(det_i,det_j, d_one_e_integral, d_two_e_integral)
-                for (i,det_i),(j,det_j) in product(enumerate(det),enumerate(det)) )
-    print (E0+E_var)
-    expected_value = -198.71760085
-    print ('expected value:', expected_value)
-    print (E0+E_var  - expected_value)
-    assert (E0+E_var == expected_value)
+    E = E0 + E_var(psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
+    #print("Energy = {0:15.6f}  | ref : -198.548963".format(E))
 

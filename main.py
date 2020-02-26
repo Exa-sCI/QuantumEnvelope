@@ -25,7 +25,7 @@ class Determinant(NamedTuple):
 # ~
 # Integrals of the Hamiltonian over molecular orbitals
 # ~
-def load_integrals(fcidump_path) -> Tuple[int, Two_electron_integral, One_electron_integral]:
+def load_integrals(fcidump_path) -> Tuple[float, One_electron_integral, Two_electron_integral]:
     '''Read all the Hamiltonian integrals from the data file.
        Returns: (E0, d_one_e_integral, d_two_e_integral).
        E0 : a float containing the nuclear repulsion energy (V_nn),
@@ -113,6 +113,11 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
         psi_coef.append(float(coef))
         det.append ( Determinant( tuple(decode_det(det_i)), tuple(decode_det(det_j) ) ) )
 
+    # Normalize psi_coef
+    from math import sqrt
+    norm = sqrt(sum(c*c for c in psi_coef))
+    psi_coef = [c / norm for c in psi_coef]
+
     return psi_coef, det
 
 
@@ -132,7 +137,7 @@ def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
 
 class Hamiltonian(object):
 
-    def __init__(self,d_one_e_integral, d_two_e_integral):
+    def __init__(self,d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral):
         self.d_one_e_integral = d_one_e_integral
         self.d_two_e_integral = d_two_e_integral
 
@@ -142,7 +147,7 @@ class Hamiltonian(object):
         return self.d_one_e_integral[ (i,j) ]
     
     def H_two_e(self, i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
-        '''Assume that *all* the integrals are in the global_variable
+        '''Assume that *all* the integrals are in 
            `d_two_e_integral` In this function, for simplicity we don't use any
            symmetry sparse representation.  For real calculations, symmetries and
            storing only non-zeros needs to be implemented to avoid an explosion of
@@ -156,10 +161,10 @@ class Hamiltonian(object):
         res  = sum(self.H_one_e(i,i) for i in det_i.alpha)
         res += sum(self.H_one_e(i,i) for i in det_i.beta)
         
-        res += sum( (self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) ) for (i,j) in product(det_i.alpha, det_i.alpha)) / 2.
-        res += sum( (self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) ) for (i,j) in product(det_i.beta, det_i.beta)) / 2.
+        res += sum(self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) for i,j in product(det_i.alpha, det_i.alpha)) / 2.
+        res += sum(self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) for i,j in product(det_i.beta, det_i.beta)) / 2.
            
-        res += sum( self.H_two_e(i,j,i,j) for (i,j) in product(det_i.alpha, det_i.beta))
+        res += sum(self.H_two_e(i,j,i,j) for (i,j) in product(det_i.alpha, det_i.beta))
      
         return res
 
@@ -173,8 +178,8 @@ class Hamiltonian(object):
 
         res = self.H_one_e(m,p)
     
-        res += sum ( self.H_two_e(m,i,p,i)  -  self.H_two_e(m,i,i,p) for i in li)
-        res += sum ( self.H_two_e(m,i,p,i)  -  self.H_two_e(m,i,i,p) for i in lk)
+        res += sum(self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in li)
+        res += sum(self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in lk)
     
         from itertools import takewhile
         # Phase
@@ -195,7 +200,7 @@ class Hamiltonian(object):
         #Particle
         k, l = sorted(set(lj) - set(li))
     
-        res = ( self.H_two_e(i,j,k,l)  -  self.H_two_e(i,j,l,k) )
+        res = self.H_two_e(i,j,k,l) - self.H_two_e(i,j,l,k)
     
         from itertools import takewhile
         # Compute phase. See paper to have a loopless algorithm
@@ -216,7 +221,7 @@ class Hamiltonian(object):
         return phase * res 
 
 
-    def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant_Spin) -> float:
+    def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant) -> float:
         '''<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
            one beta spin-orbital.'''
 
@@ -267,12 +272,9 @@ class Hamiltonian(object):
 
 def E_var(psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
     
-    norm2 = sum(c*c for c in psi_coef)
     from itertools import product
     lewis = Hamiltonian(d_one_e_integral,d_two_e_integral)
-    r = sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
-    return r / norm2
-
+    return sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
 
 import unittest
 class TestVariationalEnergy(unittest.TestCase):

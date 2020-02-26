@@ -156,8 +156,8 @@ class Hamiltonian(object):
         res  = sum(self.H_one_e(i,i) for i in det_i.alpha)
         res += sum(self.H_one_e(i,i) for i in det_i.beta)
         
-        res += sum( (self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) ) for (i,j) in product(det_i.alpha, det_i.alpha)) / 2
-        res += sum( (self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) ) for (i,j) in product(det_i.beta, det_i.beta)) / 2
+        res += sum( (self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) ) for (i,j) in product(det_i.alpha, det_i.alpha)) / 2.
+        res += sum( (self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) ) for (i,j) in product(det_i.beta, det_i.beta)) / 2.
            
         res += sum( self.H_two_e(i,j,i,j) for (i,j) in product(det_i.alpha, det_i.beta))
      
@@ -268,10 +268,9 @@ class Hamiltonian(object):
 
 def E_var(psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
     
-    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral)
     norm2 = sum(c*c for c in psi_coef)
-
     from itertools import product
+    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral)
     r = sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j, d_one_e_integral, d_two_e_integral) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
     return r / norm2
 
@@ -292,8 +291,8 @@ class TestVariationalEnergy(unittest.TestCase):
 
     def test_f2_631g_10det(self):
         fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.10det.wf'
-        E_ref =  -198.548963
+        wf_path='f2_631g.30det.wf'
+        E_ref =  -198.738780989106
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E)
 

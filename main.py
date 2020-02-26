@@ -57,8 +57,8 @@ def load_integrals(fcidump_path) -> Tuple[int, Two_electron_integral, One_electr
         else:
             # Two-electron integrals have many permutation symmetries:
             # Exchange r1 and r2 (indices i,k and j,l)
-            # Exchange i,k (if complex, with a minus sign)
-            # Exchange j,l (if complex, with a minus sign)
+            # Exchange i,k 
+            # Exchange j,l
             d_two_e_integral[ (i,j,k,l) ] = v
             d_two_e_integral[ (i,l,k,j) ] = v
             d_two_e_integral[ (j,i,l,k) ] = v
@@ -226,9 +226,9 @@ class Hamiltonian(object):
         k, = set(det_j.alpha) - set(det_i.alpha)
         l, = set(det_j.beta) - set(det_i.beta)
     
-        res =  self.H_two_e(i,j,k,l)
+        res = self.H_two_e(i,j,k,l)
 
-        from itertools   import takewhile 
+        from itertools import takewhile 
 
         phase = 1
         for d,idx in ( (det_i.alpha,i), (det_i.beta,j), (det_j.alpha,k), (det_j.beta,l) ):
@@ -272,6 +272,7 @@ def E_var(psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
     lewis = Hamiltonian(d_one_e_integral,d_two_e_integral)
     r = sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
     return r / norm2
+
 
 import unittest
 class TestVariationalEnergy(unittest.TestCase):

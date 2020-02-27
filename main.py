@@ -122,6 +122,9 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
 
 
 
+
+
+
 def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
     '''Compute the excitation degree, the number of orbitals which differ
        between the two determinants.
@@ -133,13 +136,13 @@ def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
     ed_dn =  len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
     return (ed_up, ed_dn)
 
-
-
+from itertools import takewhile
 class Hamiltonian(object):
 
-    def __init__(self,d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral):
+    def __init__(self,d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral, E0: float):
         self.d_one_e_integral = d_one_e_integral
         self.d_two_e_integral = d_two_e_integral
+        self.E0 = E0
 
     def H_one_e(self, i: OrbitalIdx, j: OrbitalIdx) -> float :
         '''One-electron part of the Hamiltonian: Kinetic energy (T) and
@@ -154,11 +157,57 @@ class Hamiltonian(object):
            the memory requirements.'''
         return self.d_two_e_integral[ (i,j,k,l) ]
 
+    def get_phase_idx_single_exc(self, det_i: Determinant_Spin, det_j: Determinant_Spin) -> Tuple[int,int,int]:
+        '''phase, hole, particle of <I|H|J> when I and J differ by exactly one orbital
+           h is occupied only in I
+           p is occupied only in J'''
+    
+        h, = set(det_i) - set(det_j)
+        p, = set(det_j) - set(det_i)
+    
+        phase=1
+        for det, idx in ((det_i,h),(det_j,p)):
+            for _ in takewhile(lambda x: x != idx, det):
+                phase = -phase
+    
+        return (phase,h,p)
+    
+    def get_phase_idx_double_exc(self, det_i: Determinant_Spin, det_j: Determinant_Spin) -> Tuple[int,int,int,int,int]:
+        '''phase, holes, particles of <I|H|J> when I and J differ by exactly two orbitals
+           h1, h2 are occupied only in I
+           p1, p2 are occupied only in J'''
+    
+        #Holes
+        h1, h2 = sorted(set(det_i) - set(det_j))
+        
+        #Particles
+        p1, p2 = sorted(set(det_j) - set(det_i))
+    
+        # Compute phase. See paper to have a loopless algorithm
+        # https://arxiv.org/abs/1311.6244
+        phase = 1
+        for det,idx in ( (det_i,h1), (det_j,p1),  (det_j,p2), (det_i,h2) ):
+            for _ in takewhile(lambda x: x != idx, det):
+                phase = -phase
+                    
+        # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
+    #    a = min(h1, p1)
+        b = max(h1, p1)
+        c = min(h2, p2)
+     #   d = max(h2, p2)
+        #if ((a<c) and (c<b) and (b<d)):
+        if (c<b):
+            phase = -phase
+    
+        return (phase, h1, h2, p1, p2)
+
+
     def H_i_i(self, det_i: Determinant) -> float:
         from itertools   import product
 
         '''Diagonal element of the Hamiltonian : <I|H|I>.'''
-        res  = sum(self.H_one_e(i,i) for i in det_i.alpha)
+        res  = self.E0
+        res += sum(self.H_one_e(i,i) for i in det_i.alpha)
         res += sum(self.H_one_e(i,i) for i in det_i.beta)
         
         res += sum(self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) for i,j in product(det_i.alpha, det_i.alpha)) / 2.
@@ -169,78 +218,40 @@ class Hamiltonian(object):
         return res
 
 
-    def H_i_j_single(self, li: Determinant_Spin, lj: Determinant_Spin, lk: Determinant_Spin) -> float:
+    def H_i_j_single(self, detspin_i: Determinant_Spin, detspin_j: Determinant_Spin, detspin_k: Determinant_Spin) -> float:
         '''<I|H|J>, when I and J differ by exactly one orbital.'''
         
         # Interaction 
-        m, = set(li) - set(lj)
-        p, = set(lj) - set(li)
-
+        phase, m, p = self.get_phase_idx_single_exc(detspin_i,detspin_j)
         res = self.H_one_e(m,p)
     
-        res += sum(self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in li)
-        res += sum(self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in lk)
-    
-        from itertools import takewhile
-        # Phase
-        phase = 1
-        for d, idx in (li,m), (lj,p):
-            for _ in takewhile(lambda x: x != idx, d):
-                phase = -phase
-        # Result    
-        return phase*res
-
+        res += sum ( self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in detspin_i)
+        #res += sum ( self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in detspin_k)
+        res += sum ( self.H_two_e(m,i,p,i) for i in detspin_k)
+        return phase * res
 
     def H_i_j_doubleAA(self, li: Determinant_Spin, lj: Determinant_Spin) -> float:
         '''<I|H|J>, when I and J differ by exactly two orbitals within
            the same spin.'''
-
-        #Hole
-        i, j = sorted(set(li) - set(lj))
-        #Particle
-        k, l = sorted(set(lj) - set(li))
+        
+        phase, h1, h2, p1, p2 = self.get_phase_idx_double_exc(li,lj)
+        
+        res = self.H_two_e(h1, h2, p1, p2) -  self.H_two_e(h1, h2, p2, p1)
+        
+        return phase * res
+        
     
-        res = self.H_two_e(i,j,k,l) - self.H_two_e(i,j,l,k)
-    
-        from itertools import takewhile
-        # Compute phase. See paper to have a loopless algorithm
-        # https://arxiv.org/abs/1311.6244
-        phase = 1
-        for d, idx in (li,i), (lj,j), (lj,k), (li,l):
-            for _ in takewhile(lambda x: x != idx, d):
-                phase = -phase
-
-        # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
-        a = min(i, k)
-        b = max(i, k)
-        c = min(j, l)
-        d = max(j, l)
-        if ((a<c) and (c<b) and (b<d)):
-            phase = -phase
-    
-        return phase * res 
-
-
-    def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant) -> float:
+    def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant_Spin) -> float:
         '''<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
            one beta spin-orbital.'''
-
-        i, = set(det_i.alpha) - set(det_j.alpha)
-        j, = set(det_i.beta) - set(det_j.beta)
         
-        k, = set(det_j.alpha) - set(det_i.alpha)
-        l, = set(det_j.beta) - set(det_i.beta)
-    
-        res = self.H_two_e(i,j,k,l)
-
-        from itertools import takewhile 
-
-        phase = 1
-        for d,idx in ( (det_i.alpha,i), (det_i.beta,j), (det_j.alpha,k), (det_j.beta,l) ):
-            for _ in takewhile(lambda x: x != idx, d):
-                phase = -phase
-    
-        return phase * res 
+        phaseA, hA, pA = self.get_phase_idx_single_exc(det_i.alpha, det_j.alpha)
+        phaseB, hB, pB = self.get_phase_idx_single_exc(det_i.beta , det_j.beta)
+        
+        phase = phaseA * phaseB
+        res = self.H_two_e(hA, hB, pA, pB)
+      
+        return phase * res
  
     def H_i_j(self, det_i: Determinant, det_j: Determinant) -> float:
         '''General function to dispatch the evaluation of H_ij'''
@@ -270,10 +281,10 @@ class Hamiltonian(object):
         else:
             return 0.
 
-def E_var(psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
+def E_var(E0, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
     
     from itertools import product
-    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral)
+    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
     return sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
 
 import unittest
@@ -281,16 +292,30 @@ class TestVariationalEnergy(unittest.TestCase):
 
     def load_and_compute(self,fcidump_path,wf_path):
         # Load integrals
-        E0, d_one_e_integral, d_two_e_integral = load_integrals(fcidump_path)
+        E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
-        psi_coef, psi_det = load_wf(wf_path)
+        psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
-        return E0 + E_var(psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
+        return E_var(E0, psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
 
-    def test_f2_631g_10det(self):
+    def test_f2_631g_30det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.30det.wf'
         E_ref =  -198.738780989106
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E)
+
+    def test_f2_631g_10det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.10det.wf'
+        E_ref =  -198.548963
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E)
+
+    def test_f2_631g_161det(self):
+        fcidump_path='f2_631g.161det.fcidump'
+        wf_path='f2_631g.161det.wf'
+        E_ref =  -198.8084269796
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E)
 

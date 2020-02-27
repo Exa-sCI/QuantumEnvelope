@@ -191,14 +191,13 @@ class Hamiltonian(object):
                 phase = -phase
                     
         # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
-    #    a = min(h1, p1)
-        b = max(h1, p1)
-        c = min(h2, p2)
-     #   d = max(h2, p2)
-        #if ((a<c) and (c<b) and (b<d)):
-        if (c<b):
+        if min(h2, p2) <  max(h1, p1) :
             phase = -phase
-    
+
+        if max(h1,h2) < min(p1,p2) or min(h1,h2) > max(p1,p2):
+            phase = -phase
+
+
         return (phase, h1, h2, p1, p2)
 
 
@@ -298,17 +297,17 @@ class TestVariationalEnergy(unittest.TestCase):
         # Computation of the Energy of the input wave function (variational energy)
         return E_var(E0, psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
 
-    def test_f2_631g_30det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.30det.wf'
-        E_ref =  -198.738780989106
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E)
-
     def test_f2_631g_10det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.10det.wf'
         E_ref =  -198.548963
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E)
+
+    def test_f2_631g_30det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.30det.wf'
+        E_ref =  -198.738780989106
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E)
 

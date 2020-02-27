@@ -347,12 +347,13 @@ class TestVariationalEnergy(unittest.TestCase):
         wf_path='f2_631g.161det.wf'
         hmat_path='f2_631g.161det.hmat'
         E_ref =  -198.8084269796
+        psi_coef, psi_det = load_wf(f"data/{wf_path}")
         hmat =  self.construct_hmat(fcidump_path,wf_path)
         hmatref = load_mat(f"data/{hmat_path}")
         for ii,(i0,i1) in enumerate(zip(hmatref,hmat)):
             for jj,(ij0,ij1) in enumerate(zip(i0,i1)):
                 if (abs(ij0-ij1) > 1.e-10):
-                    print((2*'{:5d}'+'{:10.3f}'+'{:15.6e}'+2*'{:20.8e}').format(ii,jj,abs(abs(ij0)-abs(ij1)),abs(ij0-ij1),ij0,ij1))
+                    print(get_exc_degree(psi_det[ii],psi_det[jj]),(2*'{:5d}'+'{:10.3f}'+'{:15.6e}'+2*'{:20.8e}').format(ii,jj,abs(abs(ij0)-abs(ij1)),abs(ij0-ij1),ij0,ij1))
         self.assertAlmostEqual(E_ref,E)
 
 if __name__ == "__main__":

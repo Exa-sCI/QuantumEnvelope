@@ -312,6 +312,13 @@ class TestVariationalEnergy(unittest.TestCase):
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E)
 
+    def test_f2_631g_161det(self):
+        fcidump_path='f2_631g.161det.fcidump'
+        wf_path='f2_631g.161det.wf'
+        E_ref =  -198.8084269796
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E)
+
 if __name__ == "__main__":
     unittest.main()
 

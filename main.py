@@ -135,6 +135,18 @@ def load_mat(path_mat) -> List[ List[float]]  :
     return h
 
 
+def spindetpmstring(det_i: Determinant_Spin,nmax: int) -> str:
+    return ''.join('+' if i in det_i else '-' for i in range(1,nmax+1))
+
+def spindetcomp(det_i: Determinant_Spin, det_j: Determinant_Spin, nmax: int):
+    spindict = {('+','+'): '2', 
+                ('+','-'): 'a', 
+                ('-','+'): 'b', 
+                ('-','-'): '0'} 
+    si = spindetpmstring(det_i,nmax)
+    sj = spindetpmstring(det_j,nmax)
+    return ''.join((spindict[ij] for ij in zip(si,sj)))
+
 def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
     '''Compute the excitation degree, the number of orbitals which differ
        between the two determinants.
@@ -193,6 +205,7 @@ class Hamiltonian(object):
         #Particles
         p1, p2 = sorted(set(det_j) - set(det_i))
     
+        c1= max(h1,h2) < min(p1,p2) or min(h1,h2) > max(p1,p2)
         # Compute phase. See paper to have a loopless algorithm
         # https://arxiv.org/abs/1311.6244
         phase = 1
@@ -207,6 +220,9 @@ class Hamiltonian(object):
      #   d = max(h2, p2)
         #if ((a<c) and (c<b) and (b<d)):
         if (c<b):
+            phase = -phase
+    
+        if (c1):
             phase = -phase
     
         return (phase, h1, h2, p1, p2)
@@ -313,6 +329,10 @@ class TestVariationalEnergy(unittest.TestCase):
         # Computation of the Energy of the input wave function (variational energy)
         return E_var(E0, psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
 
+    def get_norb(self,fcidump_path):
+        E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        return max(map(max,d_one_e_integral.keys()))
+
     def construct_hmat(self,fcidump_path,wf_path):
         # Load integrals
         E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
@@ -350,12 +370,34 @@ class TestVariationalEnergy(unittest.TestCase):
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         hmat =  self.construct_hmat(fcidump_path,wf_path)
         hmatref = load_mat(f"data/{hmat_path}")
+        norb = self.get_norb(fcidump_path)
+        #alexander = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
+        alexander = Hamiltonian(None,None,None)
         for ii,(i0,i1) in enumerate(zip(hmatref,hmat)):
             for jj,(ij0,ij1) in enumerate(zip(i0,i1)):
-                if (abs(ij0-ij1) > 1.e-10):
-                    print(get_exc_degree(psi_det[ii],psi_det[jj]),(2*'{:5d}'+'{:10.3f}'+'{:15.6e}'+2*'{:20.8e}').format(ii,jj,abs(abs(ij0)-abs(ij1)),abs(ij0-ij1),ij0,ij1))
+                di = psi_det[ii]
+                dj = psi_det[jj]
+                eab = get_exc_degree(di,dj)
+                if sign(ij0)==0 and sign(ij1)==0:
+                    continue
+                if eab==(2,0):
+                    ph,h1,h2,p1,p2 = alexander.get_phase_idx_double_exc(di.alpha,dj.alpha)
+                    c1= max(h1,h2) < min(p1,p2) or min(h1,h2) > max(p1,p2)
+                    c2 = sign(ij0)!=sign(ij1)
+                    assert(c1==c2)
+                      #  print((4*'{:5d}').format(h1,h2,p1,p2))
+                       # print((2*'{:5d}'+'  '+spindetcomp(di.alpha,dj.alpha,norb)).format(ii,jj))
+#                if (abs(ij0-ij1) > 1.e-10):
+#                    print((2*'{:5d}'+'{:10.3f}'+'{:15.6e}'+2*'{:20.8e}').format(ii,jj,abs(abs(ij0)-abs(ij1)),abs(ij0-ij1),ij0,ij1))
+        E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E)
-
+def sign(x):
+    if x>0:
+        return 1
+    elif x<0:
+        return -1
+    else:
+        return 0
 if __name__ == "__main__":
     unittest.main()
 

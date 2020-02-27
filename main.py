@@ -214,11 +214,8 @@ class Hamiltonian(object):
                 phase = -phase
                     
         # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
-    #    a = min(h1, p1)
         b = max(h1, p1)
         c = min(h2, p2)
-     #   d = max(h2, p2)
-        #if ((a<c) and (c<b) and (b<d)):
         if (c<b):
             phase = -phase
     
@@ -359,36 +356,6 @@ class TestVariationalEnergy(unittest.TestCase):
         fcidump_path='f2_631g.161det.fcidump'
         wf_path='f2_631g.161det.wf'
         E_ref =  -198.8084269796
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E)
-
-    def test_f2_631g_161det_hmat(self):
-        fcidump_path='f2_631g.161det.fcidump'
-        wf_path='f2_631g.161det.wf'
-        hmat_path='f2_631g.161det.hmat'
-        E_ref =  -198.8084269796
-        psi_coef, psi_det = load_wf(f"data/{wf_path}")
-        hmat =  self.construct_hmat(fcidump_path,wf_path)
-        hmatref = load_mat(f"data/{hmat_path}")
-        norb = self.get_norb(fcidump_path)
-        #alexander = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
-        alexander = Hamiltonian(None,None,None)
-        for ii,(i0,i1) in enumerate(zip(hmatref,hmat)):
-            for jj,(ij0,ij1) in enumerate(zip(i0,i1)):
-                di = psi_det[ii]
-                dj = psi_det[jj]
-                eab = get_exc_degree(di,dj)
-                if sign(ij0)==0 and sign(ij1)==0:
-                    continue
-                if eab==(2,0):
-                    ph,h1,h2,p1,p2 = alexander.get_phase_idx_double_exc(di.alpha,dj.alpha)
-                    c1= max(h1,h2) < min(p1,p2) or min(h1,h2) > max(p1,p2)
-                    c2 = sign(ij0)!=sign(ij1)
-                    assert(c1==c2)
-                      #  print((4*'{:5d}').format(h1,h2,p1,p2))
-                       # print((2*'{:5d}'+'  '+spindetcomp(di.alpha,dj.alpha,norb)).format(ii,jj))
-#                if (abs(ij0-ij1) > 1.e-10):
-#                    print((2*'{:5d}'+'{:10.3f}'+'{:15.6e}'+2*'{:20.8e}').format(ii,jj,abs(abs(ij0)-abs(ij1)),abs(ij0-ij1),ij0,ij1))
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E)
 def sign(x):

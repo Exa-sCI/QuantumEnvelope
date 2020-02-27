@@ -191,12 +191,8 @@ class Hamiltonian(object):
                 phase = -phase
                     
         # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
-        if min(h2, p2) <  max(h1, p1) :
+        if ( min(h2, p2) <  max(h1, p1) ) != ( h2 < p1 or p2 < h1):
             phase = -phase
-
-        if max(h1,h2) < min(p1,p2) or min(h1,h2) > max(p1,p2):
-            phase = -phase
-
 
         return (phase, h1, h2, p1, p2)
 
@@ -302,21 +298,21 @@ class TestVariationalEnergy(unittest.TestCase):
         wf_path='f2_631g.10det.wf'
         E_ref =  -198.548963
         E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_30det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.30det.wf'
         E_ref =  -198.738780989106
         E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_161det(self):
         fcidump_path='f2_631g.161det.fcidump'
         wf_path='f2_631g.161det.wf'
         E_ref =  -198.8084269796
         E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
 if __name__ == "__main__":
     unittest.main()

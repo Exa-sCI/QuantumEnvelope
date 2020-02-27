@@ -122,7 +122,17 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
 
 
 
+def load_mat(path_mat) -> List[ List[float]]  :
+    '''Read matrix from file''' 
 
+    with open(path_mat) as f:
+        data = f.readlines()
+    
+    h=[]
+    for i in data:
+        h.append(list(map(float,i.strip().split())))
+
+    return h
 
 
 def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
@@ -287,6 +297,11 @@ def E_var(E0, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
     lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
     return sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
 
+def hmatfull(E0, psi_coef, psi_det, d_one_e_integral, d_two_e_integral):
+    alexander = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
+    alexander.E0 = 0
+    return [[alexander.H_i_j(det_i,det_j) for det_i in psi_det] for det_j in psi_det]
+
 import unittest
 class TestVariationalEnergy(unittest.TestCase):
 
@@ -297,6 +312,14 @@ class TestVariationalEnergy(unittest.TestCase):
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
         return E_var(E0, psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
+
+    def construct_hmat(self,fcidump_path,wf_path):
+        # Load integrals
+        E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        # Load wave function
+        psi_coef, psi_det = load_wf(f"data/{wf_path}")
+        # Computation of the Energy of the input wave function (variational energy)
+        return hmatfull(E0, psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
 
     def test_f2_631g_30det(self):
         fcidump_path='f2_631g.FCIDUMP'
@@ -317,6 +340,19 @@ class TestVariationalEnergy(unittest.TestCase):
         wf_path='f2_631g.161det.wf'
         E_ref =  -198.8084269796
         E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E)
+
+    def test_f2_631g_161det_hmat(self):
+        fcidump_path='f2_631g.161det.fcidump'
+        wf_path='f2_631g.161det.wf'
+        hmat_path='f2_631g.161det.hmat'
+        E_ref =  -198.8084269796
+        hmat =  self.construct_hmat(fcidump_path,wf_path)
+        hmatref = load_mat(f"data/{hmat_path}")
+        for ii,(i0,i1) in enumerate(zip(hmatref,hmat)):
+            for jj,(ij0,ij1) in enumerate(zip(i0,i1)):
+                if (abs(ij0-ij1) > 1.e-10):
+                    print((2*'{:5d}'+'{:10.3f}'+'{:15.6e}'+2*'{:20.8e}').format(ii,jj,abs(abs(ij0)-abs(ij1)),abs(ij0-ij1),ij0,ij1))
         self.assertAlmostEqual(E_ref,E)
 
 if __name__ == "__main__":

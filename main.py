@@ -149,6 +149,7 @@ class Hamiltonian(object):
            Nucleus-electron potential (V_{en}). This matrix is symmetric.'''
         return self.d_one_e_integral[ (i,j) ]
     
+
     def H_two_e(self, i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
         '''Assume that *all* the integrals are in 
            `d_two_e_integral` In this function, for simplicity we don't use any
@@ -193,6 +194,7 @@ class Hamiltonian(object):
         # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
         if ( min(h2, p2) <  max(h1, p1) ) != ( h2 < p1 or p2 < h1):
             phase = -phase
+
 
         return (phase, h1, h2, p1, p2)
 

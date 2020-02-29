@@ -286,7 +286,6 @@ class Hamiltonian(object):
         res = self.H_one_e(m,p)
     
         res += sum ( self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in detspin_i)
-        #res += sum ( self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in detspin_k)
         res += sum ( self.H_two_e(m,i,p,i) for i in detspin_k)
         return phase * res
 

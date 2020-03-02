@@ -147,7 +147,7 @@ class Excitation(object):
         l_exc = self.gen_all_exc_from_detspin(detspin, ed)
         return map(apply_excitation, l_exc)
 
-    def gen_all_connected_det_from_det(self,det: Determinant)->Iterator:
+    def gen_all_connected_det_from_det(self,det_source: Determinant)->Iterator:
         '''
         Generate all the determinant who are single or double exictation (aka connected) from the input determinant
 
@@ -159,21 +159,20 @@ class Excitation(object):
         # All single exitation from alpha or for beta determinant
         # Then the production of the alpha, and beta (it's a double)
         # Then the double exitation form alpha or beta
-        det_alpha, det_beta = det
 
-        l_single_a = self.gen_all_connected_detspin_from_detspin(det_alpha, 1)
-        l_double_aa =self.gen_all_connected_detspin_from_detspin(det_alpha, 2)
+        l_single_a  = self.gen_all_connected_detspin_from_detspin(det_source.alpha, 1)
+        l_double_aa = self.gen_all_connected_detspin_from_detspin(det_source.alpha, 2)
 
-        s_a = ( Determinant(det, det_beta) for det in chain(l_single_a,l_double_aa) )
+        s_a = ( Determinant(det_alpha, det_source.beta) for det_alpha in chain(l_single_a,l_double_aa) )
 
-        l_single_b = self.gen_all_connected_detspin_from_detspin(det_beta, 1)
-        l_double_bb =self.gen_all_connected_detspin_from_detspin(det_beta, 2)
+        l_single_b  = self.gen_all_connected_detspin_from_detspin(det_source.beta, 1)
+        l_double_bb = self.gen_all_connected_detspin_from_detspin(det_source.beta, 2)
 
-        s_b = ( Determinant(det_alpha, det) for det in chain(l_single_b,l_double_bb) )
+        s_b = ( Determinant(det_source.alpha, det_beta) for det_beta in chain(l_single_b,l_double_bb) )
 
         l_double_ab = product(l_single_a,l_single_b)
 
-        s_ab = ( Determinant(a,b) for a,b in l_double_ab )
+        s_ab = ( Determinant(det_alpha,det_beta) for det_alpha,det_beta in l_double_ab )
 
         return chain(s_a,s_b,s_ab)
 

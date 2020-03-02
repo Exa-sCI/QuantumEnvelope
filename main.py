@@ -142,7 +142,7 @@ class Excitation(object):
             # Warning use global variable detspin. 
             lh,lp = exc
             s = (set(detspin) - set(lh)) | set(lp)
-            return tuple(s)
+            return tuple(sorted(s))
 
         l_exc = self.gen_all_exc_from_detspin(detspin, ed)
         return map(apply_excitation, l_exc)

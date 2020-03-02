@@ -360,9 +360,34 @@ class Hamiltonian(object):
         else:
             return 0.
 
-def E_var(E0, N_ord, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
-    lewis = Hamiltonian(N_ord, d_one_e_integral,d_two_e_integral, E0)
+def E_var(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
+    lewis = Hamiltonian(N_orb, d_one_e_integral,d_two_e_integral, E0)
     return sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
+
+
+def E_pt2(E0, N_orb, psi, psi_det, d_one_e_integral,  d_two_e_integral):
+
+    import numpy as np
+    clara = Excitation(N_orb)
+    lewis = Hamiltonian(N_orb, d_one_e_integral,d_two_e_integral, E0)
+
+    E = E_var(E0, N_orb, psi, psi_det, d_one_e_integral,  d_two_e_integral)
+
+    external_space = clara.gen_all_connected_determinant_from_psi(psi_det) - set(psi_det)
+
+    psi = np.array(psi)
+    psi = psi / np.sqrt(np.dot(psi,psi))
+    
+    h_mat = np.array( [ [lewis.H_i_j(det_alpha, det_i) for det_i in psi_det] \
+                for det_alpha in external_space ])
+    
+    h_psi = np.matmul(h_mat, psi)
+    
+    x = h_psi / np.array([E - lewis.H_i_i(det_alpha) for det_alpha in external_space])
+    
+    return np.dot(h_psi,x)
+
+
 
 import unittest
 class TestVariationalEnergy(unittest.TestCase):
@@ -396,6 +421,29 @@ class TestVariationalEnergy(unittest.TestCase):
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
+class TestVariationalPT2Energy(unittest.TestCase):
+
+    def load_and_compute(self,fcidump_path,wf_path):
+        # Load integrals
+        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        # Load wave function
+        psi_coef, psi_det = load_wf(f"data/{wf_path}")
+        # Computation of the Energy of the input wave function (variational energy)
+        return E_pt2(E0, N_ord,psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
+
+    def test_f2_631g_10det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.10det.wf'
+        E_ref =  -0.24321128
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+    def test_f2_631g_18det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.18det.wf'
+        E_ref =  -0.20217308542999035
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
 if __name__ == "__main__":
     import doctest

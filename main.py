@@ -221,11 +221,10 @@ def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
 from itertools import takewhile
 class Hamiltonian(object):
 
-    def __init__(self, N_orb, d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral, E0: float):
+    def __init__(self, d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral, E0: float):
         self.d_one_e_integral = d_one_e_integral
         self.d_two_e_integral = d_two_e_integral
         self.E0 = E0
-        self.N_orb = N_orb
 
     def H_one_e(self, i: OrbitalIdx, j: OrbitalIdx) -> float :
         '''One-electron part of the Hamiltonian: Kinetic energy (T) and
@@ -359,14 +358,14 @@ class Hamiltonian(object):
             return 0.
 
 def E_var(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
-    lewis = Hamiltonian(N_orb, d_one_e_integral,d_two_e_integral, E0)
+    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
     return sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
 
 
 def E_pt2(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
 
     external_space = Excitation(N_orb).gen_all_connected_determinant_from_psi(psi_det) - set(psi_det)
-    lewis = Hamiltonian(N_orb, d_one_e_integral,d_two_e_integral, E0)
+    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
 
     import numpy as np
     h_mat = np.array([lewis.H_i_j(det_external, det_internal) for det_external,det_internal in product(external_space,psi_det)])

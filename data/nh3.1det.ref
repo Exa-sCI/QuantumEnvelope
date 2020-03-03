@@ -1,0 +1,22 @@
+ Energy components
+ =================
+ 
+ Vnn  : Nucleus-Nucleus   potential energy
+ Ven  : Electron-Nucleus  potential energy
+ Vee  : Electron-Electron potential energy
+ Vecp : Potential energy of the pseudo-potentials
+ T    : Electronic kinetic energy
+ 
+ State            1
+ ---------
+ 
+ Vnn  =    11.953993729060381     
+ Ven  =   -155.69735900108259     
+ Vee  =    31.411457926248545     
+ Vecp =    0.0000000000000000     
+ T    =    56.170886166030002     
+ Evar =   -56.161021179743699     
+ E+pt2=   -56.306982880516102     
+ pt2  =  -0.14596170077240345     
+ 
+ 

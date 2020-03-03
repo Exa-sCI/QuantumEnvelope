@@ -2,7 +2,7 @@
 
 # Types
 # -----
-from typing import Tuple, Dict, NewType, NamedTuple, List
+from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator
 
 # Orbital index (1,2,...,Norb)
 OrbitalIdx = NewType('OrbitalIdx', int)
@@ -16,6 +16,7 @@ Two_electron_integral = Dict[ Tuple[OrbitalIdx,OrbitalIdx,OrbitalIdx,OrbitalIdx]
 One_electron_integral = Dict[ Tuple[OrbitalIdx,OrbitalIdx], float]
 
 Determinant_Spin = Tuple[OrbitalIdx, ...]
+Determinant_Spin_Set = Set[OrbitalIdx]
 class Determinant(NamedTuple):
     '''Slater determinant: Product of 2 determinants.
        One for $\alpha$ electrons and one for \beta electrons.'''
@@ -25,23 +26,29 @@ class Determinant(NamedTuple):
 # ~
 # Integrals of the Hamiltonian over molecular orbitals
 # ~
-def load_integrals(fcidump_path) -> Tuple[float, One_electron_integral, Two_electron_integral]:
+def load_integrals(fcidump_path) -> Tuple[int, float, One_electron_integral, Two_electron_integral]:
     '''Read all the Hamiltonian integrals from the data file.
        Returns: (E0, d_one_e_integral, d_two_e_integral).
        E0 : a float containing the nuclear repulsion energy (V_nn),
        d_one_e_integral : a dictionary of one-electron integrals,
        d_two_e_integral : a dictionary of two-electron integrals.
        '''
-    from collections import defaultdict
     
-    with open(fcidump_path) as f:
-        data_int = f.readlines()
+    # Use an iterator to avoid storing everything in memory twice.
+    f = open(fcidump_path)
 
     # Only non-zero integrals are stored in the fci_dump.
     # Hence we use a defaultdict to handle the sparsity
+    N_orb = int(next(f).split()[2])
+
+    for _ in range(3):
+        next(f)
+
+    from collections import defaultdict
     d_one_e_integral = defaultdict(int)
     d_two_e_integral = defaultdict(int)
-    for line in data_int[4:]:
+
+    for line in f:
         v, *l = line.split()
         v = float(v)
         # Transform from Mulliken (ik|jl) to Dirac's <ij|kl> notation
@@ -68,27 +75,9 @@ def load_integrals(fcidump_path) -> Tuple[float, One_electron_integral, Two_elec
             d_two_e_integral[ (l,i,j,k) ] = v
             d_two_e_integral[ (l,k,j,i) ] = v
 
-    return E0, d_one_e_integral, d_two_e_integral
+    f.close()
 
-# Now, we consider the Hamiltonian matrix in the basis of Slater determinants.
-# Slater-Condon rules are used to compute the matrix elements <I|H|J> where I
-# and J are Slater determinants.
-# 
-# ~
-# Slater-Condon Rules
-# ~
-#
-# https://en.wikipedia.org/wiki/Slater%E2%80%93Condon_rules
-# https://arxiv.org/abs/1311.6244
-#
-# * H is symmetric
-# * If I and J differ by more than 2 orbitals, <I|H|J> = 0, so the number of
-#   non-zero elements of H is bounded by N_det x ( N_alpha x (N_orb - N_alpha))^2,
-#   where N_det is the number of determinants, N_alpha is the number of
-#   alpha-spin electrons (N_alpha >= N_beta), and N_orb is the number of
-#   molecular orbitals.  So the number of non-zero elements scales linearly with
-#   the number of selected determinant.
-#
+    return N_orb, E0, d_one_e_integral, d_two_e_integral
 
 def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
     '''Read the input file :
@@ -121,8 +110,79 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
     return psi_coef, det
 
 
+from itertools import chain, product
+from itertools import combinations, product
 
+class Excitation(object):
 
+    def __init__(self, N_orb):
+        self.all_orbs = set(range(1,N_orb+1))
+
+    def gen_all_exc_from_detspin(self, detspin: Determinant_Spin, ed: int) -> Iterator:
+        '''
+        Generate list of pair -> hole from a determinant spin.
+
+        >>> sorted(Excitation(4).gen_all_exc_from_detspin( (1,2),2))
+        [((1, 2), (3, 4))]
+        '''
+        holes = combinations(detspin,ed)
+        not_detspin = self.all_orbs - set(detspin)
+        parts = combinations(not_detspin,ed)
+        return product(holes,parts)
+
+    def gen_all_connected_detspin_from_detspin(self, detspin: Determinant_Spin, ed: int) -> Iterator:
+        '''
+        Generate all the posible spin determinant relative to a excitation degree
+
+        >>> sorted(Excitation(3).gen_all_connected_detspin_from_detspin( (1,2), 1))
+        [(1, 3), (2, 3)]
+
+        '''
+        def apply_excitation(exc: Tuple[Tuple[int, ...],Tuple[int, ...]])-> Determinant_Spin_Set:
+            # Warning use global variable detspin. 
+            lh,lp = exc
+            s = (set(detspin) - set(lh)) | set(lp)
+            return tuple(sorted(s))
+
+        l_exc = self.gen_all_exc_from_detspin(detspin, ed)
+        return map(apply_excitation, l_exc)
+
+    def gen_all_connected_det_from_det(self,det_source: Determinant)->Iterator:
+        '''
+        Generate all the determinant who are single or double exictation (aka connected) from the input determinant
+
+        >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant( (1,2), (1,) )))
+        [Determinant(alpha=(1, 3), beta=(2,)), Determinant(alpha=(1, 3), beta=(3,)), 
+         Determinant(alpha=(2, 3), beta=(2,)), Determinant(alpha=(2, 3), beta=(3,))]
+        '''
+
+        # All single exitation from alpha or for beta determinant
+        # Then the production of the alpha, and beta (it's a double)
+        # Then the double exitation form alpha or beta
+
+        l_single_a  = self.gen_all_connected_detspin_from_detspin(det_source.alpha, 1)
+        l_double_aa = self.gen_all_connected_detspin_from_detspin(det_source.alpha, 2)
+
+        s_a = ( Determinant(det_alpha, det_source.beta) for det_alpha in chain(l_single_a,l_double_aa) )
+
+        l_single_b  = self.gen_all_connected_detspin_from_detspin(det_source.beta, 1)
+        l_double_bb = self.gen_all_connected_detspin_from_detspin(det_source.beta, 2)
+
+        s_b = ( Determinant(det_source.alpha, det_beta) for det_beta in chain(l_single_b,l_double_bb) )
+
+        l_double_ab = product(l_single_a,l_single_b)
+
+        s_ab = ( Determinant(det_alpha,det_beta) for det_alpha,det_beta in l_double_ab )
+
+        return chain(s_a,s_b,s_ab)
+
+    def gen_all_connected_determinant_from_psi(self,psi: List[Determinant])-> Set:
+        '''
+        >>> d1 = Determinant( (1,2), (1,) ) ; d2 = Determinant( (1,3), (1,) )
+        >>> len(Excitation(4).gen_all_connected_determinant_from_psi( [ d1,d2 ] ))
+        20
+        '''
+        return set(chain.from_iterable(map(self.gen_all_connected_det_from_det,psi)))
 
 
 def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
@@ -132,14 +192,36 @@ def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
     ...                Determinant(alpha=(1, 3), beta=(5, 7)) )
     (1, 2)
     '''
-    ed_up =  len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
-    ed_dn =  len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
+    ed_up = len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
+    ed_dn = len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
     return (ed_up, ed_dn)
+
+
+
+# Now, we consider the Hamiltonian matrix in the basis of Slater determinants.
+# Slater-Condon rules are used to compute the matrix elements <I|H|J> where I
+# and J are Slater determinants.
+# 
+# ~
+# Slater-Condon Rules
+# ~
+#
+# https://en.wikipedia.org/wiki/Slater%E2%80%93Condon_rules
+# https://arxiv.org/abs/1311.6244
+#
+# * H is symmetric
+# * If I and J differ by more than 2 orbitals, <I|H|J> = 0, so the number of
+#   non-zero elements of H is bounded by N_det x ( N_alpha x (N_orb - N_alpha))^2,
+#   where N_det is the number of determinants, N_alpha is the number of
+#   alpha-spin electrons (N_alpha >= N_beta), and N_orb is the number of
+#   molecular orbitals.  So the number of non-zero elements scales linearly with
+#   the number of selected determinant.
+#
 
 from itertools import takewhile
 class Hamiltonian(object):
 
-    def __init__(self,d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral, E0: float):
+    def __init__(self, d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral, E0: float):
         self.d_one_e_integral = d_one_e_integral
         self.d_two_e_integral = d_two_e_integral
         self.E0 = E0
@@ -200,15 +282,13 @@ class Hamiltonian(object):
 
 
     def H_i_i(self, det_i: Determinant) -> float:
-        from itertools   import product
-
         '''Diagonal element of the Hamiltonian : <I|H|I>.'''
         res  = self.E0
         res += sum(self.H_one_e(i,i) for i in det_i.alpha)
         res += sum(self.H_one_e(i,i) for i in det_i.beta)
         
-        res += sum(self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) for i,j in product(det_i.alpha, det_i.alpha)) / 2.
-        res += sum(self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) for i,j in product(det_i.beta, det_i.beta)) / 2.
+        res += sum(self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) for i,j in combinations(det_i.alpha,2)) 
+        res += sum(self.H_two_e(i,j,i,j) - self.H_two_e(i,j,j,i) for i,j in combinations(det_i.beta, 2)) 
            
         res += sum(self.H_two_e(i,j,i,j) for (i,j) in product(det_i.alpha, det_i.beta))
      
@@ -223,7 +303,6 @@ class Hamiltonian(object):
         res = self.H_one_e(m,p)
     
         res += sum ( self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in detspin_i)
-        #res += sum ( self.H_two_e(m,i,p,i) - self.H_two_e(m,i,i,p) for i in detspin_k)
         res += sum ( self.H_two_e(m,i,p,i) for i in detspin_k)
         return phase * res
 
@@ -278,44 +357,89 @@ class Hamiltonian(object):
         else:
             return 0.
 
-def E_var(E0, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
-    
-    from itertools import product
+def E_var(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
     lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
     return sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
+
+
+def E_pt2(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
+
+    external_space = Excitation(N_orb).gen_all_connected_determinant_from_psi(psi_det) - set(psi_det)
+    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
+
+    import numpy as np
+    h_mat = np.array([lewis.H_i_j(det_external, det_internal) for det_external,det_internal in product(external_space,psi_det)])
+    h_mat = h_mat.reshape(len(external_space),len(psi_det))
+    h_psi = np.einsum('ij,j -> i', h_mat,psi_coef)
+
+    E = E_var(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral)
+    denom = np.divide(1.,np.array([E - lewis.H_i_i(det_external) for det_external in external_space]))
+    return np.einsum('i,i,i -> ', h_psi, h_psi, denom)
+    
 
 import unittest
 class TestVariationalEnergy(unittest.TestCase):
 
     def load_and_compute(self,fcidump_path,wf_path):
         # Load integrals
-        E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
-        return E_var(E0, psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
+        return E_var(E0, N_ord,psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
 
     def test_f2_631g_10det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.10det.wf'
-        E_ref =  -198.548963
-        E =  self.load_and_compute(fcidump_path,wf_path)
+        E_ref = -198.548963
+        E = self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_30det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.30det.wf'
-        E_ref =  -198.738780989106
-        E =  self.load_and_compute(fcidump_path,wf_path)
+        E_ref = -198.738780989106
+        E = self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_161det(self):
         fcidump_path='f2_631g.161det.fcidump'
         wf_path='f2_631g.161det.wf'
-        E_ref =  -198.8084269796
-        E =  self.load_and_compute(fcidump_path,wf_path)
+        E_ref = -198.8084269796
+        E = self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
+class TestVariationalPT2Energy(unittest.TestCase):
+
+    def load_and_compute(self,fcidump_path,wf_path):
+        # Load integrals
+        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        # Load wave function
+        psi_coef, psi_det = load_wf(f"data/{wf_path}")
+        # Computation of the Energy of the input wave function (variational energy)
+        return E_pt2(E0, N_ord,psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
+ 
+    def test_nh3_631g_1det(self):
+        fcidump_path='nh3.1det.fcidump'
+        wf_path='nh3.1det.wf'
+        #E_ref_qp = -0.14596170077240345
+        E_ref = -0.15656281814513243
+        E = self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+
+    def test_f2_631g_10det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.10det.wf'
+        #E_ref_qp = -0.24321128
+        E_ref = -0.24318862445167724
+        E = self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+
 if __name__ == "__main__":
+    import doctest
+    doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
+
     unittest.main()
 

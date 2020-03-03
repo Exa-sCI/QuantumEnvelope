@@ -116,7 +116,6 @@ from itertools import combinations, product
 class Excitation(object):
 
     def __init__(self, N_orb):
-        self.N_orb = N_orb
         self.all_orbs = set(range(1,N_orb+1))
 
     def gen_all_exc_from_detspin(self, detspin: Determinant_Spin, ed: int) -> Iterator:
@@ -155,16 +154,21 @@ class Excitation(object):
         Generate all the determinant who are single or double exictation (aka connected) from the input determinant
 
         >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant( (1,2), (1,) )))
-        [Determinant(alpha=(1, 2), beta=(2,)), Determinant(alpha=(1, 2), beta=(3,)), 
-        Determinant(alpha=(1, 3), beta=(1,)), Determinant(alpha=(1, 3), beta=(2,)), 
-        Determinant(alpha=(1, 3), beta=(3,)), Determinant(alpha=(2, 3), beta=(1,)),
-        Determinant(alpha=(2, 3), beta=(2,)), Determinant(alpha=(2, 3), beta=(3,))]
+        [Determinant(alpha=(1, 2), beta=(2,)), 
+         Determinant(alpha=(1, 2), beta=(3,)), 
+         Determinant(alpha=(1, 3), beta=(1,)), 
+         Determinant(alpha=(1, 3), beta=(2,)), 
+         Determinant(alpha=(1, 3), beta=(3,)), 
+         Determinant(alpha=(2, 3), beta=(1,)), 
+         Determinant(alpha=(2, 3), beta=(2,)), 
+         Determinant(alpha=(2, 3), beta=(3,))]
         '''
 
         # All single exitation from alpha or for beta determinant
         # Then the production of the alpha, and beta (it's a double)
         # Then the double exitation form alpha or beta
 
+        # We use l_single_a, and l_single_b twice. So we store them.
         l_single_a  = set(self.gen_all_connected_detspin_from_detspin(det_source.alpha, 1))
         l_double_aa = self.gen_all_connected_detspin_from_detspin(det_source.alpha, 2)
 
@@ -185,22 +189,9 @@ class Excitation(object):
         '''
         >>> d1 = Determinant( (1,2), (1,) ) ; d2 = Determinant( (1,3), (1,) )
         >>> len(Excitation(4).gen_all_connected_determinant_from_psi( [ d1,d2 ] ))
-        24
+        22
         '''
-        return set(chain.from_iterable(map(self.gen_all_connected_det_from_det,psi)))
-
-        
-def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
-    '''Compute the excitation degree, the number of orbitals which differ
-       between the two determinants.
-    >>> get_exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
-    ...                Determinant(alpha=(1, 3), beta=(5, 7)) )
-    (1, 2)
-    '''
-    ed_up =  len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
-    ed_dn =  len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
-    return (ed_up, ed_dn)
-
+        return set(chain.from_iterable(map(self.gen_all_connected_det_from_det,psi))) - set(psi)
 
 
 # Now, we consider the Hamiltonian matrix in the basis of Slater determinants.
@@ -335,15 +326,25 @@ class Hamiltonian(object):
         res = self.H_two_e(hA, hB, pA, pB)
       
         return phase * res
- 
+
+    def get_exc_degree(self, det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
+        '''Compute the excitation degree, the number of orbitals which differ
+           between the two determinants.
+        >>> Hamiltonian(_,_,_,_).get_exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
+        ...                                     Determinant(alpha=(1, 3), beta=(5, 7)) )
+        (1, 2)
+        '''
+        ed_up =  len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
+        ed_dn =  len(set(det_i.beta ).symmetric_difference(set(det_j.beta ))) // 2
+        return ed_up, ed_dn
+
     def H_i_j(self, det_i: Determinant, det_j: Determinant) -> float:
         '''General function to dispatch the evaluation of H_ij'''
     
-        ed_up, ed_dn = get_exc_degree(det_i, det_j)
+        ed_up, ed_dn = self.get_exc_degree(det_i, det_j)
         # Same determinant -> Diagonal element
         if (ed_up,ed_dn) == (0,0):
             return self.H_i_i(det_i)
-    
         # Single excitation
         elif (ed_up, ed_dn) == (1, 0):
             return self.H_i_j_single(det_i.alpha, det_j.alpha, det_i.beta)
@@ -359,7 +360,6 @@ class Hamiltonian(object):
         # Double excitation of opposite spins
         elif (ed_up, ed_dn) == (1, 1):
             return self.H_i_j_doubleAB(det_i, det_j)
-    
         # More than doubly excited, zero
         else:
             return 0.
@@ -373,18 +373,7 @@ def E_pt2(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
 
     alpha, beta = psi_det[0]
 
-    external_space = Excitation(N_orb).gen_all_connected_determinant_from_psi(psi_det) - set(psi_det)
-
-    for det_external in external_space:
-        # Connected to one determinant of psi
-        assert any( (sum(get_exc_degree(det_external,det_internal)) < 3) for det_internal in psi_det )
-        # Not in psi
-        assert all( (sum(get_exc_degree(det_external,det_internal)) != 0) for det_internal in psi_det )
-        # Same number of alpha electron
-        assert len(det_external.alpha) == len(alpha)
-        # Same number of beta electron
-        assert len(det_external.beta) == len(beta)
-
+    external_space = Excitation(N_orb).gen_all_connected_determinant_from_psi(psi_det)
 
     lewis = Hamiltonian(N_orb, d_one_e_integral,d_two_e_integral, E0)
 
@@ -439,21 +428,11 @@ class TestVariationalPT2Energy(unittest.TestCase):
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
         return E_pt2(E0, N_ord,psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
- 
-    def zy(self):
-        fcidump_path='nh3.1det.fcidump'
-        wf_path='nh3.1det.wf'
-        E_ref =  -0.14596170077240345
-        #E_ref = -0.15656281814513243
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
-
 
     def test_f2_631g_10det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.10det.wf'
         E_ref =  -0.24321128
-        #E_ref = -0.24318862445167724
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 

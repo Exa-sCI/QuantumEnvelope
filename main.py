@@ -377,11 +377,11 @@ def E_pt2(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
     import numpy as np
     h_mat = np.array([lewis.H_i_j(det_external, det_internal) for det_external,det_internal in product(external_space,psi_det)])
     h_mat = h_mat.reshape(len(external_space),len(psi_det))
-    h_psi = np.einsum('ij,j -> i', h_mat,psi_coef)
+    h_psi = np.einsum('ij,j -> i', h_mat,psi_coef) # Matrix * vector -> vector
 
     E = E_var(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral)
     denom = np.divide(1.,np.array([E - lewis.H_i_i(det_external) for det_external in external_space]))
-    return np.einsum('i,i,i -> ', h_psi, h_psi, denom)
+    return np.einsum('i,i,i -> ', h_psi, h_psi, denom) # vector * vector * vector -> scalar
     
 
 import unittest

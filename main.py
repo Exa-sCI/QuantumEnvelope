@@ -371,10 +371,7 @@ def E_var(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
 
 def E_pt2(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
 
-    alpha, beta = psi_det[0]
-
     external_space = Excitation(N_orb).gen_all_connected_determinant_from_psi(psi_det)
-
     lewis = Hamiltonian(N_orb, d_one_e_integral,d_two_e_integral, E0)
 
     import numpy as np

@@ -124,6 +124,8 @@ class Excitation(object):
 
         >>> sorted(Excitation(4).gen_all_exc_from_detspin( (1,2),2))
         [((1, 2), (3, 4))]
+        >>> sorted(Excitation(4).gen_all_exc_from_detspin( (1,2),1))
+        [((1,), (3,)), ((1,), (4,)), ((2,), (3,)), ((2,), (4,))]
         '''
         holes = combinations(detspin,ed)
         not_detspin = self.all_orbs - set(detspin)
@@ -134,8 +136,8 @@ class Excitation(object):
         '''
         Generate all the posible spin determinant relative to a excitation degree
 
-        >>> sorted(Excitation(3).gen_all_connected_detspin_from_detspin( (1,2), 1))
-        [(1, 3), (2, 3)]
+        >>> sorted(Excitation(4).gen_all_connected_detspin_from_detspin( (1,2), 1))
+        [(1, 3), (1, 4), (2, 3), (2, 4)]
 
         '''
         def apply_excitation(exc: Tuple[Tuple[int, ...],Tuple[int, ...]])-> Determinant_Spin_Set:
@@ -152,20 +154,27 @@ class Excitation(object):
         Generate all the determinant who are single or double exictation (aka connected) from the input determinant
 
         >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant( (1,2), (1,) )))
-        [Determinant(alpha=(1, 3), beta=(2,)), Determinant(alpha=(1, 3), beta=(3,)), 
-         Determinant(alpha=(2, 3), beta=(2,)), Determinant(alpha=(2, 3), beta=(3,))]
+        [Determinant(alpha=(1, 2), beta=(2,)), 
+         Determinant(alpha=(1, 2), beta=(3,)), 
+         Determinant(alpha=(1, 3), beta=(1,)), 
+         Determinant(alpha=(1, 3), beta=(2,)), 
+         Determinant(alpha=(1, 3), beta=(3,)), 
+         Determinant(alpha=(2, 3), beta=(1,)), 
+         Determinant(alpha=(2, 3), beta=(2,)), 
+         Determinant(alpha=(2, 3), beta=(3,))]
         '''
 
         # All single exitation from alpha or for beta determinant
         # Then the production of the alpha, and beta (it's a double)
         # Then the double exitation form alpha or beta
 
-        l_single_a  = self.gen_all_connected_detspin_from_detspin(det_source.alpha, 1)
+        # We use l_single_a, and l_single_b twice. So we store them.
+        l_single_a  = set(self.gen_all_connected_detspin_from_detspin(det_source.alpha, 1))
         l_double_aa = self.gen_all_connected_detspin_from_detspin(det_source.alpha, 2)
 
         s_a = ( Determinant(det_alpha, det_source.beta) for det_alpha in chain(l_single_a,l_double_aa) )
 
-        l_single_b  = self.gen_all_connected_detspin_from_detspin(det_source.beta, 1)
+        l_single_b  = set(self.gen_all_connected_detspin_from_detspin(det_source.beta, 1))
         l_double_bb = self.gen_all_connected_detspin_from_detspin(det_source.beta, 2)
 
         s_b = ( Determinant(det_source.alpha, det_beta) for det_beta in chain(l_single_b,l_double_bb) )
@@ -180,22 +189,9 @@ class Excitation(object):
         '''
         >>> d1 = Determinant( (1,2), (1,) ) ; d2 = Determinant( (1,3), (1,) )
         >>> len(Excitation(4).gen_all_connected_determinant_from_psi( [ d1,d2 ] ))
-        20
+        22
         '''
-        return set(chain.from_iterable(map(self.gen_all_connected_det_from_det,psi)))
-
-
-def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
-    '''Compute the excitation degree, the number of orbitals which differ
-       between the two determinants.
-    >>> get_exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
-    ...                Determinant(alpha=(1, 3), beta=(5, 7)) )
-    (1, 2)
-    '''
-    ed_up = len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
-    ed_dn = len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
-    return (ed_up, ed_dn)
-
+        return set(chain.from_iterable(map(self.gen_all_connected_det_from_det,psi))) - set(psi)
 
 
 # Now, we consider the Hamiltonian matrix in the basis of Slater determinants.
@@ -221,10 +217,11 @@ def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
 from itertools import takewhile
 class Hamiltonian(object):
 
-    def __init__(self, d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral, E0: float):
+    def __init__(self, N_orb, d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral, E0: float):
         self.d_one_e_integral = d_one_e_integral
         self.d_two_e_integral = d_two_e_integral
         self.E0 = E0
+        self.N_orb = N_orb
 
     def H_one_e(self, i: OrbitalIdx, j: OrbitalIdx) -> float :
         '''One-electron part of the Hamiltonian: Kinetic energy (T) and
@@ -282,6 +279,7 @@ class Hamiltonian(object):
 
 
     def H_i_i(self, det_i: Determinant) -> float:
+
         '''Diagonal element of the Hamiltonian : <I|H|I>.'''
         res  = self.E0
         res += sum(self.H_one_e(i,i) for i in det_i.alpha)
@@ -328,15 +326,25 @@ class Hamiltonian(object):
         res = self.H_two_e(hA, hB, pA, pB)
       
         return phase * res
- 
+
+    def get_exc_degree(self, det_i: Determinant, det_j: Determinant) -> Tuple[int,int]:
+        '''Compute the excitation degree, the number of orbitals which differ
+           between the two determinants.
+        >>> Hamiltonian(_,_,_,_).get_exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
+        ...                                     Determinant(alpha=(1, 3), beta=(5, 7)) )
+        (1, 2)
+        '''
+        ed_up =  len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
+        ed_dn =  len(set(det_i.beta ).symmetric_difference(set(det_j.beta ))) // 2
+        return ed_up, ed_dn
+
     def H_i_j(self, det_i: Determinant, det_j: Determinant) -> float:
         '''General function to dispatch the evaluation of H_ij'''
     
-        ed_up, ed_dn = get_exc_degree(det_i, det_j)
+        ed_up, ed_dn = self.get_exc_degree(det_i, det_j)
         # Same determinant -> Diagonal element
         if (ed_up,ed_dn) == (0,0):
             return self.H_i_i(det_i)
-    
         # Single excitation
         elif (ed_up, ed_dn) == (1, 0):
             return self.H_i_j_single(det_i.alpha, det_j.alpha, det_i.beta)
@@ -352,29 +360,28 @@ class Hamiltonian(object):
         # Double excitation of opposite spins
         elif (ed_up, ed_dn) == (1, 1):
             return self.H_i_j_doubleAB(det_i, det_j)
-    
         # More than doubly excited, zero
         else:
             return 0.
 
 def E_var(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
-    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
+    lewis = Hamiltonian(N_orb, d_one_e_integral,d_two_e_integral, E0)
     return sum(psi_coef[i] * psi_coef[j] * lewis.H_i_j(det_i,det_j) for (i,det_i),(j,det_j) in product(enumerate(psi_det),enumerate(psi_det)) )
 
 
 def E_pt2(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
 
-    external_space = Excitation(N_orb).gen_all_connected_determinant_from_psi(psi_det) - set(psi_det)
-    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
+    external_space = Excitation(N_orb).gen_all_connected_determinant_from_psi(psi_det)
+    lewis = Hamiltonian(N_orb, d_one_e_integral,d_two_e_integral, E0)
 
     import numpy as np
     h_mat = np.array([lewis.H_i_j(det_external, det_internal) for det_external,det_internal in product(external_space,psi_det)])
     h_mat = h_mat.reshape(len(external_space),len(psi_det))
-    h_psi = np.einsum('ij,j -> i', h_mat,psi_coef)
+    h_psi = np.einsum('ij,j -> i', h_mat,psi_coef) # Matrix * vector -> vector
 
     E = E_var(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral)
     denom = np.divide(1.,np.array([E - lewis.H_i_i(det_external) for det_external in external_space]))
-    return np.einsum('i,i,i -> ', h_psi, h_psi, denom)
+    return np.einsum('i,i,i -> ', h_psi, h_psi, denom) # vector * vector * vector -> scalar
     
 
 import unittest
@@ -391,22 +398,22 @@ class TestVariationalEnergy(unittest.TestCase):
     def test_f2_631g_10det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.10det.wf'
-        E_ref = -198.548963
-        E = self.load_and_compute(fcidump_path,wf_path)
+        E_ref =  -198.548963
+        E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_30det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.30det.wf'
-        E_ref = -198.738780989106
-        E = self.load_and_compute(fcidump_path,wf_path)
+        E_ref =  -198.738780989106
+        E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_161det(self):
         fcidump_path='f2_631g.161det.fcidump'
         wf_path='f2_631g.161det.wf'
-        E_ref = -198.8084269796
-        E = self.load_and_compute(fcidump_path,wf_path)
+        E_ref =  -198.8084269796
+        E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
 class TestVariationalPT2Energy(unittest.TestCase):
@@ -418,24 +425,13 @@ class TestVariationalPT2Energy(unittest.TestCase):
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
         return E_pt2(E0, N_ord,psi_coef, psi_det, d_one_e_integral, d_two_e_integral) 
- 
-    def test_nh3_631g_1det(self):
-        fcidump_path='nh3.1det.fcidump'
-        wf_path='nh3.1det.wf'
-        #E_ref_qp = -0.14596170077240345
-        E_ref = -0.15656281814513243
-        E = self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
-
 
     def test_f2_631g_10det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.10det.wf'
-        #E_ref_qp = -0.24321128
-        E_ref = -0.24318862445167724
-        E = self.load_and_compute(fcidump_path,wf_path)
+        E_ref =  -0.24321128
+        E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
-
 
 if __name__ == "__main__":
     import doctest

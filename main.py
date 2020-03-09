@@ -364,28 +364,57 @@ class Hamiltonian(object):
         else:
             return 0.
 
-    def H_apply(self, psi_i, psi_j):
+    def subH(self, psi_i, psi_j):
         psi_H_psi = np.array([self.H_i_j(det_i,det_j) for det_i, det_j in product(psi_i,psi_j)])
         return psi_H_psi.reshape(len(psi_i),len(psi_j))
 
 
-def E_var(E0, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
+from dataclasses import dataclass
+
+class Energy(object):
+
+    def __init__(self, E0, psi_det, d_one_e_integral, d_two_e_integral):
+        self.psi_det = psi_det
+        self.lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
+
+    def E_var(self,psi_coef):
+        return np.einsum('i,j,ij ->', psi_coef,psi_coef,self.lewis.subH(self.psi_det,self.psi_det))
+
+    def E_var_by_diagonalization(self):
+        psi_H_psi = self.lewis.subH(self.psi_det,self.psi_det)
+        n_coeff = np.linalg.eigh(psi_H_psi)
+
+        psi_coef_new = n_coeff[:,0].ravel()
+        return np.einsum('i,j,ij ->', psi_coef_new, psi_coef_new,psi_H_psi) 
+
+    def psi_external_pt2(self,psi_coef, N_orb):
+        psi_external = Excitation(N_orb).gen_all_connected_determinant_from_psi(self.psi_det)
+
+        psi_H_psi = self.lewis.subH(psi_external,self.psi_det)
+
+        h_psi = np.einsum('ij,j -> i', psi_H_psi,psi_coef) # Matrix * vector -> vector
+
+        E = self.E_var(psi_coef)
+        denom = np.divide(1.,np.array([E - self.lewis.H_i_i(det_external) for det_external in psi_external]))
+        return psi_external, np.einsum('i,i,i -> i', h_psi, h_psi, denom) # vector * vector * vector -> scalar
+
+    def E_pt2(self,psi_coef,N_orb):
+        return sum(self.psi_external_pt2(psi_coef,N_orb)[1])
+
+
+def selection(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral, n):
+
+    psi_external, psi_energy = Energy(E0, psi_det, d_one_e_integral, d_two_e_integral).psi_external_pt2(psi_coef,N_ord)
+
+    idx = np.argpartition(psi_energy, -n)[-n:]
+
+    psi_det_new = sorted(psi_det | set(psi_external[i] for i in idx))
+
     lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
-    return np.einsum('i,j,ij ->', psi_coef,psi_coef,lewis.H_apply(psi_det,psi_det))
-
-
-def E_pt2(E0, N_orb, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral):
-
-    psi_external = Excitation(N_orb).gen_all_connected_determinant_from_psi(psi_det)
-    lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
-
-    psi_H_psi = lewis.H_apply(psi_external,psi_det)
-
-    h_psi = np.einsum('ij,j -> i', psi_H_psi,psi_coef) # Matrix * vector -> vector
-
-    E = E_var(E0, psi_coef, psi_det, d_one_e_integral,  d_two_e_integral)
-    denom = np.divide(1.,np.array([E - lewis.H_i_i(det_external) for det_external in psi_external]))
-    return np.einsum('i,i,i -> ', h_psi, h_psi, denom) # vector * vector * vector -> scalar
+    new_H = lewis.subH(psi_det_new,psi_det_new)
+    
+    n_es, n_coeff = np.linalg.eigh(new_H)
+    return n_es[0], n_coeff[:,0],psi_det_new
 
 
 import unittest
@@ -397,7 +426,7 @@ class TestVariationalEnergy(unittest.TestCase):
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
-        return E_var(E0,psi_coef, psi_det, d_one_e_integral, d_two_e_integral)
+        return Energy(E0, psi_det, d_one_e_integral, d_two_e_integral).E_var(psi_coef)
 
     def test_f2_631g_1det(self):
         fcidump_path='f2_631g.FCIDUMP'
@@ -435,13 +464,14 @@ class TestVariationalEnergy(unittest.TestCase):
         self.assertAlmostEqual(E_ref,E,places=6)
 
 class TestVariationalPT2Energy(unittest.TestCase):
+#class sdasdoiasdoaisdoasid():
     def load_and_compute(self,fcidump_path,wf_path):
         # Load integrals
         N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
-        return E_pt2(E0, N_ord,psi_coef, psi_det, d_one_e_integral, d_two_e_integral)
+        return Energy(E0, psi_det, d_one_e_integral, d_two_e_integral).E_pt2(psi_coef,N_ord)
 
     def test_f2_631g_1det(self):
         fcidump_path='f2_631g.FCIDUMP'
@@ -476,3 +506,4 @@ if __name__ == "__main__":
     import doctest
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
     unittest.main()
+

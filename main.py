@@ -368,7 +368,7 @@ class Hamiltonian(object):
         psi_H_psi = np.array([self.H_i_j(det_i,det_j) for det_i, det_j in product(psi_i,psi_j)])
         return psi_H_psi.reshape(len(psi_i),len(psi_j))
 
-
+ 
 class Energy(object):
 
     def __init__(self, E0, psi_det, d_one_e_integral, d_two_e_integral):
@@ -380,7 +380,7 @@ class Energy(object):
 
     def E_var_by_diagonalization(self):
         psi_H_psi = self.lewis.subH(self.psi_det,self.psi_det)
-        n_coeff = np.linalg.eigh(psi_H_psi)
+        n_coeff = np.linalg.eigh(psi_H_psi)[1]
 
         psi_coef_new = n_coeff[:,0].ravel()
         return np.einsum('i,j,ij ->', psi_coef_new, psi_coef_new,psi_H_psi) 
@@ -461,6 +461,50 @@ class TestVariationalEnergy(unittest.TestCase):
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
+class TestVariationalEnergyByDiag(unittest.TestCase):
+
+    def load_and_compute(self,fcidump_path,wf_path):
+        # Load integrals
+        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        # Load wave function
+        psi_coef, psi_det = load_wf(f"data/{wf_path}")
+        # Computation of the Energy of the input wave function (variational energy)
+        return Energy(E0, psi_det, d_one_e_integral, d_two_e_integral).E_var_by_diagonalization()
+
+    def test_f2_631g_1det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.1det.wf'
+        E_ref =  -198.646096743145
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+    def test_f2_631g_10det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.10det.wf'
+        E_ref =  -198.548963
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+    def test_f2_631g_30det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.30det.wf'
+        E_ref =  -198.738780989106
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+    def test_f2_631g_161det(self):
+        fcidump_path='f2_631g.161det.fcidump'
+        wf_path='f2_631g.161det.wf'
+        E_ref =  -198.8084269796
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+    def test_f2_631g_296det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.296det.wf'
+        E_ref =  -198.682736076007
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
 class TestVariationalPT2Energy(unittest.TestCase):
 #class sdasdoiasdoaisdoasid():
     def load_and_compute(self,fcidump_path,wf_path):

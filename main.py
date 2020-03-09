@@ -380,10 +380,8 @@ class Energy(object):
 
     def E_var_by_diagonalization(self):
         psi_H_psi = self.lewis.subH(self.psi_det,self.psi_det)
-        n_coeff = np.linalg.eigh(psi_H_psi)[1]
-
-        psi_coef_new = n_coeff[:,0].ravel()
-        return np.einsum('i,j,ij ->', psi_coef_new, psi_coef_new,psi_H_psi) 
+        E, *_ = np.linalg.eigvalsh(psi_H_psi)
+        return E
 
     def psi_external_pt2(self,psi_coef, N_orb):
         psi_external = Excitation(N_orb).gen_all_connected_determinant_from_psi(self.psi_det)

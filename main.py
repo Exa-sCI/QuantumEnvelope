@@ -369,8 +369,6 @@ class Hamiltonian(object):
         return psi_H_psi.reshape(len(psi_i),len(psi_j))
 
 
-from dataclasses import dataclass
-
 class Energy(object):
 
     def __init__(self, E0, psi_det, d_one_e_integral, d_two_e_integral):

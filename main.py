@@ -295,8 +295,8 @@ class Hamiltonian(object):
 
 
     def H_i_i(self, det_i: Determinant) -> float:
-
         '''Diagonal element of the Hamiltonian : <I|H|I>.'''
+
         res  = self.E0
         res += sum(self.H_one_e(i,i) for i in det_i.alpha)
         res += sum(self.H_one_e(i,i) for i in det_i.beta)
@@ -381,8 +381,8 @@ class Hamiltonian(object):
             return 0.
 
     def H(self, psi_i, psi_j): 
-        # Return a matrix of size psi_i x psi_j containing the value of the Hamiltionian.
-        # Note that when psi_i == psi_j, this matrix is an hermitian.
+        ''' Return a matrix of size psi_i x psi_j containing the value of the Hamiltionian.
+         Note that when psi_i == psi_j, this matrix is an hermitian.'''
 
         h = np.array([self.H_i_j(det_i,det_j) for det_i, det_j in product(psi_i,psi_j)])
         return h.reshape(len(psi_i),len(psi_j))
@@ -390,13 +390,15 @@ class Hamiltonian(object):
 
 class Powerplant(object):
     '''
-    E denote the variational energy.
+    Compute all the Energy and associated value from a psi_det.
+    E denote the variational energy
     '''
     def __init__(self, lewis, psi_det: Psi_det):
         self.lewis = lewis
         self.psi_det = psi_det
 
     def E(self,psi_coef: Psi_coef) -> Energy:
+        # Vector * Vector.T * Matrix
         return np.einsum('i,j,ij ->', psi_coef,psi_coef,self.lewis.H(self.psi_det,self.psi_det))
 
     @property    

@@ -2,7 +2,7 @@
 
 # Types
 # -----
-from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator
+from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
 
 # Orbital index (1,2,...,Norb)
 OrbitalIdx = NewType('OrbitalIdx', int)
@@ -15,13 +15,25 @@ Two_electron_integral = Dict[ Tuple[OrbitalIdx,OrbitalIdx,OrbitalIdx,OrbitalIdx]
 # $<i|h|k> = \int \phi_i(r) (-\frac{1}{2} \Delta + V_en ) \phi_k(r) dr$
 One_electron_integral = Dict[ Tuple[OrbitalIdx,OrbitalIdx], float]
 
-Determinant_Spin = Tuple[OrbitalIdx, ...]
-Determinant_Spin_Set = Set[OrbitalIdx]
+Determinant_spin = Tuple[OrbitalIdx, ...]
 class Determinant(NamedTuple):
     '''Slater determinant: Product of 2 determinants.
        One for $\alpha$ electrons and one for \beta electrons.'''
-    alpha: Determinant_Spin
-    beta: Determinant_Spin
+    alpha: Determinant_spin
+    beta: Determinant_spin
+
+Psi_det = List[Determinant_spin]
+Psi_coef = List[float]
+# We have two type of energy.
+# The varitional Energy who correpond Psi_det
+# The pt2 Energy who correnpond to the pertubative energy induce by each determinant connected to Psi_det 
+Energy = NewType('Energy',float)
+
+#
+# ___                                          
+#  |  ._  o _|_ o  _. | o _   _. _|_ o  _  ._  
+# _|_ | | |  |_ | (_| | | /_ (_|  |_ | (_) | | 
+#                                              
 
 # ~
 # Integrals of the Hamiltonian over molecular orbitals
@@ -109,15 +121,22 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
 
     return psi_coef, det
 
+#  _ ___  _   __ ___     _                    
+# /   |  |_) (_   |    _|_ _.  _ _|_  _  ._   
+# \_ _|_ |   __) _|_    | (_| (_  |_ (_) | \/ 
+#                                          /  
 
-from itertools import chain, product, combinations
+# Yes, I like itertools
+from itertools import chain, product, combinations, takewhile
+import numpy as np
+
 
 class Excitation(object):
 
     def __init__(self, N_orb):
-        self.all_orbs = set(range(1,N_orb+1))
+        self.all_orbs = frozenset(range(1,N_orb+1))
 
-    def gen_all_exc_from_detspin(self, detspin: Determinant_Spin, ed: int) -> Iterator:
+    def gen_all_exc_from_detspin(self, detspin: Determinant_spin, ed: int) -> Iterator:
         '''
         Generate list of pair -> hole from a determinant spin.
 
@@ -131,7 +150,7 @@ class Excitation(object):
         parts = combinations(not_detspin,ed)
         return product(holes,parts)
 
-    def gen_all_connected_detspin_from_detspin(self, detspin: Determinant_Spin, ed: int) -> Iterator:
+    def gen_all_connected_detspin_from_detspin(self, detspin: Determinant_spin, ed: int) -> Iterator:
         '''
         Generate all the posible spin determinant relative to a excitation degree
 
@@ -139,7 +158,7 @@ class Excitation(object):
         [(1, 3), (1, 4), (2, 3), (2, 4)]
 
         '''
-        def apply_excitation(exc: Tuple[Tuple[int, ...],Tuple[int, ...]])-> Determinant_Spin_Set:
+        def apply_excitation(exc: Tuple[Tuple[int, ...],Tuple[int, ...]])-> Determinant_spin:
             # Warning use global variable detspin.
             lh,lp = exc
             s = (set(detspin) - set(lh)) | set(lp)
@@ -213,9 +232,6 @@ class Excitation(object):
 #   the number of selected determinant.
 #
 
-from itertools import takewhile
-import numpy as np
-
 class Hamiltonian(object):
 
     def __init__(self, d_one_e_integral: One_electron_integral, d_two_e_integral: Two_electron_integral, E0: float):
@@ -237,7 +253,7 @@ class Hamiltonian(object):
            the memory requirements.'''
         return self.d_two_e_integral[ (i,j,k,l) ]
 
-    def get_phase_idx_single_exc(self, det_i: Determinant_Spin, det_j: Determinant_Spin) -> Tuple[int,int,int]:
+    def get_phase_idx_single_exc(self, det_i: Determinant_spin, det_j: Determinant_spin) -> Tuple[int,int,int]:
         '''phase, hole, particle of <I|H|J> when I and J differ by exactly one orbital
            h is occupied only in I
            p is occupied only in J'''
@@ -252,7 +268,7 @@ class Hamiltonian(object):
 
         return (phase,h,p)
 
-    def get_phase_idx_double_exc(self, det_i: Determinant_Spin, det_j: Determinant_Spin) -> Tuple[int,int,int,int,int]:
+    def get_phase_idx_double_exc(self, det_i: Determinant_spin, det_j: Determinant_spin) -> Tuple[int,int,int,int,int]:
         '''phase, holes, particles of <I|H|J> when I and J differ by exactly two orbitals
            h1, h2 are occupied only in I
            p1, p2 are occupied only in J'''
@@ -293,7 +309,7 @@ class Hamiltonian(object):
         return res
 
 
-    def H_i_j_single(self, detspin_i: Determinant_Spin, detspin_j: Determinant_Spin, detspin_k: Determinant_Spin) -> float:
+    def H_i_j_single(self, detspin_i: Determinant_spin, detspin_j: Determinant_spin, detspin_k: Determinant_spin) -> float:
         '''<I|H|J>, when I and J differ by exactly one orbital.'''
 
         # Interaction
@@ -304,7 +320,7 @@ class Hamiltonian(object):
         res += sum ( self.H_two_e(m,i,p,i) for i in detspin_k)
         return phase * res
 
-    def H_i_j_doubleAA(self, li: Determinant_Spin, lj: Determinant_Spin) -> float:
+    def H_i_j_doubleAA(self, li: Determinant_spin, lj: Determinant_spin) -> float:
         '''<I|H|J>, when I and J differ by exactly two orbitals within
            the same spin.'''
 
@@ -315,7 +331,7 @@ class Hamiltonian(object):
         return phase * res
 
 
-    def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant_Spin) -> float:
+    def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant_spin) -> float:
         '''<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
            one beta spin-orbital.'''
 
@@ -364,59 +380,75 @@ class Hamiltonian(object):
         else:
             return 0.
 
-    def subH(self, psi_i, psi_j):
-        psi_H_psi = np.array([self.H_i_j(det_i,det_j) for det_i, det_j in product(psi_i,psi_j)])
-        return psi_H_psi.reshape(len(psi_i),len(psi_j))
+    def H(self, psi_i, psi_j): 
+        # Return a matrix of size psi_i x psi_j containing the value of the Hamiltionian.
+        # Note that when psi_i == psi_j, this matrix is an hermitian.
 
- 
-class Energy(object):
+        h = np.array([self.H_i_j(det_i,det_j) for det_i, det_j in product(psi_i,psi_j)])
+        return h.reshape(len(psi_i),len(psi_j))
 
-    def __init__(self, lewis, psi_det):
+
+class Powerplant(object):
+    '''
+    E denote the variational energy.
+    '''
+    def __init__(self, lewis, psi_det: Psi_det):
         self.lewis = lewis
         self.psi_det = psi_det
 
-    def E_var(self,psi_coef):
-        return np.einsum('i,j,ij ->', psi_coef,psi_coef,self.lewis.subH(self.psi_det,self.psi_det))
+    def E(self,psi_coef: Psi_coef) -> Energy:
+        return np.einsum('i,j,ij ->', psi_coef,psi_coef,self.lewis.H(self.psi_det,self.psi_det))
 
-    def diag_H(self):
-        # Return lower eigenvalue and lower evegenvector
-        psi_H_psi = self.lewis.subH(self.psi_det,self.psi_det)
+    @property    
+    def E_and_psi_coef(self) -> Tuple[Energy, Psi_coef]:
+        # Return lower eigenvalue (aka the new E) and lower evegenvector (aka the new psi_coef)
+        psi_H_psi = self.lewis.H(self.psi_det,self.psi_det)
         energies, coeffs = np.linalg.eigh(psi_H_psi)
         return energies[0], coeffs[:,0]
 
-    def E_var_by_diagonalization(self):
-        E, _  = self.diag_H()
-        return E
+    def psi_external_pt2(self,psi_coef: Psi_coef, N_orb) -> Tuple[Psi_det, List[Energy] ]:
+        # Compute the pt2 contrution of all the external (aka connected) determinant.
+        #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
 
-    def psi_external_pt2(self,psi_coef, N_orb):
         psi_external = Excitation(N_orb).gen_all_connected_determinant_from_psi(self.psi_det)
+        h = self.lewis.H(self.psi_det,psi_external)
 
-        psi_H_psi = self.lewis.subH(psi_external,self.psi_det)
+        nomitator = np.einsum('i,ij -> j', psi_coef, h) # Matrix * vector -> vector
 
-        h_psi = np.einsum('ij,j -> i', psi_H_psi,psi_coef) # Matrix * vector -> vector
+        denominator = np.divide(1., self.E(psi_coef) - np.array([self.lewis.H_i_i(det_external) for det_external in psi_external]))
+        return psi_external, np.einsum('i,i,i -> i', nomitator, nomitator, denominator) # vector * vector * vector -> scalar
 
-        E = self.E_var(psi_coef)
-        denom = np.divide(1.,np.array([E - self.lewis.H_i_i(det_external) for det_external in psi_external]))
-        return psi_external, np.einsum('i,i,i -> i', h_psi, h_psi, denom) # vector * vector * vector -> scalar
-
-    def E_pt2(self,psi_coef,N_orb):
+    def E_pt2(self,psi_coef,N_orb) -> Energy:
+        # The sum of the pt2 contribution of each external determinant
         return sum(self.psi_external_pt2(psi_coef,N_orb)[1])
 
 
-def selection_step(lewis, N_ord, psi_coef, psi_det, n):
+def selection_step(lewis, N_ord, psi_coef, psi_det, n) -> Tuple[Energy, Psi_coef, Psi_det]:
+    # 1. Generate a list of all the external determinant and their pt2 contribution
+    # 2. Take the n  determinants who have the biggest contribution and add it the wave function psi
+    # 3. Diagonalize H corresponding to this new wave function to get the new variational energy, and new psi_coef.
 
-    psi_external_det, psi_external_energy = Energy(lewis, psi_det).psi_external_pt2(psi_coef,N_ord)
+    # In the main code:
+    # -> Go to 1., stop when E_pt2 < Threshold || N < Threshold
+    # See example of chained call to this function in `test_f2_631g_1p5p5det`
 
-    # Get the largest Determinant energy contribution (aka the min)
+    # 1.
+    psi_external_det, psi_external_energy = Powerplant(lewis, psi_det).psi_external_pt2(psi_coef,N_ord)
+
+    # 2.
     idx = np.argpartition(psi_external_energy, n)[:n]
     psi_det_new = psi_det + [psi_external_det[i] for i in idx]
-    # Diagonalize the matrix and get the new value
-    E_new, psi_coef_new = Energy(lewis, psi_det_new).diag_H()
-    return E_new, psi_coef_new, psi_det_new
 
+    # 3.
+    return (*Powerplant(lewis, psi_det_new).E_and_psi_coef, psi_det_new)
+
+# ___                     
+#  |  _   _ _|_ o ._   _  
+#  | (/_ _>  |_ | | | (_| 
+#                      _| 
 
 import unittest
-class TestVariationalEnergy(unittest.TestCase):
+class TestVariationalPowerplant(unittest.TestCase):
 
     def load_and_compute(self,fcidump_path,wf_path):
         # Load integrals
@@ -425,7 +457,7 @@ class TestVariationalEnergy(unittest.TestCase):
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
         lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
-        return Energy(lewis, psi_det).E_var(psi_coef)
+        return Powerplant(lewis, psi_det).E(psi_coef)
 
     def test_f2_631g_1det(self):
         fcidump_path='f2_631g.FCIDUMP'
@@ -462,145 +494,92 @@ class TestVariationalEnergy(unittest.TestCase):
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
-class TestVariationalEnergyByDiag(unittest.TestCase):
+class TestVariationalPT2Powerplant(unittest.TestCase):
 
-    # For the raisoning of the skiped unit test see: https://github.com/TApplencourt/QuantumEnvelope/issues/16#issuecomment-596964076
-    def load_and_compute(self,fcidump_path,wf_path):
+    def load_and_compute_pt2(self,fcidump_path,wf_path):
         # Load integrals
         N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
         lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
-        return Energy(lewis, psi_det).E_var_by_diagonalization()
-
-    def test_f2_631g_1det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.1det.wf'
-        E_ref =  -198.646096743145
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
-
-    @unittest.skip("Exited states")
-    def test_f2_631g_10det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.10det.wf'
-        E_ref =  -198.548963
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
-
-    def test_f2_631g_30det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.30det.wf'
-        E_ref =  -198.738780989106
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
-
-    def test_f2_631g_161det(self):
-        fcidump_path='f2_631g.161det.fcidump'
-        wf_path='f2_631g.161det.wf'
-        E_ref =  -198.8084269796
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
-
-    @unittest.skip("Exited states")
-    def test_f2_631g_296det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.296det.wf'
-        E_ref =  -198.682736076007
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
-
-class TestVariationalPT2Energy(unittest.TestCase):
-
-    def load_and_compute(self,fcidump_path,wf_path):
-        # Load integrals
-        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
-        # Load wave function
-        psi_coef, psi_det = load_wf(f"data/{wf_path}")
-        # Computation of the Energy of the input wave function (variational energy)
-        lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
-        return Energy(lewis, psi_det).E_pt2(psi_coef,N_ord)
+        return Powerplant(lewis, psi_det).E_pt2(psi_coef,N_ord)
 
     def test_f2_631g_1det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.1det.wf'
         E_ref =  -0.367587988032339
-        E =  self.load_and_compute(fcidump_path,wf_path)
+        E =  self.load_and_compute_pt2(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_2det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.2det.wf'
         E_ref =  -0.253904406461572
-        E =  self.load_and_compute(fcidump_path,wf_path)
+        E =  self.load_and_compute_pt2(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_10det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.10det.wf'
         E_ref =  -0.24321128
-        E =  self.load_and_compute(fcidump_path,wf_path)
+        E =  self.load_and_compute_pt2(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
     def test_f2_631g_28det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.28det.wf'
         E_ref =  -0.244245625775444
-        E =  self.load_and_compute(fcidump_path,wf_path)
+        E =  self.load_and_compute_pt2(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
 class TestSelection(unittest.TestCase):
 
-    def load_and_compute(self,fcidump_path,wf_path,n):
+    def load(self,fcidump_path,wf_path):
         # Load integrals
         N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
-        # Computation of the Energy of the input wave function (variational energy)
-        lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
-        E_new, _,_ = selection_step(lewis, N_ord, psi_coef, psi_det, n)
-        return E_new
+        return N_ord,psi_coef, psi_det, Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
 
-    def test_f2_631g_1det(self):
+    def test_f2_631g_1p0det(self):
+        # Verify that selecting 0 determinant is egual that computing the variational energy
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.1det.wf'
-        E_ref =  -198.646096743145
-        E =  self.load_and_compute(fcidump_path,wf_path,0)
-        self.assertAlmostEqual(E_ref,E,places=6)
 
-    def test_f2_631g_11det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.1det.wf'
-        # No a value optained with QP
-        E_ref =  -198.72696793971556
-        E =  self.load_and_compute(fcidump_path,wf_path,10)
-        self.assertAlmostEqual(E_ref,E,places=6)
+        N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path,wf_path)
+        E_var = Powerplant(lewis, psi_det).E(psi_coef)
 
-    def load_and_compute_compute(self,fcidump_path,wf_path,n):
-        # Load integrals
-        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
-        # Load wave function
-        psi_coef, psi_det = load_wf(f"data/{wf_path}")
-        # Computation of the Energy of the input wave function (variational energy)
-        lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
-        E_new, new_psi_coef, new_psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, n)
+        E_selection, _, _ = selection_step(lewis, N_ord, psi_coef, psi_det, 0)
 
-        return Energy(lewis, new_psi_det).E_var(new_psi_coef)
+        self.assertAlmostEqual(E_var,E_selection,places=6)
 
-    def test_f2_631g_1det_twice(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.1det.wf'
-        E_ref =  -198.646096743145
-        E =  self.load_and_compute_compute(fcidump_path,wf_path,0)
-        self.assertAlmostEqual(E_ref,E,places=6)
 
-    def test_f2_631g_11det_twice(self):
+    def test_f2_631g_1p10det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.1det.wf'
         # No a value optained with QP
         E_ref =  -198.72696793971556
-        E =  self.load_and_compute_compute(fcidump_path,wf_path,10)
+        # Selection 10 determinant and check if the result make sence
+
+        N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path,wf_path)
+        E, _, _ = selection_step(lewis, N_ord, psi_coef, psi_det, 10)
+
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+    def test_f2_631g_1p5p5det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.1det.wf'
+        # We will select 5 determinant, than 5 more.
+        # The value is lower than the one optained by selecting 10 deterinant in one go.
+        # Indeed, the pt2 get more precise whith the number of selection
+        E_ref =  -198.73029308564543
+
+        N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path,wf_path)
+        _, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
+
+        E, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
+
         self.assertAlmostEqual(E_ref,E,places=6)
 
 if __name__ == "__main__":

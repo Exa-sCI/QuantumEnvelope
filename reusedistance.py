@@ -282,7 +282,10 @@ class ReuseDistance:
             assert node is not None
             assert node.value == record
             assert self.record.root == node
-            distance = node.right.weight
+            if node.right is None:
+                distance = 0
+            else:
+                distance = node.right.weight
             self.record.remove(key)
         self.record.insert(self.time, record)
         self.last_seen[record] = self.time

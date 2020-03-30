@@ -14,5 +14,8 @@ pkgs.mkShell {
           python3Packages.matplotlib
           python3Packages.ipywidgets
           python3Packages.tqdm
+          python3Packages.numpy
+          python3Packages.mypy
+          python3Packages.flake8
         ];
 }

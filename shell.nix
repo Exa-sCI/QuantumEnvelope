@@ -5,7 +5,7 @@
 with pkgs;
 pkgs.mkShell {
         name = "miniqp";
-        nativeBuildInputs = [];
+	nativeBuildInputs = [];
         buildInputs = [
           # dependencies for the code
           python3

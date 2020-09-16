@@ -45,9 +45,25 @@ def load_integrals(fcidump_path) -> Tuple[int, float, One_electron_integral, Two
        d_one_e_integral : a dictionary of one-electron integrals,
        d_two_e_integral : a dictionary of two-electron integrals.
        '''
+    import glob
+    if len(glob.glob(fcidump_path))==1:
+        fcidump_path = glob.glob(fcidump_path)[0]
+    elif len(glob.glob(fcidump_path))==0:
+        print("no matching fcidump file")
+    else:
+        print(f"multiple matches for {fcidump_path}")
+        for i in glob.glob(fcidump_path):
+            print(i)
 
     # Use an iterator to avoid storing everything in memory twice.
-    f = open(fcidump_path)
+    if fcidump_path.split('.')[-1]=='gz':
+        import gzip
+        f=gzip.open(fcidump_path)
+    elif fcidump_path.split('.')[-1]=='bz2':
+        import bz2
+        f=bz2.open(fcidump_path)
+    else:
+        f = open(fcidump_path)
 
     # Only non-zero integrals are stored in the fci_dump.
     # Hence we use a defaultdict to handle the sparsity
@@ -96,8 +112,27 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
        Representation of the Slater determinants (basis) and
        vector of coefficients in this basis (wave function).'''
 
-    with open(path_wf) as f:
-        data = f.read().split()
+    import glob
+    if len(glob.glob(path_wf))==1:
+        path_wf = glob.glob(path_wf)[0]
+    elif len(glob.glob(path_wf))==0:
+        print(f"no matching wf file: {path_wf}")
+    else:
+        print(f"multiple matches for {path_wf}")
+        for i in glob.glob(path_wf):
+            print(i)
+
+    if path_wf.split('.')[-1]=='gz':
+        import gzip
+        with gzip.open(path_wf) as f:
+            data = f.read().decode().split()
+    elif path_wf.split('.')[-1]=='bz2':
+        import bz2
+        with bz2.open(path_wf) as f:
+            data = f.read().decode().split()
+    else:
+        with open(path_wf) as f:
+            data = f.read().split()
 
     def decode_det(str_):
         for i,v in enumerate(str_, start=1):
@@ -120,6 +155,36 @@ def load_wf(path_wf) -> Tuple[ List[float] , List[Determinant] ]  :
     psi_coef = [c / norm for c in psi_coef]
 
     return psi_coef, det
+
+def load_eref(path_ref) -> float:
+    '''Read the input file :
+       Representation of the Slater determinants (basis) and
+       vector of coefficients in this basis (wave function).'''
+
+    import glob
+    if len(glob.glob(path_ref))==1:
+        path_ref = glob.glob(path_ref)[0]
+    elif len(glob.glob(path_ref))==0:
+        print(f"no matching ref file: {path_ref}")
+    else:
+        print(f"multiple matches for {path_ref}")
+        for i in glob.glob(path_ref):
+            print(i)
+
+    if path_ref.split('.')[-1]=='gz':
+        import gzip
+        with gzip.open(path_ref) as f:
+            data = f.read().decode()
+    elif path_ref.split('.')[-1]=='bz2':
+        import bz2
+        with bz2.open(path_ref) as f:
+            data = f.read().decode()
+    else:
+        with open(path_ref) as f:
+            data = f.read()
+
+    import re
+    return float(re.search(r"E +=.+",data).group(0).strip().split()[-1])
 
 #  _ ___  _   __ ___     _                    
 # /   |  |_) (_   |    _|_ _.  _ _|_  _  ._   
@@ -461,6 +526,21 @@ class TestVariationalPowerplant(unittest.TestCase):
         lewis = Hamiltonian(d_one_e_integral,d_two_e_integral, E0)
         return Powerplant(lewis, psi_det).E(psi_coef)
 
+    def test_c2_eq_dz_3(self):
+        fcidump_path='c2_eq_hf_dz.fcidump*'
+        wf_path='c2_eq_hf_dz_3.*.wf*'
+        #E_ref =  -75.5038831587417
+        E_ref =  load_eref('data/c2_eq_hf_dz_3.*.ref*')
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
+    def test_c2_eq_dz_4(self):
+        fcidump_path='c2_eq_hf_dz.fcidump*'
+        wf_path='c2_eq_hf_dz_4.*.wf*'
+        E_ref =  load_eref('data/c2_eq_hf_dz_4.*.ref*')
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
+
     def test_f2_631g_1det(self):
         fcidump_path='f2_631g.FCIDUMP'
         wf_path='f2_631g.1det.wf'
@@ -475,26 +555,26 @@ class TestVariationalPowerplant(unittest.TestCase):
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
-    def test_f2_631g_30det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.30det.wf'
-        E_ref =  -198.738780989106
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
+    #def test_f2_631g_30det(self):
+    #    fcidump_path='f2_631g.FCIDUMP'
+    #    wf_path='f2_631g.30det.wf'
+    #    E_ref =  -198.738780989106
+    #    E =  self.load_and_compute(fcidump_path,wf_path)
+    #    self.assertAlmostEqual(E_ref,E,places=6)
 
-    def test_f2_631g_161det(self):
-        fcidump_path='f2_631g.161det.fcidump'
-        wf_path='f2_631g.161det.wf'
-        E_ref =  -198.8084269796
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
+    #def test_f2_631g_161det(self):
+    #    fcidump_path='f2_631g.161det.fcidump'
+    #    wf_path='f2_631g.161det.wf'
+    #    E_ref =  -198.8084269796
+    #    E =  self.load_and_compute(fcidump_path,wf_path)
+    #    self.assertAlmostEqual(E_ref,E,places=6)
 
-    def test_f2_631g_296det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.296det.wf'
-        E_ref =  -198.682736076007
-        E =  self.load_and_compute(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
+    #def test_f2_631g_296det(self):
+    #    fcidump_path='f2_631g.FCIDUMP'
+    #    wf_path='f2_631g.296det.wf'
+    #    E_ref =  -198.682736076007
+    #    E =  self.load_and_compute(fcidump_path,wf_path)
+    #    self.assertAlmostEqual(E_ref,E,places=6)
 
 class TestVariationalPT2Powerplant(unittest.TestCase):
 
@@ -521,19 +601,19 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
         E =  self.load_and_compute_pt2(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
-    def test_f2_631g_10det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.10det.wf'
-        E_ref =  -0.24321128
-        E =  self.load_and_compute_pt2(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
+    #def test_f2_631g_10det(self):
+    #    fcidump_path='f2_631g.FCIDUMP'
+    #    wf_path='f2_631g.10det.wf'
+    #    E_ref =  -0.24321128
+    #    E =  self.load_and_compute_pt2(fcidump_path,wf_path)
+    #    self.assertAlmostEqual(E_ref,E,places=6)
 
-    def test_f2_631g_28det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.28det.wf'
-        E_ref =  -0.244245625775444
-        E =  self.load_and_compute_pt2(fcidump_path,wf_path)
-        self.assertAlmostEqual(E_ref,E,places=6)
+    #def test_f2_631g_28det(self):
+    #    fcidump_path='f2_631g.FCIDUMP'
+    #    wf_path='f2_631g.28det.wf'
+    #    E_ref =  -0.244245625775444
+    #    E =  self.load_and_compute_pt2(fcidump_path,wf_path)
+    #    self.assertAlmostEqual(E_ref,E,places=6)
 
 class TestSelection(unittest.TestCase):
 
@@ -569,20 +649,20 @@ class TestSelection(unittest.TestCase):
 
         self.assertAlmostEqual(E_ref,E,places=6)
 
-    def test_f2_631g_1p5p5det(self):
-        fcidump_path='f2_631g.FCIDUMP'
-        wf_path='f2_631g.1det.wf'
-        # We will select 5 determinant, than 5 more.
-        # The value is lower than the one optained by selecting 10 deterinant in one go.
-        # Indeed, the pt2 get more precise whith the number of selection
-        E_ref =  -198.73029308564543
+    #def test_f2_631g_1p5p5det(self):
+    #    fcidump_path='f2_631g.FCIDUMP'
+    #    wf_path='f2_631g.1det.wf'
+    #    # We will select 5 determinant, than 5 more.
+    #    # The value is lower than the one optained by selecting 10 deterinant in one go.
+    #    # Indeed, the pt2 get more precise whith the number of selection
+    #    E_ref =  -198.73029308564543
 
-        N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path,wf_path)
-        _, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
+    #    N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path,wf_path)
+    #    _, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
 
-        E, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
+    #    E, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
 
-        self.assertAlmostEqual(E_ref,E,places=6)
+    #    self.assertAlmostEqual(E_ref,E,places=6)
 
 if __name__ == "__main__":
     import doctest

@@ -555,26 +555,26 @@ class TestVariationalPowerplant(unittest.TestCase):
         E =  self.load_and_compute(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
-    #def test_f2_631g_30det(self):
-    #    fcidump_path='f2_631g.FCIDUMP'
-    #    wf_path='f2_631g.30det.wf'
-    #    E_ref =  -198.738780989106
-    #    E =  self.load_and_compute(fcidump_path,wf_path)
-    #    self.assertAlmostEqual(E_ref,E,places=6)
+    def test_f2_631g_30det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.30det.wf'
+        E_ref =  -198.738780989106
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
-    #def test_f2_631g_161det(self):
-    #    fcidump_path='f2_631g.161det.fcidump'
-    #    wf_path='f2_631g.161det.wf'
-    #    E_ref =  -198.8084269796
-    #    E =  self.load_and_compute(fcidump_path,wf_path)
-    #    self.assertAlmostEqual(E_ref,E,places=6)
+    def test_f2_631g_161det(self):
+        fcidump_path='f2_631g.161det.fcidump'
+        wf_path='f2_631g.161det.wf'
+        E_ref =  -198.8084269796
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
-    #def test_f2_631g_296det(self):
-    #    fcidump_path='f2_631g.FCIDUMP'
-    #    wf_path='f2_631g.296det.wf'
-    #    E_ref =  -198.682736076007
-    #    E =  self.load_and_compute(fcidump_path,wf_path)
-    #    self.assertAlmostEqual(E_ref,E,places=6)
+    def test_f2_631g_296det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.296det.wf'
+        E_ref =  -198.682736076007
+        E =  self.load_and_compute(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
 class TestVariationalPT2Powerplant(unittest.TestCase):
 
@@ -601,19 +601,19 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
         E =  self.load_and_compute_pt2(fcidump_path,wf_path)
         self.assertAlmostEqual(E_ref,E,places=6)
 
-    #def test_f2_631g_10det(self):
-    #    fcidump_path='f2_631g.FCIDUMP'
-    #    wf_path='f2_631g.10det.wf'
-    #    E_ref =  -0.24321128
-    #    E =  self.load_and_compute_pt2(fcidump_path,wf_path)
-    #    self.assertAlmostEqual(E_ref,E,places=6)
+    def test_f2_631g_10det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.10det.wf'
+        E_ref =  -0.24321128
+        E =  self.load_and_compute_pt2(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
-    #def test_f2_631g_28det(self):
-    #    fcidump_path='f2_631g.FCIDUMP'
-    #    wf_path='f2_631g.28det.wf'
-    #    E_ref =  -0.244245625775444
-    #    E =  self.load_and_compute_pt2(fcidump_path,wf_path)
-    #    self.assertAlmostEqual(E_ref,E,places=6)
+    def test_f2_631g_28det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.28det.wf'
+        E_ref =  -0.244245625775444
+        E =  self.load_and_compute_pt2(fcidump_path,wf_path)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
 class TestSelection(unittest.TestCase):
 
@@ -649,20 +649,20 @@ class TestSelection(unittest.TestCase):
 
         self.assertAlmostEqual(E_ref,E,places=6)
 
-    #def test_f2_631g_1p5p5det(self):
-    #    fcidump_path='f2_631g.FCIDUMP'
-    #    wf_path='f2_631g.1det.wf'
-    #    # We will select 5 determinant, than 5 more.
-    #    # The value is lower than the one optained by selecting 10 deterinant in one go.
-    #    # Indeed, the pt2 get more precise whith the number of selection
-    #    E_ref =  -198.73029308564543
+    def test_f2_631g_1p5p5det(self):
+        fcidump_path='f2_631g.FCIDUMP'
+        wf_path='f2_631g.1det.wf'
+        # We will select 5 determinant, than 5 more.
+        # The value is lower than the one optained by selecting 10 deterinant in one go.
+        # Indeed, the pt2 get more precise whith the number of selection
+        E_ref =  -198.73029308564543
 
-    #    N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path,wf_path)
-    #    _, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
+        N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path,wf_path)
+        _, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
 
-    #    E, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
+        E, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
 
-    #    self.assertAlmostEqual(E_ref,E,places=6)
+        self.assertAlmostEqual(E_ref,E,places=6)
 
 if __name__ == "__main__":
     import doctest

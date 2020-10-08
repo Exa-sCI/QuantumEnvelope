@@ -5,7 +5,7 @@
 from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
 from dataclasses import dataclass
 
-# Orbital index (1,2,...,Norb)
+# Orbital index (1,2,...,n_orb)
 OrbitalIdx = NewType("OrbitalIdx", int)
 
 # Two-electron integral :
@@ -27,7 +27,7 @@ class Determinant(NamedTuple):
     beta: Spin_determinant
 
 
-Psi_det = List[Spin_determinant]
+Psi_det = List[Determinant]
 Psi_coef = List[float]
 # We have two type of energy.
 # The varitional Energy who correpond Psi_det
@@ -219,13 +219,13 @@ class Excitation(object):
     def __init__(self, n_orb):
         self.all_orbs = frozenset(range(1, n_orb + 1))
 
-    def gen_all_exc_from_spindet(self, spindet: Spin_determinant, ed: int) -> Iterator:
+    def gen_all_excitation(self, spindet: Spin_determinant, ed: int) -> Iterator:
         """
         Generate list of pair -> hole from a determinant spin.
 
-        >>> sorted(Excitation(4).gen_all_exc_from_spindet( (1,2),2))
+        >>> sorted(Excitation(4).gen_all_excitation( (1,2),2))
         [((1, 2), (3, 4))]
-        >>> sorted(Excitation(4).gen_all_exc_from_spindet( (1,2),1))
+        >>> sorted(Excitation(4).gen_all_excitation( (1,2),1))
         [((1,), (3,)), ((1,), (4,)), ((2,), (3,)), ((2,), (4,))]
         """
         holes = combinations(spindet, ed)
@@ -233,11 +233,11 @@ class Excitation(object):
         parts = combinations(not_spindet, ed)
         return product(holes, parts)
 
-    def gen_all_connected_spindet_from_spindet(self, spindet: Spin_determinant, ed: int) -> Iterator:
+    def gen_all_connected_spindet(self, spindet: Spin_determinant, ed: int) -> Iterator:
         """
         Generate all the posible spin determinant relative to a excitation degree
 
-        >>> sorted(Excitation(4).gen_all_connected_spindet_from_spindet( (1,2), 1))
+        >>> sorted(Excitation(4).gen_all_connected_spindet( (1,2), 1))
         [(1, 3), (1, 4), (2, 3), (2, 4)]
         """
 
@@ -247,14 +247,14 @@ class Excitation(object):
             s = (set(spindet) - set(lh)) | set(lp)
             return tuple(sorted(s))
 
-        l_exc = self.gen_all_exc_from_spindet(spindet, ed)
+        l_exc = self.gen_all_excitation(spindet, ed)
         return map(apply_excitation, l_exc)
 
-    def gen_all_connected_det(self, det: Determinant) -> Iterator:
+    def gen_all_connected_det_from_det(self, det: Determinant) -> Iterator[Determinant]:
         """
         Generate all the determinant who are single or double exictation (aka connected) from the input determinant
 
-        >>> sorted(Excitation(3).gen_all_connected_det( Determinant( (1,2), (1,) )))
+        >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant( (1,2), (1,) )))
         [Determinant(alpha=(1, 2), beta=(2,)),
          Determinant(alpha=(1, 2), beta=(3,)),
          Determinant(alpha=(1, 3), beta=(1,)),
@@ -270,13 +270,13 @@ class Excitation(object):
         # Then the double exitation form alpha or beta
 
         # We use l_single_a, and l_single_b twice. So we store them.
-        l_single_a = set(self.gen_all_connected_spindet_from_spindet(det.alpha, 1))
-        l_double_aa = self.gen_all_connected_spindet_from_spindet(det.alpha, 2)
+        l_single_a = set(self.gen_all_connected_spindet(det.alpha, 1))
+        l_double_aa = self.gen_all_connected_spindet(det.alpha, 2)
 
         s_a = (Determinant(det_alpha, det.beta) for det_alpha in chain(l_single_a, l_double_aa))
 
-        l_single_b = set(self.gen_all_connected_spindet_from_spindet(det.beta, 1))
-        l_double_bb = self.gen_all_connected_spindet_from_spindet(det.beta, 2)
+        l_single_b = set(self.gen_all_connected_spindet(det.beta, 1))
+        l_double_bb = self.gen_all_connected_spindet(det.beta, 2)
 
         s_b = (Determinant(det.alpha, det_beta) for det_beta in chain(l_single_b, l_double_bb))
 
@@ -286,13 +286,15 @@ class Excitation(object):
 
         return chain(s_a, s_b, s_ab)
 
-    def gen_all_connected_determinant_from_psi(self, psi: List[Determinant]) -> Set:
+    def gen_all_connected_determinant(self, psi_det: Psi_det) -> Psi_det:
         """
         >>> d1 = Determinant( (1,2), (1,) ) ; d2 = Determinant( (1,3), (1,) )
-        >>> len(Excitation(4).gen_all_connected_determinant_from_psi( [ d1,d2 ] ))
+        >>> len(Excitation(4).gen_all_connected_determinant( [ d1,d2 ] ))
         22
+
+        We remove the connected determinant who are already inside the wave function. Order doesn't matter
         """
-        return list(set(chain.from_iterable(map(self.gen_all_connected_det, psi))) - set(psi))
+        return list(set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det))) - set(psi_det))
 
 
 #
@@ -407,7 +409,6 @@ class Hamiltonian(object):
 
     def H_i_i(self, det_i: Determinant) -> float:
         """Diagonal element of the Hamiltonian : <I|H|I>."""
-
         res = self.E0
         res += sum(self.H_one_e(i, i) for i in det_i.alpha)
         res += sum(self.H_one_e(i, i) for i in det_i.beta)
@@ -420,8 +421,6 @@ class Hamiltonian(object):
 
     def H_i_j_single(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> float:
         """<I|H|J>, when I and J differ by exactly one orbital."""
-
-        # Interaction
         phase, m, p = Hamiltonian.get_phase_idx_single_exc(sdet_i, sdet_j)
         res = self.H_one_e(m, p)
 
@@ -432,7 +431,6 @@ class Hamiltonian(object):
     def H_i_j_doubleAA(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> float:
         """<I|H|J>, when I and J differ by exactly two orbitals within
         the same spin."""
-
         phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(sdet_i, sdet_j)
         res = self.H_two_e(h1, h2, p1, p2) - self.H_two_e(h1, h2, p2, p1)
         return phase * res
@@ -440,7 +438,6 @@ class Hamiltonian(object):
     def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant) -> float:
         """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
         one beta spin-orbital."""
-
         phaseA, hA, pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha, det_j.alpha)
         phaseB, hB, pB = Hamiltonian.get_phase_idx_single_exc(det_i.beta, det_j.beta)
 
@@ -451,7 +448,6 @@ class Hamiltonian(object):
 
     def H_i_j(self, det_i: Determinant, det_j: Determinant) -> float:
         """General function to dispatch the evaluation of H_ij"""
-
         ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
         # Same determinant -> Diagonal element
         if (ed_up, ed_dn) == (0, 0):
@@ -477,9 +473,8 @@ class Hamiltonian(object):
             return 0.0
 
     def H(self, psi_i: Psi_det, psi_j: Psi_det):
-        """Return a matrix of size psi_i x psi_j containing the value of the Hamiltionian.
+        """Return a matrix of size psi_i x psi_j containing the value of the Hamiltonian.
         Note that when psi_i == psi_j, this matrix is an hermitian."""
-
         h = np.array([self.H_i_j(det_i, det_j) for det_i, det_j in product(psi_i, psi_j)])
         return h.reshape(len(psi_i), len(psi_j))
 
@@ -512,25 +507,24 @@ class Powerplant(object):
     def psi_external_pt2(self, psi_coef: Psi_coef, n_orb) -> Tuple[Psi_det, List[Energy]]:
         # Compute the pt2 contrution of all the external (aka connected) determinant.
         #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
+        psi_external = Excitation(n_orb).gen_all_connected_determinant(self.psi_det)
 
-        psi_external = Excitation(n_orb).gen_all_connected_determinant_from_psi(self.psi_det)
-        nomitator = np.einsum("i,ij -> j", psi_coef, self.lewis.H(self.psi_det, psi_external))  # Matrix * vector -> vector
+        nomitator = np.einsum("i,ij -> j", psi_coef, self.lewis.H(self.psi_det, psi_external))  # vector * Matrix -> vector
+        denominator = np.divide(1.0, self.E(psi_coef) - np.array([self.lewis.H_i_i(d) for d in psi_external]))
 
-        denominator = np.divide(1.0, self.E(psi_coef) - np.array([self.lewis.H_i_i(det_external) for det_external in psi_external]))
         return psi_external, np.einsum("i,i,i -> i", nomitator, nomitator, denominator)  # vector * vector * vector -> scalar
 
-    def E_pt2(self, psi_coef, n_orb) -> Energy:
+    def E_pt2(self, psi_coef: Psi_coef, n_orb) -> Energy:
         # The sum of the pt2 contribution of each external determinant
-        return sum(self.psi_external_pt2(psi_coef, n_orb)[1])
+        _, psi_external_energy = self.psi_external_pt2(psi_coef, n_orb)
+        return sum(psi_external_energy)
 
 
 #  __
 # (_   _  |  _   _ _|_ o  _  ._
 # __) (/_ | (/_ (_  |_ | (_) | |
 #
-
-
-def selection_step(lewis, N_ord, psi_coef, psi_det, n) -> Tuple[Energy, Psi_coef, Psi_det]:
+def selection_step(lewis: Hamiltonian, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n) -> Tuple[Energy, Psi_coef, Psi_det]:
     # 1. Generate a list of all the external determinant and their pt2 contribution
     # 2. Take the n  determinants who have the biggest contribution and add it the wave function psi
     # 3. Diagonalize H corresponding to this new wave function to get the new variational energy, and new psi_coef.
@@ -540,14 +534,14 @@ def selection_step(lewis, N_ord, psi_coef, psi_det, n) -> Tuple[Energy, Psi_coef
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
 
     # 1.
-    psi_external_det, psi_external_energy = Powerplant(lewis, psi_det).psi_external_pt2(psi_coef, N_ord)
+    psi_external_det, psi_external_energy = Powerplant(lewis, psi_det).psi_external_pt2(psi_coef, n_ord)
 
     # 2.
     idx = np.argpartition(psi_external_energy, n)[:n]
-    psi_det_new = psi_det + [psi_external_det[i] for i in idx]
+    psi_det_extented = psi_det + [psi_external_det[i] for i in idx]
 
     # 3.
-    return (*Powerplant(lewis, psi_det_new).E_and_psi_coef, psi_det_new)
+    return (*Powerplant(lewis, psi_det_extented).E_and_psi_coef, psi_det_extented)
 
 
 # ___
@@ -561,7 +555,7 @@ import unittest
 class TestVariationalPowerplant(unittest.TestCase):
     def load_and_compute(self, fcidump_path, wf_path):
         # Load integrals
-        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
@@ -621,12 +615,12 @@ class TestVariationalPowerplant(unittest.TestCase):
 class TestVariationalPT2Powerplant(unittest.TestCase):
     def load_and_compute_pt2(self, fcidump_path, wf_path):
         # Load integrals
-        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
         lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
-        return Powerplant(lewis, psi_det).E_pt2(psi_coef, N_ord)
+        return Powerplant(lewis, psi_det).E_pt2(psi_coef, n_ord)
 
     def test_f2_631g_1det(self):
         fcidump_path = "f2_631g.FCIDUMP"
@@ -660,20 +654,20 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
 class TestSelection(unittest.TestCase):
     def load(self, fcidump_path, wf_path):
         # Load integrals
-        N_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
-        return N_ord, psi_coef, psi_det, Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
+        return n_ord, psi_coef, psi_det, Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
 
     def test_f2_631g_1p0det(self):
         # Verify that selecting 0 determinant is egual that computing the variational energy
         fcidump_path = "f2_631g.FCIDUMP"
         wf_path = "f2_631g.1det.wf"
 
-        N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
         E_var = Powerplant(lewis, psi_det).E(psi_coef)
 
-        E_selection, _, _ = selection_step(lewis, N_ord, psi_coef, psi_det, 0)
+        E_selection, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 0)
 
         self.assertAlmostEqual(E_var, E_selection, places=6)
 
@@ -684,8 +678,8 @@ class TestSelection(unittest.TestCase):
         E_ref = -198.72696793971556
         # Selection 10 determinant and check if the result make sence
 
-        N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-        E, _, _ = selection_step(lewis, N_ord, psi_coef, psi_det, 10)
+        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        E, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 10)
 
         self.assertAlmostEqual(E_ref, E, places=6)
 
@@ -697,9 +691,9 @@ class TestSelection(unittest.TestCase):
         # Indeed, the pt2 get more precise whith the number of selection
         E_ref = -198.73029308564543
 
-        N_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-        _, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
-        E, psi_coef, psi_det = selection_step(lewis, N_ord, psi_coef, psi_det, 5)
+        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        _, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
+        E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
 
         self.assertAlmostEqual(E_ref, E, places=6)
 

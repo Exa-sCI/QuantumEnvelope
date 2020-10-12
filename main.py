@@ -7,15 +7,16 @@ from dataclasses import dataclass
 
 # Orbital index (1,2,...,n_orb)
 OrbitalIdx = NewType("OrbitalIdx", int)
-
 # Two-electron integral :
 # $<ij|kl> = \int \int \phi_i(r_1) \phi_j(r_2) \frac{1}{|r_1 - r_2|} \phi_k(r_1) \phi_l(r_2) dr_1 dr_2$
-Two_electron_integral = Dict[Tuple[OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx], float]
+Two_electron_integral_index = Tuple[OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]
+Two_electron_integral = Dict[Two_electron_integral_index, float]
+
+Two_electron_integral_index_phase = Tuple[Two_electron_integral_index, bool]
 
 # One-electron integral :
 # $<i|h|k> = \int \phi_i(r) (-\frac{1}{2} \Delta + V_en ) \phi_k(r) dr$
 One_electron_integral = Dict[Tuple[OrbitalIdx, OrbitalIdx], float]
-
 Spin_determinant = Tuple[OrbitalIdx, ...]
 
 
@@ -407,76 +408,124 @@ class Hamiltonian(object):
         ed_dn = len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
         return ed_up, ed_dn
 
-    def H_i_i(self, det_i: Determinant) -> float:
+    # ~ ~ ~
+    # H_2e
+    # ~ ~ ~
+    def H_i_i_2e(self, det_i: Determinant) -> Energy:
         """Diagonal element of the Hamiltonian : <I|H|I>."""
         res = self.E0
         res += sum(self.H_one_e(i, i) for i in det_i.alpha)
         res += sum(self.H_one_e(i, i) for i in det_i.beta)
-
-        res += sum(self.H_two_e(i, j, i, j) - self.H_two_e(i, j, j, i) for i, j in combinations(det_i.alpha, 2))
-        res += sum(self.H_two_e(i, j, i, j) - self.H_two_e(i, j, j, i) for i, j in combinations(det_i.beta, 2))
-
-        res += sum(self.H_two_e(i, j, i, j) for (i, j) in product(det_i.alpha, det_i.beta))
         return res
 
-    def H_i_j_single(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> float:
+    def H_i_j_single_2e(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> Energy:
         """<I|H|J>, when I and J differ by exactly one orbital."""
         phase, m, p = Hamiltonian.get_phase_idx_single_exc(sdet_i, sdet_j)
-        res = self.H_one_e(m, p)
+        return self.H_one_e(m, p) * phase
 
-        res += sum(self.H_two_e(m, i, p, i) - self.H_two_e(m, i, i, p) for i in sdet_i)
-        res += sum(self.H_two_e(m, i, p, i) for i in sdet_k)
-        return phase * res
-
-    def H_i_j_doubleAA(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> float:
-        """<I|H|J>, when I and J differ by exactly two orbitals within
-        the same spin."""
-        phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(sdet_i, sdet_j)
-        res = self.H_two_e(h1, h2, p1, p2) - self.H_two_e(h1, h2, p2, p1)
-        return phase * res
-
-    def H_i_j_doubleAB(self, det_i: Determinant, det_j: Determinant) -> float:
-        """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
-        one beta spin-orbital."""
-        phaseA, hA, pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha, det_j.alpha)
-        phaseB, hB, pB = Hamiltonian.get_phase_idx_single_exc(det_i.beta, det_j.beta)
-
-        phase = phaseA * phaseB
-        res = self.H_two_e(hA, hB, pA, pB)
-
-        return phase * res
-
-    def H_i_j(self, det_i: Determinant, det_j: Determinant) -> float:
+    def H_i_j_2e(self, det_i: Determinant, det_j: Determinant) -> Energy:
         """General function to dispatch the evaluation of H_ij"""
         ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
         # Same determinant -> Diagonal element
         if (ed_up, ed_dn) == (0, 0):
-            return self.H_i_i(det_i)
-
+            return self.H_i_i_2e(det_i)
         # Single excitation
         elif (ed_up, ed_dn) == (1, 0):
-            return self.H_i_j_single(det_i.alpha, det_j.alpha, det_i.beta)
+            return self.H_i_j_single_2e(det_i.alpha, det_j.alpha, det_i.beta)
         elif (ed_up, ed_dn) == (0, 1):
-            return self.H_i_j_single(det_i.beta, det_j.beta, det_i.alpha)
-
-        # Double excitation of same spin
-        elif (ed_up, ed_dn) == (2, 0):
-            return self.H_i_j_doubleAA(det_i.alpha, det_j.alpha)
-        elif (ed_up, ed_dn) == (0, 2):
-            return self.H_i_j_doubleAA(det_i.beta, det_j.beta)
-
-        # Double excitation of opposite spins
-        elif (ed_up, ed_dn) == (1, 1):
-            return self.H_i_j_doubleAB(det_i, det_j)
-        # More than doubly excited, zero
+            return self.H_i_j_single_2e(det_i.beta, det_j.beta, det_i.alpha)
         else:
             return 0.0
 
-    def H(self, psi_i: Psi_det, psi_j: Psi_det):
+    def H_2e(self, psi_i, psi_j) -> List[List[Energy]]:
+        h = np.array([self.H_i_j_2e(det_i, det_j) for det_i, det_j in product(psi_i, psi_j)])
+        return h.reshape(len(psi_i), len(psi_j))
+
+    # ~ ~ ~
+    # H_4e
+    # ~ ~ ~
+    def H_i_i_4e_index(self, det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
+        for i, j in combinations(det_i.alpha, 2):
+            yield (i, j, i, j), 1
+            yield (i, j, j, i), -1
+
+        for i, j in combinations(det_i.beta, 2):
+            yield (i, j, i, j), 1
+            yield (i, j, j, i), -1
+
+        for i, j in product(det_i.alpha, det_i.beta):
+            yield (i, j, i, j), 1
+
+    def H_i_j_single_4e_index(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> Iterator[Two_electron_integral_index_phase]:
+        """<I|H|J>, when I and J differ by exactly one orbital."""
+        phase, m, p = Hamiltonian.get_phase_idx_single_exc(sdet_i, sdet_j)
+        for i in sdet_i:
+            yield (m, i, p, i), phase
+            yield (m, i, i, p), -phase
+        for i in sdet_k:
+            yield (m, i, p, i), phase
+
+    def H_i_j_doubleAA_4e_index(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Iterator[Two_electron_integral_index_phase]:
+        """<I|H|J>, when I and J differ by exactly two orbitals within
+        the same spin."""
+        phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(sdet_i, sdet_j)
+        yield (h1, h2, p1, p2), phase
+        yield (h1, h2, p2, p1), -phase
+
+    def H_i_j_doubleAB_4e_index(self, det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
+        """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
+        one beta spin-orbital."""
+        phaseA, h1, p1 = Hamiltonian.get_phase_idx_single_exc(det_i.alpha, det_j.alpha)
+        phaseB, h2, p2 = Hamiltonian.get_phase_idx_single_exc(det_i.beta, det_j.beta)
+        yield (h1, h2, p1, p2), phaseA * phaseB
+
+    def H_i_j_4e_index(self, det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
+        """General function to dispatch the evaluation of H_ij"""
+        ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        # Same determinant -> Diagonal element
+        if (ed_up, ed_dn) == (0, 0):
+            yield from self.H_i_i_4e_index(det_i)
+        # Single excitation
+        elif (ed_up, ed_dn) == (1, 0):
+            yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
+        elif (ed_up, ed_dn) == (0, 1):
+            yield from self.H_i_j_single_4e_index(det_i.beta, det_j.beta, det_i.alpha)
+        # Double excitation of same spin
+        elif (ed_up, ed_dn) == (2, 0):
+            yield from self.H_i_j_doubleAA_4e_index(det_i.alpha, det_j.alpha)
+        elif (ed_up, ed_dn) == (0, 2):
+            yield from self.H_i_j_doubleAA_4e_index(det_i.beta, det_j.beta)
+        # Double excitation of opposite spins
+        elif (ed_up, ed_dn) == (1, 1):
+            yield from self.H_i_j_doubleAB_4e_index(det_i, det_j)
+
+    def H_4e_index(self, psi_i, psi_j) -> Iterator[Two_electron_integral_index_phase]:
+        for a, det_i in enumerate(psi_i):
+            for b, det_j in enumerate(psi_j):
+                for idx, phase in self.H_i_j_4e_index(det_i, det_j):
+                    yield (a, b), idx, phase
+
+    def H_4e(self, psi_i, psi_j) -> List[List[Energy]]:
+        # This is the function who will take foreever
+        h = np.zeros(shape=(len(psi_i), len(psi_j)))
+        for (a, b), (i, j, k, l), phase in self.H_4e_index(psi_i, psi_j):
+            h[a, b] += phase * self.H_two_e(i, j, k, l)
+        return h
+
+    # ~ ~ ~
+    # H_i_i
+    # ~ ~ ~
+    def H_i_i(self, det_i) -> List[Energy]:
+        H_i_i_4e = sum(phase * self.H_two_e(*idx) for idx, phase in self.H_i_i_4e_index(det_i))
+        return self.H_i_i_2e(det_i) + H_i_i_4e
+
+    # ~ ~ ~
+    # H
+    # ~ ~ ~
+    def H(self, psi_i: Psi_det, psi_j: Psi_det) -> List[List[Energy]]:
         """Return a matrix of size psi_i x psi_j containing the value of the Hamiltonian.
         Note that when psi_i == psi_j, this matrix is an hermitian."""
-        h = np.array([self.H_i_j(det_i, det_j) for det_i, det_j in product(psi_i, psi_j)])
-        return h.reshape(len(psi_i), len(psi_j))
+        return self.H_2e(psi_i, psi_j) + self.H_4e(psi_i, psi_j)
 
 
 #  _                  _
@@ -702,4 +751,4 @@ if __name__ == "__main__":
     import doctest
 
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
-    unittest.main()
+    unittest.main(failfast=True)

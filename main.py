@@ -19,7 +19,6 @@ Two_electron_integral_index_phase = Tuple[Two_electron_integral_index, bool]
 One_electron_integral = Dict[Tuple[OrbitalIdx, OrbitalIdx], float]
 Spin_determinant = Tuple[OrbitalIdx, ...]
 
-
 class Determinant(NamedTuple):
     """Slater determinant: Product of 2 determinants.
     One for $\alpha$ electrons and one for \beta electrons."""
@@ -512,6 +511,96 @@ class Hamiltonian(object):
             h[a, b] += phase * self.H_two_e(i, j, k, l)
         return h
 
+
+
+    def H_i_j_4e_index_internal(self, det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
+        """General function to dispatch the evaluation of H_ij"""
+        ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        # Same determinant -> Diagonal element
+        if (ed_up, ed_dn) == (0, 0):
+            yield from self.H_i_i_4e_index(det_i)
+        # Single excitation
+        elif (ed_up, ed_dn) == (1, 0):
+            yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
+        elif (ed_up, ed_dn) == (0, 1):
+            yield from self.H_i_j_single_4e_index(det_i.beta, det_j.beta, det_i.alpha)
+        # Double excitation of same spin
+        #elif (ed_up, ed_dn) == (2, 0):
+        #    yield from self.H_i_j_doubleAA_4e_index(det_i.alpha, det_j.alpha)
+        elif (ed_up, ed_dn) == (0, 2):
+            yield from self.H_i_j_doubleAA_4e_index(det_i.beta, det_j.beta)
+        # Double excitation of opposite spins
+        elif (ed_up, ed_dn) == (1, 1):
+            yield from self.H_i_j_doubleAB_4e_index(det_i, det_j)
+
+    def H_pair_phase_from_idx(self,idx,d,psi_i):
+        import itertools
+        '''
+        for idx <- i,j,k,l
+        yield pairs of dets in d that are connected by idx
+        '''
+
+        # Create map from orbital to determinant.alpha
+        i,j,k,l = idx
+
+        # All the i,j,k,l
+
+        L1 = []
+        if not(any(ii in (k,l) for ii in (i,j))) and (i!=j and k!=l):
+            d_ij_not_kl = ( d[i] & d[j] ) - ( d[k] | d[l] )
+            d_kl_not_ij = ( d[k] & d[l] ) - ( d[i] | d[j] )
+            for a,b in itertools.product(d_ij_not_kl,d_kl_not_ij):
+                det_i,det_j = psi_i[a], psi_i[b]
+                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == (2, 0):
+                    phase, *hp = Hamiltonian.get_phase_idx_double_exc(det_i.alpha, det_j.alpha)
+                    if hp not in [(i,j,k,l),(j,i,l,k)]:
+                        phase = -1*phase
+                    #yield (a,b), phase
+                    L1.append ( [(a,b), phase, idx, hp])
+        L2 = []
+        for a, det_i in enumerate(psi_i):
+            for b, det_j in enumerate(psi_i):
+                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == (2, 0):
+                    for idx0, phase in self.H_i_j_doubleAA_4e_index(det_i.alpha, det_j.alpha):
+                        if idx0 == idx:
+                            L2.append ( [(a,b), phase])
+
+        L1 = sorted(L1)
+        L2 = sorted(L2)
+        from itertools import zip_longest
+        for a,b in zip_longest(L1,L2):
+            #if a != b:
+            print ("ref",b)
+            print ("ours", a)
+        if L2 or L1:
+            print ('')
+        return L2
+
+    def H_4e_index_internal(self, psi_i) -> Iterator[Two_electron_integral_index_phase]:
+        for a, det_i in enumerate(psi_i):
+            for b, det_j in enumerate(psi_i):
+                for idx, phase in self.H_i_j_4e_index_internal(det_i, det_j):
+                    yield (a, b), idx, phase
+
+        from collections import defaultdict
+        d = defaultdict(set)
+        for i, det in enumerate(psi_i):
+            for o in det.alpha:
+                d[o].add(i)
+
+        for idx in self.d_two_e_integral.keys():
+            for (a,b), phase in self.H_pair_phase_from_idx(idx,d,psi_i):
+                yield (a,b), idx, phase
+
+
+    def H_4e_internal(self,psi_i: Psi_det) -> List[List[Energy]]:
+        h = np.zeros(shape=(len(psi_i), len(psi_i)))
+        for (a, b), (i, j, k, l), phase in self.H_4e_index_internal(psi_i):
+            h[a, b] += phase * self.H_two_e(i, j, k, l)
+        return h
+
     # ~ ~ ~
     # H_i_i
     # ~ ~ ~
@@ -522,10 +611,13 @@ class Hamiltonian(object):
     # ~ ~ ~
     # H
     # ~ ~ ~
-    def H(self, psi_i: Psi_det, psi_j: Psi_det) -> List[List[Energy]]:
+    def H(self, psi_i: Psi_det, psi_j: Psi_det = None) -> List[List[Energy]]:
         """Return a matrix of size psi_i x psi_j containing the value of the Hamiltonian.
         Note that when psi_i == psi_j, this matrix is an hermitian."""
-        return self.H_2e(psi_i, psi_j) + self.H_4e(psi_i, psi_j)
+        if psi_j == None:
+            return self.H_2e(psi_i,psi_i) + self.H_4e_internal(psi_i)
+        else:
+            return self.H_2e(psi_i, psi_j) + self.H_4e(psi_i, psi_j)
 
 
 #  _                  _
@@ -549,7 +641,7 @@ class Powerplant(object):
     @property
     def E_and_psi_coef(self) -> Tuple[Energy, Psi_coef]:
         # Return lower eigenvalue (aka the new E) and lower evegenvector (aka the new psi_coef)
-        psi_H_psi = self.lewis.H(self.psi_det, self.psi_det)
+        psi_H_psi = self.lewis.H(self.psi_det)
         energies, coeffs = np.linalg.eigh(psi_H_psi)
         return energies[0], coeffs[:, 0]
 

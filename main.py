@@ -958,18 +958,31 @@ class TestSelection(unittest.TestCase):
 
         self.assertAlmostEqual(E_ref, E, places=6)
 
+    def test_f2_631g_1p5det(self):
+        fcidump_path = "f2_631g.FCIDUMP"
+        wf_path = "f2_631g.1det.wf"
+        # first iteration of next test (maybe should just keep the combined one?)
+        E_ref = -198.71952610365432
+
+        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
+
+        self.assertAlmostEqual(E_ref, E, places=6)
+
     def test_f2_631g_1p5p5det(self):
         fcidump_path = "f2_631g.FCIDUMP"
         wf_path = "f2_631g.1det.wf"
         # We will select 5 determinant, than 5 more.
         # The value is lower than the one optained by selecting 10 deterinant in one go.
         # Indeed, the pt2 get more precise whith the number of selection
+        e0_ref = -198.71952610365432
         E_ref = -198.73029308564543
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-        _, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
+        e0, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
         E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
 
+        self.assertAlmostEqual(e0_ref, e0, places=6)
         self.assertAlmostEqual(E_ref, E, places=6)
 
 

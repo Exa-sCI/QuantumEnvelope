@@ -4,6 +4,7 @@
 # -----
 from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
 from dataclasses import dataclass
+from functools import cached_property
 
 # Orbital index (1,2,...,n_orb)
 OrbitalIdx = NewType("OrbitalIdx", int)
@@ -217,6 +218,7 @@ import numpy as np
 #
 class Excitation(object):
     def __init__(self, n_orb):
+        self.N_orb = n_orb
         self.all_orbs = frozenset(range(1, n_orb + 1))
 
     def gen_all_excitation(self, spindet: Spin_determinant, ed: int) -> Iterator:
@@ -327,6 +329,11 @@ class Hamiltonian(object):
     d_one_e_integral: One_electron_integral
     d_two_e_integral: Two_electron_integral
     E0: Energy
+
+    @cached_property
+    def N_orb(self):
+        return max(chain.from_iterable(self.d_one_e_integral.keys()))
+
 
     def H_one_e(self, i: OrbitalIdx, j: OrbitalIdx) -> float:
         """One-electron part of the Hamiltonian: Kinetic energy (T) and
@@ -578,7 +585,10 @@ class Hamiltonian(object):
             for o in det.alpha:
                 d[o].add(i)
 
-        for idx in self.d_two_e_integral.keys():
+        from itertools import permutations
+        #for idx in self.d_two_e_integral.keys():
+        for (i,j),(k,l) in product(combinations(range(1,self.N_orb+1),2),permutations(range(1,self.N_orb+1),2)):
+            idx = (i,j,k,l)
             for (a,b), phase in self.H_pair_phase_from_idx(idx,d,psi_i):
                 yield (a,b), idx, phase
 

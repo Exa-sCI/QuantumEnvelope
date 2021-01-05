@@ -729,17 +729,40 @@ class Hamiltonian(object):
         #double (i,j,k,l) 
         #dAa_ij_not_kl = ( da[i] & da[j] ) - ( da[k] & da[l] )
         #dAa_kl_not_ij = ( da[k] & da[l] ) - ( da[i] & da[j] )
-        for (a,det_i),(b,det_j) in product(enumerate(psi_i),repeat=2):
+        # i->k j==l(alpha)
+        #S1 = (da[i] & da[j]) - (da[k] & da[j])
+        #R1 = (da[k] & da[j]) - (da[i] & da[j])
+        ## i->k j==l(beta)
+        #S2 = (da[i] & db[j]) - (da[k] & db[j])
+        #R2 = (da[k] & db[j]) - (da[i] & db[j])
+        ## i->l j==k(alpha)
+        #S3 = (da[i] & da[j]) - (da[l] & da[j])
+        #R3 = (da[l] & da[j]) - (da[i] & da[j])
+        S1 = (da[i] & da[j]) - da[k]
+        R1 = (da[k] & da[j]) - da[i]
+        S2 = (da[i] & db[j]) - da[k]
+        R2 = (da[k] & db[j]) - da[i]
+        S3 = (da[i] & da[j]) - da[l]
+        R3 = (da[l] & da[j]) - da[i]
+        
+        S = S1 | S2 | S3
+        R = R1 | R2 | R3
+        #for (a,det_i),(b,det_j) in product(enumerate(psi_i),repeat=2):
+        #for a,(b,det_j) in product(S,enumerate(psi_i)):
+        #for (a,det_i),b in product(enumerate(psi_i),R):
+        #for a,b in product(S,R):
+        for a,b in set().union(product(S1,R1),product(S2,R2),product(S3,R3)):
+            det_i, det_j = psi_i[a], psi_i[b]
             ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
             if (ed_up, ed_dn) == (1, 0):
                 phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
-                if j in det_i.alpha:
-                    if (hA,j,pA,j) == (i,j,k,l):
+                if j in det_i.alpha and hA!=j:
+                    if (hA,pA,j) == (i,k,l): # i->k j==l(alpha)
                         yield (a,b), phaseA
-                    if (hA,j,j,pA) == (i,j,k,l):
+                    if (hA,j,pA) == (i,k,l): # i->l j==k(alpha)
                         yield (a,b), -phaseA
                 if j in det_i.beta:
-                    if (hA,j,pA,j) == (i,j,k,l):
+                    if (hA,pA,j) == (i,k,l): # i->k j==l(beta)
                         yield (a,b), phaseA
 
 #        for a,b in itertools.product(dAa_ij_not_l,dAa_il_not_j):
@@ -1062,4 +1085,4 @@ if __name__ == "__main__":
     import doctest
 
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
-    unittest.main(failfast=False)
+    unittest.main(failfast=True)

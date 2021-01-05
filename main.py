@@ -537,8 +537,8 @@ class Hamiltonian(object):
         #elif (ed_up, ed_dn) == (0, 2):
         #    yield from self.H_i_j_doubleAA_4e_index(det_i.beta, det_j.beta)
         # Double excitation of opposite spins
-        elif (ed_up, ed_dn) == (1, 1):
-            yield from self.H_i_j_doubleAB_4e_index(det_i, det_j)
+        #elif (ed_up, ed_dn) == (1, 1):
+        #    yield from self.H_i_j_doubleAB_4e_index(det_i, det_j)
 
     def H_pair_phase_from_idx(self,idx,da,db,psi_i):
         import itertools
@@ -550,33 +550,61 @@ class Hamiltonian(object):
         # Create map from orbital to determinant.alpha
         i,j,k,l = idx
 
-        da_ij_not_kl = ( da[i] & da[j] ) - ( da[k] | da[l] )
-        da_kl_not_ij = ( da[k] & da[l] ) - ( da[i] | da[j] )
 
         # double AA
-        for a,b in itertools.product(da_ij_not_kl,da_kl_not_ij):
-            det_i,det_j = psi_i[a], psi_i[b]
-            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-            if (ed_up, ed_dn) == (2, 0):
-                phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(det_i.alpha, det_j.alpha)
-                if (h1,h2,p1,p2 ) == (i,j,k,l):
-                    yield (a,b), phase
-                if (h1,h2,p2,p1 ) == (i,j,k,l):
-                    yield (a,b), -phase
+        if i<j:
+            da_ij_not_kl = ( da[i] & da[j] ) - ( da[k] | da[l] )
+            da_kl_not_ij = ( da[k] & da[l] ) - ( da[i] | da[j] )
+            for a,b in itertools.product(da_ij_not_kl,da_kl_not_ij):
+                det_i,det_j = psi_i[a], psi_i[b]
+                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == (2, 0):
+                    phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(det_i.alpha, det_j.alpha)
+                    if (h1,h2,p1,p2 ) == (i,j,k,l):
+                        yield (a,b), phase
+                    if (h1,h2,p2,p1 ) == (i,j,k,l):
+                        yield (a,b), -phase
 
-        db_ij_not_kl = ( db[i] & db[j] ) - ( db[k] | db[l] )
-        db_kl_not_ij = ( db[k] & db[l] ) - ( db[i] | db[j] )
         
         # double BB
-        for a,b in itertools.product(db_ij_not_kl,db_kl_not_ij):
-            det_i,det_j = psi_i[a], psi_i[b]
-            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-            if (ed_up, ed_dn) == (0, 2):
-                phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(det_i.beta, det_j.beta)
-                if (h1,h2,p1,p2 ) == (i,j,k,l):
-                    yield (a,b), phase
-                if (h1,h2,p2,p1 ) == (i,j,k,l):
-                    yield (a,b), -phase
+        if i<j:
+            db_ij_not_kl = ( db[i] & db[j] ) - ( db[k] | db[l] )
+            db_kl_not_ij = ( db[k] & db[l] ) - ( db[i] | db[j] )
+            for a,b in itertools.product(db_ij_not_kl,db_kl_not_ij):
+                det_i,det_j = psi_i[a], psi_i[b]
+                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == (0, 2):
+                    phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(det_i.beta, det_j.beta)
+                    if (h1,h2,p1,p2 ) == (i,j,k,l):
+                        yield (a,b), phase
+                    if (h1,h2,p2,p1 ) == (i,j,k,l):
+                        yield (a,b), -phase
+        
+        # double AB
+        if i<j:
+            dab_ij_not_kl = ( da[i] & db[j] ) - ( da[k] | db[l] )
+            dab_kl_not_ij = ( da[k] & db[l] ) - ( da[i] | db[j] )
+            for a,b in itertools.product(dab_ij_not_kl,dab_kl_not_ij):
+                det_i,det_j = psi_i[a], psi_i[b]
+                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == (1, 1):
+                    phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+                    phaseB,hB,pB = Hamiltonian.get_phase_idx_single_exc(det_i.beta,det_j.beta)
+                    if (hA,hB,pA,pB ) == (i,j,k,l):
+                        yield (a,b), phaseA*phaseB
+        # double BA
+        # either double AB or double BA needs to account for the i==j cases
+        if i<=j:
+            dba_ij_not_kl = ( db[i] & da[j] ) - ( db[k] | da[l] )
+            dba_kl_not_ij = ( db[k] & da[l] ) - ( db[i] | da[j] )
+            for a,b in itertools.product(dba_ij_not_kl,dba_kl_not_ij):
+                det_i,det_j = psi_i[a], psi_i[b]
+                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == (1, 1):
+                    phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+                    phaseB,hB,pB = Hamiltonian.get_phase_idx_single_exc(det_i.beta,det_j.beta)
+                    if (hB,hA,pB,pA ) == (i,j,k,l):
+                        yield (a,b), phaseA*phaseB
 
 
 #        for (a, det_i),(b, det_j) in product(enumerate(psi_i),enumerate(psi_i)):

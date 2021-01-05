@@ -609,91 +609,174 @@ class Hamiltonian(object):
         # (combine singles later; should be able to combine with small static indirection)
         # maybe find more efficient set of set operations for similar Aa and Ab?
         # combine Aa and Ab using chain.from_iterable
-        if i<j and j==l: # <hx|px> where h<x
-            if i==k:
-                pass #do diagonal here later (don't double count below)
-            else:
-                dAa_ij_not_k = ( da[i] & da[j] ) - da[k]
-                dAa_kj_not_i = ( da[k] & da[j] ) - da[i]
-                for a,b in itertools.product(dAa_ij_not_k,dAa_kj_not_i):
-                    det_i,det_j = psi_i[a], psi_i[b]
-                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                    if (ed_up, ed_dn) == (1, 0):
-                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
-                        if (hA,pA) == (i,k):
-                            yield (a,b), phaseA
-                dAb_ij_not_k = ( da[i] & db[j] ) - da[k]
-                dAb_kj_not_i = ( da[k] & db[j] ) - da[i]
-                for a,b in itertools.product(dAb_ij_not_k,dAb_kj_not_i):
-                    det_i,det_j = psi_i[a], psi_i[b]
-                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                    if (ed_up, ed_dn) == (1, 0):
-                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
-                        if (hA,pA) == (i,k):
-                            yield (a,b), phaseA
-        if i<j and i==k: # <xh|xp> where h>x
-            if j==l:
-                pass #do diagonal here later
-            else:
-                dAa_ij_not_l = ( da[i] & da[j] ) - da[l]
-                dAa_il_not_j = ( da[i] & da[l] ) - da[j]
-                for a,b in itertools.product(dAa_ij_not_l,dAa_il_not_j):
-                    det_i,det_j = psi_i[a], psi_i[b]
-                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                    if (ed_up, ed_dn) == (1, 0):
-                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
-                        if (hA,pA) == (j,l):
-                            yield (a,b), phaseA
-                dAb_ij_not_l = ( db[i] & da[j] ) - da[l]
-                dAb_il_not_j = ( db[i] & da[l] ) - da[j]
-                for a,b in itertools.product(dAa_ij_not_l,dAa_il_not_j):
-                    det_i,det_j = psi_i[a], psi_i[b]
-                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                    if (ed_up, ed_dn) == (1, 0):
-                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
-                        if (hA,pA) == (j,l):
-                            yield (a,b), phaseA
-        # single Aa(-)
-        if i<j and j==k: # <hx|xp> where h<x
-            if i==l:
-                pass #do diagonal here later
-            else:
-                dAa_ij_not_l = ( da[i] & da[j] ) - da[l]
-                dAa_lj_not_i = ( da[l] & da[j] ) - da[i]
-                for a,b in itertools.product(dAa_ij_not_l,dAa_lj_not_i):
-                    det_i,det_j = psi_i[a], psi_i[b]
-                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                    if (ed_up, ed_dn) == (1, 0):
-                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
-                        if (hA,pA) == (i,l):
-                            yield (a,b), -phaseA
-        if i<j and i==l: # <xh|px> where h>x
-            if j==k:
-                pass #do diagonal here later
-            else:
-                dAa_ij_not_k = ( da[i] & da[j] ) - da[k]
-                dAa_ik_not_j = ( da[i] & da[k] ) - da[j]
-                for a,b in itertools.product(dAa_ij_not_k,dAa_ik_not_j):
-                    det_i,det_j = psi_i[a], psi_i[b]
-                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                    if (ed_up, ed_dn) == (1, 0):
-                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
-                        if (hA,pA) == (j,k):
-                            yield (a,b), -phaseA
-        # single Ab (combine these later; should be able to combine with small static indirection)
-        if i==j and j==l: # <hx|px> where h==x and h,x are alpha,beta
-            if i==k:
-                pass #do diagonal here later (don't double count below)
-            else:
-                dAb_ij_not_k = ( da[i] & db[j] ) - da[k]
-                dAb_kj_not_i = ( da[k] & db[j] ) - da[i]
-                for a,b in itertools.product(dAb_ij_not_k,dAb_kj_not_i):
-                    det_i,det_j = psi_i[a], psi_i[b]
-                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                    if (ed_up, ed_dn) == (1, 0):
-                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
-                        if (hA,pA) == (i,k):
-                            yield (a,b), phaseA
+
+        # same spin: \sum_{x_occ} <hx|px> - <hx|xp>
+        # diff spin: \sum_{x_occ} <hx|px>
+
+        #if i<j and j==l: # <hx|px> where h<x
+        #    if i==k:
+        #        pass #do diagonal here later (don't double count below)
+        #    else:
+        #        dAa_ij_not_k = ( da[i] & da[j] ) - da[k]
+        #        dAa_kj_not_i = ( da[k] & da[j] ) - da[i]
+        #        for a,b in itertools.product(dAa_ij_not_k,dAa_kj_not_i):
+        #            det_i,det_j = psi_i[a], psi_i[b]
+        #            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        #            if (ed_up, ed_dn) == (1, 0):
+        #                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+        #                if (hA,pA) == (i,k):
+        #                    yield (a,b), phaseA
+        #        dAb_ij_not_k = ( da[i] & db[j] ) - da[k]
+        #        dAb_kj_not_i = ( da[k] & db[j] ) - da[i]
+        #        for a,b in itertools.product(dAb_ij_not_k,dAb_kj_not_i):
+        #            det_i,det_j = psi_i[a], psi_i[b]
+        #            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        #            if (ed_up, ed_dn) == (1, 0):
+        #                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+        #                if (hA,pA) == (i,k):
+        #                    yield (a,b), phaseA
+        #if i<j and i==k: # <xh|xp> where h>x
+        #    if j==l:
+        #        pass #do diagonal here later
+        #    else:
+        #        dAa_ij_not_l = ( da[i] & da[j] ) - da[l]
+        #        dAa_il_not_j = ( da[i] & da[l] ) - da[j]
+        #        for a,b in itertools.product(dAa_ij_not_l,dAa_il_not_j):
+        #            det_i,det_j = psi_i[a], psi_i[b]
+        #            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        #            if (ed_up, ed_dn) == (1, 0):
+        #                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+        #                if (hA,pA) == (j,l):
+        #                    yield (a,b), phaseA
+        #        dAb_ij_not_l = ( db[i] & da[j] ) - da[l]
+        #        dAb_il_not_j = ( db[i] & da[l] ) - da[j]
+        #        for a,b in itertools.product(dAa_ij_not_l,dAa_il_not_j):
+        #            det_i,det_j = psi_i[a], psi_i[b]
+        #            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        #            if (ed_up, ed_dn) == (1, 0):
+        #                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+        #                if (hA,pA) == (j,l):
+        #                    yield (a,b), phaseA
+        ## single Aa(-)
+        #if i<j and j==k: # <hx|xp> where h<x
+        #    if i==l:
+        #        pass #do diagonal here later
+        #    else:
+        #        dAa_ij_not_l = ( da[i] & da[j] ) - da[l]
+        #        dAa_lj_not_i = ( da[l] & da[j] ) - da[i]
+        #        for a,b in itertools.product(dAa_ij_not_l,dAa_lj_not_i):
+        #            det_i,det_j = psi_i[a], psi_i[b]
+        #            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        #            if (ed_up, ed_dn) == (1, 0):
+        #                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+        #                if (hA,pA) == (i,l):
+        #                    yield (a,b), -phaseA
+        #if i<j and i==l: # <xh|px> where h>x
+        #    if j==k:
+        #        pass #do diagonal here later
+        #    else:
+        #        dAa_ij_not_k = ( da[i] & da[j] ) - da[k]
+        #        dAa_ik_not_j = ( da[i] & da[k] ) - da[j]
+        #        for a,b in itertools.product(dAa_ij_not_k,dAa_ik_not_j):
+        #            det_i,det_j = psi_i[a], psi_i[b]
+        #            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        #            if (ed_up, ed_dn) == (1, 0):
+        #                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+        #                if (hA,pA) == (j,k):
+        #                    yield (a,b), -phaseA
+        ## single Ab (combine these later; should be able to combine with small static indirection)
+        #if i==j and j==l: # <hx|px> where h==x and h,x are alpha,beta
+        #    if i==k:
+        #        pass #do diagonal here later (don't double count below)
+        #    else:
+        #        dAb_ij_not_k = ( da[i] & db[j] ) - da[k]
+        #        dAb_kj_not_i = ( da[k] & db[j] ) - da[i]
+        #        for a,b in itertools.product(dAb_ij_not_k,dAb_kj_not_i):
+        #            det_i,det_j = psi_i[a], psi_i[b]
+        #            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+        #            if (ed_up, ed_dn) == (1, 0):
+        #                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+        #                if (hA,pA) == (i,k):
+        #                    yield (a,b), phaseA
+
+        # test without inequalities
+#        dAa_ij_not_k = ( da[i] & da[j] ) - da[k]
+#        dAa_kj_not_i = ( da[k] & da[j] ) - da[i]
+#
+#        dAb_ij_not_k = ( da[i] & db[j] ) - da[k]
+#        dAb_kj_not_i = ( da[k] & db[j] ) - da[i]
+#
+#        dAa_ij_not_l = ( da[i] & da[j] ) - da[l]
+#        dAa_il_not_j = ( da[i] & da[l] ) - da[j]
+#
+#        dAb_ij_not_l = ( db[i] & da[j] ) - da[l]
+#        dAb_il_not_j = ( db[i] & da[l] ) - da[j]
+#
+#        dAa_ij_not_l = ( da[i] & da[j] ) - da[l]
+#        dAa_lj_not_i = ( da[l] & da[j] ) - da[i]
+#
+#        dAa_ij_not_k = ( da[i] & da[j] ) - da[k]
+#        dAa_ik_not_j = ( da[i] & da[k] ) - da[j]
+#
+#        dAb_ij_not_k = ( da[i] & db[j] ) - da[k]
+#        dAb_kj_not_i = ( da[k] & db[j] ) - da[i]
+        # i -> k alpha exc (j in alpha or beta)
+        # (i,j,k,j)
+        # (i,j,j,l)
+        # (i,j,i,l)
+        # (i,j,k,i)
+
+        #double (i,j,k,l) 
+        #dAa_ij_not_kl = ( da[i] & da[j] ) - ( da[k] & da[l] )
+        #dAa_kl_not_ij = ( da[k] & da[l] ) - ( da[i] & da[j] )
+        for (a,det_i),(b,det_j) in product(enumerate(psi_i),repeat=2):
+            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+            if (ed_up, ed_dn) == (1, 0):
+                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+                if j in det_i.alpha:
+                    if (hA,j,pA,j) == (i,j,k,l):
+                        yield (a,b), phaseA
+                    if (hA,j,j,pA) == (i,j,k,l):
+                        yield (a,b), -phaseA
+                if j in det_i.beta:
+                    if (hA,j,pA,j) == (i,j,k,l):
+                        yield (a,b), phaseA
+
+#        for a,b in itertools.product(dAa_ij_not_l,dAa_il_not_j):
+#            det_i,det_j = psi_i[a], psi_i[b]
+#            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+#            if (ed_up, ed_dn) == (1, 0):
+#                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+#                if (hA,pA) == (j,l):
+#                    yield (a,b), phaseA
+#        for a,b in itertools.product(dAa_ij_not_l,dAa_il_not_j):
+#            det_i,det_j = psi_i[a], psi_i[b]
+#            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+#            if (ed_up, ed_dn) == (1, 0):
+#                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+#                if (hA,pA) == (j,l):
+#                    yield (a,b), phaseA
+#        for a,b in itertools.product(dAa_ij_not_l,dAa_lj_not_i):
+#            det_i,det_j = psi_i[a], psi_i[b]
+#            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+#            if (ed_up, ed_dn) == (1, 0):
+#                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+#                if (hA,pA) == (i,l):
+#                    yield (a,b), -phaseA
+#        for a,b in itertools.product(dAa_ij_not_k,dAa_ik_not_j):
+#            det_i,det_j = psi_i[a], psi_i[b]
+#            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+#            if (ed_up, ed_dn) == (1, 0):
+#                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+#                if (hA,pA) == (j,k):
+#                    yield (a,b), -phaseA
+#        for a,b in itertools.product(dAb_ij_not_k,dAb_kj_not_i):
+#            det_i,det_j = psi_i[a], psi_i[b]
+#            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+#            if (ed_up, ed_dn) == (1, 0):
+#                phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(det_i.alpha,det_j.alpha)
+#                if (hA,pA) == (i,k):
+#                    yield (a,b), phaseA
 
 
 #        for (a, det_i),(b, det_j) in product(enumerate(psi_i),enumerate(psi_i)):

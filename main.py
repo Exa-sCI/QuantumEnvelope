@@ -958,17 +958,6 @@ class TestSelection(unittest.TestCase):
 
         self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_1p5det(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.1det.wf"
-        # first iteration of next test (maybe should just keep the combined one?)
-        E_ref = -198.71952610365432
-
-        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-        E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
-
-        self.assertAlmostEqual(E_ref, E, places=6)
-
     def test_f2_631g_1p5p5det(self):
         fcidump_path = "f2_631g.FCIDUMP"
         wf_path = "f2_631g.1det.wf"
@@ -990,4 +979,4 @@ if __name__ == "__main__":
     import doctest
 
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
-    unittest.main(failfast=True)
+    unittest.main(failfast=False)

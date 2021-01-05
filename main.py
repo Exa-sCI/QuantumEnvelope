@@ -543,40 +543,28 @@ class Hamiltonian(object):
         # Create map from orbital to determinant.alpha
         i,j,k,l = idx
 
-        # All the i,j,k,l
+        d_ij_not_kl = ( d[i] & d[j] ) - ( d[k] | d[l] )
+        d_kl_not_ij = ( d[k] & d[l] ) - ( d[i] | d[j] )
 
-        L1 = []
-        if not(any(ii in (k,l) for ii in (i,j))) and (i!=j and k!=l):
-            d_ij_not_kl = ( d[i] & d[j] ) - ( d[k] | d[l] )
-            d_kl_not_ij = ( d[k] & d[l] ) - ( d[i] | d[j] )
-            for a,b in itertools.product(d_ij_not_kl,d_kl_not_ij):
-                det_i,det_j = psi_i[a], psi_i[b]
-                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                if (ed_up, ed_dn) == (2, 0):
-                    phase, *hp = Hamiltonian.get_phase_idx_double_exc(det_i.alpha, det_j.alpha)
-                    if hp not in [(i,j,k,l),(j,i,l,k)]:
-                        phase = -1*phase
-                    #yield (a,b), phase
-                    L1.append ( [(a,b), phase, idx, hp])
-        L2 = []
-        for a, det_i in enumerate(psi_i):
-            for b, det_j in enumerate(psi_i):
-                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                if (ed_up, ed_dn) == (2, 0):
-                    for idx0, phase in self.H_i_j_doubleAA_4e_index(det_i.alpha, det_j.alpha):
-                        if idx0 == idx:
-                            L2.append ( [(a,b), phase])
+        for a,b in itertools.product(d_ij_not_kl,d_kl_not_ij):
+            det_i,det_j = psi_i[a], psi_i[b]
+            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+            if (ed_up, ed_dn) == (2, 0):
+                phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(det_i.alpha, det_j.alpha)
+                if (h1,h2,p1,p2 ) == (i,j,k,l):
+                    yield (a,b), phase
+                if (h1,h2,p2,p1 ) == (i,j,k,l):
+                    yield (a,b), -phase
 
-        L1 = sorted(L1)
-        L2 = sorted(L2)
-        from itertools import zip_longest
-        for a,b in zip_longest(L1,L2):
-            #if a != b:
-            print ("ref",b)
-            print ("ours", a)
-        if L2 or L1:
-            print ('')
-        return L2
+#        for (a, det_i),(b, det_j) in product(enumerate(psi_i),enumerate(psi_i)):
+#                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+#                if (ed_up, ed_dn) == (2, 0):
+#                    phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(det_i.alpha, det_j.alpha)
+#                    if (h1,h2,p1,p2 ) == (i,j,k,l):
+#                        yield (a,b), phase
+#                    if (h1,h2,p2,p1 ) == (i,j,k,l):
+#                        yield (a,b), -phase
+#
 
     def H_4e_index_internal(self, psi_i) -> Iterator[Two_electron_integral_index_phase]:
         for a, det_i in enumerate(psi_i):

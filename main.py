@@ -534,13 +534,13 @@ class Hamiltonian(object):
         # Double excitation of same spin
         #elif (ed_up, ed_dn) == (2, 0):
         #    yield from self.H_i_j_doubleAA_4e_index(det_i.alpha, det_j.alpha)
-        elif (ed_up, ed_dn) == (0, 2):
-            yield from self.H_i_j_doubleAA_4e_index(det_i.beta, det_j.beta)
+        #elif (ed_up, ed_dn) == (0, 2):
+        #    yield from self.H_i_j_doubleAA_4e_index(det_i.beta, det_j.beta)
         # Double excitation of opposite spins
         elif (ed_up, ed_dn) == (1, 1):
             yield from self.H_i_j_doubleAB_4e_index(det_i, det_j)
 
-    def H_pair_phase_from_idx(self,idx,d,psi_i):
+    def H_pair_phase_from_idx(self,idx,da,db,psi_i):
         import itertools
         '''
         for idx <- i,j,k,l
@@ -550,10 +550,11 @@ class Hamiltonian(object):
         # Create map from orbital to determinant.alpha
         i,j,k,l = idx
 
-        d_ij_not_kl = ( d[i] & d[j] ) - ( d[k] | d[l] )
-        d_kl_not_ij = ( d[k] & d[l] ) - ( d[i] | d[j] )
+        da_ij_not_kl = ( da[i] & da[j] ) - ( da[k] | da[l] )
+        da_kl_not_ij = ( da[k] & da[l] ) - ( da[i] | da[j] )
 
-        for a,b in itertools.product(d_ij_not_kl,d_kl_not_ij):
+        # double AA
+        for a,b in itertools.product(da_ij_not_kl,da_kl_not_ij):
             det_i,det_j = psi_i[a], psi_i[b]
             ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
             if (ed_up, ed_dn) == (2, 0):
@@ -562,6 +563,21 @@ class Hamiltonian(object):
                     yield (a,b), phase
                 if (h1,h2,p2,p1 ) == (i,j,k,l):
                     yield (a,b), -phase
+
+        db_ij_not_kl = ( db[i] & db[j] ) - ( db[k] | db[l] )
+        db_kl_not_ij = ( db[k] & db[l] ) - ( db[i] | db[j] )
+        
+        # double BB
+        for a,b in itertools.product(db_ij_not_kl,db_kl_not_ij):
+            det_i,det_j = psi_i[a], psi_i[b]
+            ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+            if (ed_up, ed_dn) == (0, 2):
+                phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(det_i.beta, det_j.beta)
+                if (h1,h2,p1,p2 ) == (i,j,k,l):
+                    yield (a,b), phase
+                if (h1,h2,p2,p1 ) == (i,j,k,l):
+                    yield (a,b), -phase
+
 
 #        for (a, det_i),(b, det_j) in product(enumerate(psi_i),enumerate(psi_i)):
 #                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
@@ -580,16 +596,19 @@ class Hamiltonian(object):
                     yield (a, b), idx, phase
 
         from collections import defaultdict
-        d = defaultdict(set)
+        da = defaultdict(set)
+        db = defaultdict(set)
         for i, det in enumerate(psi_i):
             for o in det.alpha:
-                d[o].add(i)
+                da[o].add(i)
+            for o in det.beta:
+                db[o].add(i)
 
         from itertools import permutations
-        #for idx in self.d_two_e_integral.keys():
-        for (i,j),(k,l) in product(combinations(range(1,self.N_orb+1),2),permutations(range(1,self.N_orb+1),2)):
-            idx = (i,j,k,l)
-            for (a,b), phase in self.H_pair_phase_from_idx(idx,d,psi_i):
+        for idx in self.d_two_e_integral.keys():
+        #for (i,j),(k,l) in product(combinations(range(1,self.N_orb+1),2),permutations(range(1,self.N_orb+1),2)):
+            #idx = (i,j,k,l)
+            for (a,b), phase in self.H_pair_phase_from_idx(idx,da,db,psi_i):
                 yield (a,b), idx, phase
 
 

@@ -10,7 +10,7 @@ let
     sha256 = "0awhb1hmszdx37pf0y8k199mn7nzz31bv8pd61lq0nbm29lmqid7";
   };
   mnemo = callPackage ./nix/mnemo.nix { src = mnemo-src; };
-  mnemo-py = callPackage ./nix/mnemo-py.nix { src = mnemo-src; };
+  mnemo-py = callPackage ./nix/mnemo-py.nix { src = mnemo-src; mnemo = mnemo; };
 in
 with pkgs;
 pkgs.mkShell {
@@ -26,13 +26,8 @@ pkgs.mkShell {
           python3Packages.tqdm
           python3Packages.numpy
           python3Packages.mypy
+          python3Packages.mpi4py
           python3Packages.flake8
-          mnemo
           mnemo-py
         ];
-        propagatedBuildInputs = [ mnemo mnemo-py ];
-        shellHook = ''
-          mnemopath=`for i in $buildInputs; do echo $i; done | grep "mnemo$"`
-          export LIBMNEMO_SO=$mnemopath/lib/libmnemo.so
-        '';
 }

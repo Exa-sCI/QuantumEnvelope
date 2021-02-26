@@ -1,4 +1,4 @@
-{ stdenv, pkgconfig, autoreconfHook, python3Packages, python3, src }:
+{ stdenv, pkgconfig, autoreconfHook, python3Packages, python3, src, mnemo }:
 
 python3Packages.buildPythonPackage {
       format = "other";
@@ -6,6 +6,7 @@ python3Packages.buildPythonPackage {
       src = src;
       nativeBuildInputs = [ autoreconfHook pkgconfig ];
       buildInputs = [ python3 ];
+      propagatedBuildInputs = [ mnemo ];
       buildPhase = "make";
       installPhase = "make install";
 }

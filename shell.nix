@@ -6,7 +6,8 @@ let
   callPackage = pkgs.lib.callPackageWith pkgs;
   mnemo-src = pkgs.fetchgit {
     url = "https://github.com/perarnau/mnemo.git";
-    rev = "master";
+   # rev = "master";
+    branchName = "master";
     sha256 = "0awhb1hmszdx37pf0y8k199mn7nzz31bv8pd61lq0nbm29lmqid7";
   };
   mnemo = callPackage ./nix/mnemo.nix { src = mnemo-src; };

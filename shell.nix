@@ -28,6 +28,7 @@ pkgs.mkShell {
           python3Packages.numpy
           python3Packages.mypy
           python3Packages.mpi4py
+          python3Packages.mpi4py.mpi
           python3Packages.flake8
           mnemo-py
         ];

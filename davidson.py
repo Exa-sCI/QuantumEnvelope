@@ -43,6 +43,34 @@ def davidson(H, n, eps, max_iter, n_guess, n_eig):
             return theta
 
 
+def parallel_arrowhead_decomposition(Y_p, s_k, L_p):
+    s_nk = np.dot(Y_p.T, s_k)
+    S_nk = np.append(L_p, s_nk, axis=0)
+    new_col = np.append(s_nk, s_k[-1])
+    S_nk = np.append(S_nk, new_col, axis=1)
+
+    return np.linalg.eig(S_nk)
+
+
+def parallel_restart(m, q, dim_S, L_k, Y_k, V_ik, W_ik):
+    return dim_S, L_k, Y_k
+
+
+def preconditioning(A_i, l_k, r_ik):
+    M_k = np.diag(np.reciprocal(np.diag(A_i) - l_k))
+    return np.dot(M_k, r_ik)
+
+
+def mgs(comm, n, V_ik, t_ik):
+    for v in V_ik:
+        c_j = np.inner(v, t_ik)
+        comm.Allreduce([c_j, MPI.DOUBLE], [c_j, MPI.DOUBLE])
+        t_ik = t_ik - c_j*v
+    t_k = np.zeros(n)
+    comm.Allgather([t_ik, MPI.DOUBLE], [t_k, MPI.DOUBLE])
+    return t_ik/np.linalg.norm(t_k)
+
+
 if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     world_size = comm.Get_size()
@@ -70,6 +98,8 @@ if __name__ == '__main__':
     # cutoff for error
     epsilon = 1e-8
 
+    m, q = 10, 15
+
     print(f"init: {n}, {local_size}, {n_eig}, {n_guess}, {max_iter}, {epsilon}")
 
     # lets build the initial decomposition, per the paper:
@@ -82,15 +112,16 @@ if __name__ == '__main__':
     W_ik = []  # list of np vects (local_size)
     r_ik = np.zeros((local_size))
 
+    # each node needs to keep the previous Y_k
+    Y_k = np.eye(1)
+
     # lets build a garbage initial matrix
     A_i = 0.0001*np.random.randn(local_size, n)
 
     x_1 = np.random.randn(local_size)
-    V_ik.append(np.linalg.norm(x_1))
+    V_ik.append(x_1/np.linalg.norm(x_1))
 
-    S_k = []
     dim_S = 0
-    it = 0  # number of iterations
     err = 1e-8
 
     for j in range(n_eig):
@@ -110,62 +141,37 @@ if __name__ == '__main__':
             # send to the host and compute sum
             s_k = np.copy(new_s)
             comm.Reduce(new_s, s_k)
+            if k == 1:
+                L_k = s_k
 
-            # algorithm2
-            if rank == 0:
-                L_k = []
-                Q_k = []
-                ns_k = np.dot(
+            L_k, Y_k = parallel_arrowhead_decomposition(Y_k, s_k, L_k)
+            dim_S += 1
+
+            dim_S, L_k, Y_k = parallel_restart(m, q, dim_S, L_k, Y_k, V_ik, W_ik)
+
+            lmin = min(dim_S, j)
+            # L_k and Y_k are sync'd (the sort of one is the same on the other)
+            indices = L_k.argsort()
+            l_k = L_k[indices[lmin]]
+            y_k = Y_k[:, indices[lmin]]
+
+            r_ik = np.dot(W_ik, y_k) - l_k*np.dot(V_ik, y_k)
+            r_k = np.zeros(n)
+            comm.Allgather([r_ik, MPI.DOUBLE], [r_k, MPI.DOUBLE])
+
+            if np.linalg.norm(r_k) < epsilon:
+                break
+
+            t_ik = preconditioning(A_i, l_k, r_ik)
+
+            V_ik.append(mgs(comm, n, V_ik, t_ik))
 
 
-            print("checkpoint:")
+# fuse A across all nodes
+A = np.zeros((n, n))
+comm.Allgather([A_i, MPI.DOUBLE], [A, MPI.DOUBLE])
+# simple algo
+ref_l, ref_y = np.linalg.eig(A)
+ref_l = np.sort(ref_l)
 
-
-def relicats():
-        # if rank == 0:
-            # s_sum = sum(s_p for all processors)
-            # eigen decomposition L_k and Y_k
-        LAMBDA, Y = np.linalg.eig(A) # should be S
-            # dim_S += 1
-            # check and apply restart when necessary
-        idx = LAMBDA.argsort()
-        l = LAMBDA[idx]
-        y = Y[:,idx]
-            # broadcast the l smallest eigenpair l_k, y_k from L_k and Y_k, where l= min(dim_S, j)
-        
-        # receive y_k and l_k
-        # compute r_pk = W_pk * y_k - l * V_pk * y_k
-        #r_p = np.dot(W_p, y)  - l * np.dot(V_p, y)
-        temp = np.dot(W_p, y)
-
-        if rank == 0:
-            # broadcast r by appending all r_p (residual vector)
-            # r = np.dot((H - theta[j]*I),np.dot(V[:,:m],s[:,j]))
-            # q = r/(theta[j]-H[j,j])
-            # V[:,(m+j)] = q (see preconditioning)
-            # norm = np.linalg.norm(theta[:n_eig] - theta_old)
-            norm = 1
-            # norm = np.linalg.norm(r)
-            #if norm < eps:
-            #    break
-            # t = M * r (preconditioning)
-            # send slice t_p to the correspoding node
-            # v = modified gram schmidt to get it from V and t
-
-#comm.Bcast(A, root=0)
-#start_davidson = time.time()
-
-#theta = davidson(A, n, 1e-8, n//2, 8, n_eig)
-
-#end_davidson = time.time()
-
-# Print results.
-#if rank == 0:
-#    print("davidson = ", theta[:n_eig],";")
-       # , end_davidson - start_davidson, "seconds")
-    #start_numpy = time.time()
-#    E,Vec = np.linalg.eig(A)
-#    E = np.sort(E)
-    #end_numpy = time.time()
-#    print("numpy = ", E[:n_eig],";")
-       # , end_numpy - start_numpy, "seconds")
+print(L_k, ref_l)

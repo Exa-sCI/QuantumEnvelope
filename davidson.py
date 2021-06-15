@@ -44,10 +44,13 @@ def davidson(H, n, eps, max_iter, n_guess, n_eig):
 
 
 def parallel_arrowhead_decomposition(Y_p, s_k, L_p):
-    s_nk = np.dot(Y_p.T, s_k)
-    S_nk = np.append(L_p, s_nk, axis=0)
-    new_col = np.append(s_nk, s_k[-1])
-    S_nk = np.append(S_nk, new_col, axis=1)
+    print("arrow:", f'{Y_p}, {s_k}, {L_p}')
+    s_nk = np.dot(Y_p.T, s_k[:-1])
+    s_nk = np.append(s_nk, s_k[-1])
+    L_p = np.append(L_p, 0)
+    S_nk = np.diag(L_p)
+    S_nk[-1, :] = s_nk
+    S_nk[:, -1] = s_nk
 
     return np.linalg.eig(S_nk)
 
@@ -62,10 +65,10 @@ def preconditioning(A_i, l_k, r_ik):
 
 
 def mgs(comm, n, V_ik, t_ik):
-    for v in V_ik:
-        c_j = np.inner(v, t_ik)
+    for v in range(1, V_ik.shape[1]):
+        c_j = np.copy(np.inner(V_ik[:, v], t_ik))
         comm.Allreduce([c_j, MPI.DOUBLE], [c_j, MPI.DOUBLE])
-        t_ik = t_ik - c_j*v
+        t_ik = t_ik - c_j*V_ik[:, v]
     t_k = np.zeros(n)
     comm.Allgather([t_ik, MPI.DOUBLE], [t_k, MPI.DOUBLE])
     return t_ik/np.linalg.norm(t_k)
@@ -108,18 +111,19 @@ if __name__ == '__main__':
     # iteratively growing in columns during execution so it's easier to keep
     # them as lists of columns.
     A_i = np.zeros((local_size, n))
-    V_ik = []  # list of np vects (local_size)
-    W_ik = []  # list of np vects (local_size)
+    V_ik = np.zeros((local_size, 0))
+    W_ik = np.zeros((local_size, 0))
     r_ik = np.zeros((local_size))
 
     # each node needs to keep the previous Y_k
     Y_k = np.eye(1)
+    L_k = []
 
     # lets build a garbage initial matrix
     A_i = 0.0001*np.random.randn(local_size, n)
 
     x_1 = np.random.randn(local_size)
-    V_ik.append(x_1/np.linalg.norm(x_1))
+    V_ik = np.c_[V_ik, x_1/np.linalg.norm(x_1)]
 
     dim_S = 0
     err = 1e-8
@@ -129,24 +133,27 @@ if __name__ == '__main__':
 
             # gather the entire V_k on each rank
             V_k = np.zeros(n)
-            comm.Allgather([V_ik[k-1], MPI.DOUBLE], [V_k, MPI.DOUBLE])
+            local_vik = np.array(V_ik[:, -1])
+            comm.Allgather([local_vik, MPI.DOUBLE], [V_k, MPI.DOUBLE])
 
             # compute the new column of W_ik
             new_w = np.dot(A_i, V_k)
-            W_ik.append(new_w)
+            W_ik = np.c_[W_ik, new_w]
 
             # paper uses k-2 here?
-            new_s = np.dot(V_ik[k-1].T, new_w)
+            new_s = np.dot(V_ik.T, new_w)
 
             # send to the host and compute sum
             s_k = np.copy(new_s)
             comm.Reduce(new_s, s_k)
-            if k == 1:
-                L_k = s_k
 
-            L_k, Y_k = parallel_arrowhead_decomposition(Y_k, s_k, L_k)
+            if k == 1:
+                L_k, Y_k = np.linalg.eig(np.diag(s_k))
+            else:
+                L_k, Y_k = parallel_arrowhead_decomposition(Y_k, s_k, L_k)
             dim_S += 1
 
+            print("after arrow", dim_S, L_k, Y_k)
             dim_S, L_k, Y_k = parallel_restart(m, q, dim_S, L_k, Y_k, V_ik, W_ik)
 
             lmin = min(dim_S, j)
@@ -155,6 +162,7 @@ if __name__ == '__main__':
             l_k = L_k[indices[lmin]]
             y_k = Y_k[:, indices[lmin]]
 
+            print("r_ik", f'{W_ik}, {y_k}, {V_ik}')
             r_ik = np.dot(W_ik, y_k) - l_k*np.dot(V_ik, y_k)
             r_k = np.zeros(n)
             comm.Allgather([r_ik, MPI.DOUBLE], [r_k, MPI.DOUBLE])
@@ -164,7 +172,7 @@ if __name__ == '__main__':
 
             t_ik = preconditioning(A_i, l_k, r_ik)
 
-            V_ik.append(mgs(comm, n, V_ik, t_ik))
+            V_ik = np.c_[V_ik, mgs(comm, n, V_ik, t_ik)]
 
 
 # fuse A across all nodes

@@ -44,7 +44,7 @@ def davidson(H, n, eps, max_iter, n_guess, n_eig):
 
 
 def parallel_arrowhead_decomposition(Y_p, s_k, L_p):
-    print("arrow:", f'{Y_p}, {s_k}, {L_p}')
+    # prepare arrowhead matrix
     s_nk = np.dot(Y_p.T, s_k[:-1])
     s_nk = np.append(s_nk, s_k[-1])
     L_p = np.append(L_p, 0)
@@ -52,11 +52,28 @@ def parallel_arrowhead_decomposition(Y_p, s_k, L_p):
     S_nk[-1, :] = s_nk
     S_nk[:, -1] = s_nk
 
-    return np.linalg.eig(S_nk)
+    # needs to be switched with a better implementation
+    L_k, Q_k = np.linalg.eig(S_nk)
+
+    # recover Y_k from Q_k
+    p = Y_p.shape[0]
+    Y_ext = np.zeros((p+1, p+1))
+    Y_ext[:-1, :-1] = Y_p
+    Y_ext[-1, -1] = 1
+    Y_k = np.dot(Y_ext, Q_k)
+    return L_k, Y_k
 
 
 def parallel_restart(m, q, dim_S, L_k, Y_k, V_ik, W_ik):
-    return dim_S, L_k, Y_k
+    if m + q <= dim_S:
+        L_k = L_k[:m]
+        # TODO: missing orthonormalization of Y_k[:,:m] here
+        Y_k = Y_k[:, :m]
+        V_ik = np.dot(V_ik, Y_k)
+        W_ik = np.dot(W_ik, Y_k)
+        Y_k = Y_k[:m, :]
+        dim_S = m
+    return dim_S, L_k, Y_k, V_ik, W_ik
 
 
 def preconditioning(A_i, l_k, r_ik):
@@ -130,6 +147,7 @@ if __name__ == '__main__':
 
     for j in range(n_eig):
         for k in range(1, max_iter):
+            print(f"eig: {j}, iter: {k}")
 
             # gather the entire V_k on each rank
             V_k = np.zeros(n)
@@ -147,39 +165,47 @@ if __name__ == '__main__':
             s_k = np.copy(new_s)
             comm.Reduce(new_s, s_k)
 
+            print("arrow", f"dim_S: {dim_S}")
             if k == 1:
                 L_k, Y_k = np.linalg.eig(np.diag(s_k))
             else:
                 L_k, Y_k = parallel_arrowhead_decomposition(Y_k, s_k, L_k)
             dim_S += 1
 
-            print("after arrow", dim_S, L_k, Y_k)
-            dim_S, L_k, Y_k = parallel_restart(m, q, dim_S, L_k, Y_k, V_ik, W_ik)
+            print("restart", f"dim_S: {dim_S}")
+            dim_S, L_k, Y_k, V_ik, W_ik = parallel_restart(m, q, dim_S, L_k,
+                                                           Y_k, V_ik, W_ik)
 
+            print("residual", f"dim_S: {dim_S}", f"L_k: {L_k.shape}",
+                  f"Y_k: {Y_k.shape}")
             lmin = min(dim_S, j)
             # L_k and Y_k are sync'd (the sort of one is the same on the other)
             indices = L_k.argsort()
             l_k = L_k[indices[lmin]]
             y_k = Y_k[:, indices[lmin]]
 
-            print("r_ik", f'{W_ik}, {y_k}, {V_ik}')
+            print(f"{V_ik.shape}, {W_ik.shape}, {y_k.shape}")
             r_ik = np.dot(W_ik, y_k) - l_k*np.dot(V_ik, y_k)
             r_k = np.zeros(n)
             comm.Allgather([r_ik, MPI.DOUBLE], [r_k, MPI.DOUBLE])
 
-            if np.linalg.norm(r_k) < epsilon:
+            res = np.linalg.norm(r_k)
+            if res < epsilon:
                 break
 
+            print("preconditioning", f"||r_k||: {res}")
             t_ik = preconditioning(A_i, l_k, r_ik)
 
+            print("mgs")
             V_ik = np.c_[V_ik, mgs(comm, n, V_ik, t_ik)]
-
 
 # fuse A across all nodes
 A = np.zeros((n, n))
 comm.Allgather([A_i, MPI.DOUBLE], [A, MPI.DOUBLE])
 # simple algo
-ref_l, ref_y = np.linalg.eig(A)
-ref_l = np.sort(ref_l)
 
-print(L_k, ref_l)
+if rank == 0:
+    ref_l, ref_y = np.linalg.eig(A)
+    ref_l = np.sort(ref_l)
+
+    print(L_k, ref_l: len(L_k))

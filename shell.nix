@@ -31,5 +31,7 @@ pkgs.mkShell {
           python3Packages.mpi4py.mpi
           python3Packages.flake8
           mnemo-py
+          pkgconfig
+          scalapack
         ];
 }

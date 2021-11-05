@@ -550,7 +550,8 @@ class Hamiltonian(object):
     def H(self, psi_i: Psi_det, psi_j: Psi_det) -> List[List[Energy]]:
         """Return a matrix of size psi_i x psi_j containing the value of the Hamiltonian.
         Note that when psi_i == psi_j, this matrix is an hermitian."""
-        return self.H_2e(psi_i, psi_j) + self.H_4e(psi_i, psi_j)
+        H = self.H_2e(psi_i, psi_j) + self.H_4e(psi_i, psi_j)
+        return H
 
 
 #  _                  _

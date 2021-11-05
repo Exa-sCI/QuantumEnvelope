@@ -3,6 +3,10 @@ from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewTyp
 """Index into the set of orbitals: (1,2,...,n_orb)"""
 OrbitalIdx = NewType("OrbitalIdx", int)
 
+"""TODO"""
+class Hamiltonian_engine(object):
+    pass
+
 """Two-electron integral:
     $<ij|kl> = \int \int \phi_i(r_1) \phi_j(r_2) \frac{1}{|r_1 - r_2|} \phi_k(r_1) \phi_l(r_2) dr_1 dr_2$
 """

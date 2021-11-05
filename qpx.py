@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 from qpx.types import *
-from qpx.input import load_integrals, load_wf, load_eref
+from qpx.input import load_integrals, load_wf, load_eref, save_wf
 from qpx.hamiltonian import Hamiltonian
 from qpx.powerplant import Powerplant
 from dataclasses import dataclass
@@ -31,6 +31,44 @@ def selection_step(lewis: Hamiltonian, n_ord, psi_coef: Psi_coef, psi_det: Psi_d
     # 3.
     return (*Powerplant(lewis, psi_det_extented).E_and_psi_coef, psi_det_extented)
 
+def make_simple_wf(n_orb: int, n_elec: int) -> Tuple[List[float], List[Determinant]]:
+    """
+    make a single-determinant wavefunction with the lowest orbitals occupied
+    """
+    psi_coef = [1.0]
+    nb = n_elec//2
+    na = n_elec - nb
+    psi_det = [Determinant(tuple(range(1,na+1)), tuple(range(1,nb+1)))]
+    return psi_coef, psi_det
+
+
+def run_cipsi(fcidump_path: str, n_elec: int, n_iter: int, outpath: str, iter_expansion_factor: float=1.0, do_pt2: bool=False):
+    """
+    using integrals from fcidump, do `n_iter` cipsi iterations starting from a simple single-det wf
+    at each iteration, add a number of dets equal to current n_det times iter_expansion_factor
+
+    """
+    # load integrals, n_orb and create Hamiltonian
+    n_orb, E_0, int1e, int2e = load_integrals(fcidump_path)
+    ham = Hamiltonian(int1e,int2e,E_0)
+
+    # make simple single-det starting wf
+    psi_coef, psi_det = make_simple_wf(n_orb,n_elec)
+
+    pt2str=''
+    pt2header='E_PT2' if do_pt2 else ''
+    # iterate
+    print(f'iter       n_det      E_var                      '+pt2header)
+    for i in range(n_iter):
+        E_i, psi_coef, psi_det = selection_step(ham,n_orb,psi_coef,psi_det,int(iter_expansion_factor*len(psi_det)))
+        if do_pt2:
+            E_pt2_i = Powerplant(ham, psi_det).E_pt2(psi_coef, n_orb)
+            pt2str = f'{E_pt2_i:15.5f}'
+        print(f'{i:4d}  {len(psi_det):10d}{E_i:25.15f}'+pt2str)
+        save_wf(psi_coef,psi_det,f'{outpath}.wf_{i:05d}_{len(psi_det)}_det',n_orb)
+
+    return E_i,  psi_coef, psi_det
+
 
 if __name__ == "__main__":
     import argparse
@@ -49,5 +87,6 @@ if __name__ == "__main__":
     E =  Powerplant(lewis, psi_det).E(psi_coef)
 
     # 
+    print(args.eref)
     E_ref = load_eref(args.eref)
     assert_almost_equal(E_ref, E)

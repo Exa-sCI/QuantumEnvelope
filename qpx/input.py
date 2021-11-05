@@ -162,3 +162,30 @@ def load_eref(path_ref) -> float:
     import re
 
     return float(re.search(r"E +=.+", data).group(0).strip().split()[-1])
+
+def save_wf(psi_coef: List[float], psi_det: List[Determinant], wfpath: str, n_orb: int):
+    """
+    write wf to file with dets in +/- format
+    """
+
+    assert (len(psi_coef) == len(psi_det))
+
+    def encode_det(det: Determinant):
+        """
+        input: Determinant
+        output: tuple of +/- strings (one for each spindet)
+        """
+        return tuple(map(encode_spindet,det))
+
+    def encode_spindet(spindet: Spin_determinant):
+        """
+        translate a Spin_determinant to a +/- string representation
+        """
+        return ''.join( ('+' if i in spindet else '-') for i in range(1,max(spindet)+1))
+
+    with open(wfpath,'w') as outfile:
+        for ci,di in zip(psi_coef, psi_det):
+            outfile.write(f'{ci}\n')
+            for spindet in encode_det(di):
+                outfile.write(spindet.ljust(n_orb,'-')+'\n')
+    return

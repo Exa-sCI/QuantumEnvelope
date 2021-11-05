@@ -218,9 +218,13 @@ import numpy as np
 #
 class Excitation(object):
     def __init__(self, n_orb):
+        """
+        we don't handle cases with frozen/inactive orbitals
+        all orbitals are active
+        """
         self.all_orbs = frozenset(range(1, n_orb + 1))
 
-    def gen_all_excitation(self, spindet: Spin_determinant, ed: int) -> Iterator:
+    def gen_all_excitation(self, spindet: Spin_determinant, exc_degree: int) -> Iterator:
         """
         Generate list of pair -> hole from a determinant spin.
 
@@ -229,14 +233,15 @@ class Excitation(object):
         >>> sorted(Excitation(4).gen_all_excitation( (1,2),1))
         [((1,), (3,)), ((1,), (4,)), ((2,), (3,)), ((2,), (4,))]
         """
-        holes = combinations(spindet, ed)
+        holes = combinations(spindet, exc_degree)
         not_spindet = self.all_orbs - set(spindet)
-        parts = combinations(not_spindet, ed)
+        parts = combinations(not_spindet, exc_degree)
         return product(holes, parts)
 
-    def gen_all_connected_spindet(self, spindet: Spin_determinant, ed: int) -> Iterator:
+    def gen_all_connected_spindet(self, spindet: Spin_determinant, exc_degree: int) -> Iterator:
         """
         Generate all the posible spin determinant relative to a excitation degree
+        similar to `gen_all_excitation`, but excitations are then applied
 
         >>> sorted(Excitation(4).gen_all_connected_spindet( (1,2), 1))
         [(1, 3), (1, 4), (2, 3), (2, 4)]
@@ -248,14 +253,15 @@ class Excitation(object):
             s = (set(spindet) - set(lh)) | set(lp)
             return tuple(sorted(s))
 
-        l_exc = self.gen_all_excitation(spindet, ed)
+        l_exc = self.gen_all_excitation(spindet, exc_degree)
         return map(apply_excitation, l_exc)
 
     def gen_all_connected_det_from_det(self, det: Determinant) -> Iterator[Determinant]:
         """
-        Generate all the determinant who are single or double exictation (aka connected) from the input determinant
+        Generate all the determinant who are single or double exictation (aka connected) from the input determinant with all n orbitals active
 
-        >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant( (1,2), (1,) )))
+
+        >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant( alpha=(1,2), beta=(1,) )))
         [Determinant(alpha=(1, 2), beta=(2,)),
          Determinant(alpha=(1, 2), beta=(3,)),
          Determinant(alpha=(1, 3), beta=(1,)),
@@ -343,6 +349,18 @@ class Hamiltonian(object):
         return self.d_two_e_integral[(i, j, k, l)]
 
     @staticmethod
+    def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
+        """Compute the excitation degree, the number of orbitals which differ
+           between the two determinants.
+        >>> Hamiltonian.get_exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
+        ...                            Determinant(alpha=(1, 3), beta=(5, 7)))
+        (1, 2)
+        """
+        ed_up = len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
+        ed_dn = len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
+        return ed_up, ed_dn
+
+    @staticmethod
     def get_phase_idx_single_exc(sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
         """phase, hole, particle of <I|H|J> when I and J differ by exactly one orbital
            h is occupied only in I
@@ -396,18 +414,6 @@ class Hamiltonian(object):
 
         return (phase, h1, h2, p1, p2)
 
-    @staticmethod
-    def get_exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
-        """Compute the excitation degree, the number of orbitals which differ
-           between the two determinants.
-        >>> Hamiltonian.get_exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
-        ...                            Determinant(alpha=(1, 3), beta=(5, 7)))
-        (1, 2)
-        """
-        ed_up = len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
-        ed_dn = len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
-        return ed_up, ed_dn
-
     # ~ ~ ~
     # H_2e
     # ~ ~ ~
@@ -418,7 +424,7 @@ class Hamiltonian(object):
         res += sum(self.H_one_e(i, i) for i in det_i.beta)
         return res
 
-    def H_i_j_single_2e(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> Energy:
+    def H_i_j_single_2e(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Energy:
         """<I|H|J>, when I and J differ by exactly one orbital."""
         phase, m, p = Hamiltonian.get_phase_idx_single_exc(sdet_i, sdet_j)
         return self.H_one_e(m, p) * phase
@@ -431,9 +437,9 @@ class Hamiltonian(object):
             return self.H_i_i_2e(det_i)
         # Single excitation
         elif (ed_up, ed_dn) == (1, 0):
-            return self.H_i_j_single_2e(det_i.alpha, det_j.alpha, det_i.beta)
+            return self.H_i_j_single_2e(det_i.alpha, det_j.alpha)
         elif (ed_up, ed_dn) == (0, 1):
-            return self.H_i_j_single_2e(det_i.beta, det_j.beta, det_i.alpha)
+            return self.H_i_j_single_2e(det_i.beta, det_j.beta)
         else:
             return 0.0
 
@@ -443,8 +449,11 @@ class Hamiltonian(object):
 
     # ~ ~ ~
     # H_4e
+    # Helper functions for different excitation types (A,AA,B,BB,AB)
     # ~ ~ ~
+
     def H_i_i_4e_index(self, det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
+        """indices of integrals that contribute to diagonal element <I|H|I>."""
         for i, j in combinations(det_i.alpha, 2):
             yield (i, j, i, j), 1
             yield (i, j, j, i), -1
@@ -455,9 +464,9 @@ class Hamiltonian(object):
 
         for i, j in product(det_i.alpha, det_i.beta):
             yield (i, j, i, j), 1
-
     def H_i_j_single_4e_index(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> Iterator[Two_electron_integral_index_phase]:
-        """<I|H|J>, when I and J differ by exactly one orbital."""
+        """indices of integrals that contribute to <I|H|J>, 
+        when I and J differ by exactly one orbital."""
         phase, m, p = Hamiltonian.get_phase_idx_single_exc(sdet_i, sdet_j)
         for i in sdet_i:
             yield (m, i, p, i), phase
@@ -466,21 +475,27 @@ class Hamiltonian(object):
             yield (m, i, p, i), phase
 
     def H_i_j_doubleAA_4e_index(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Iterator[Two_electron_integral_index_phase]:
-        """<I|H|J>, when I and J differ by exactly two orbitals within
-        the same spin."""
+        """indices of integrals that contribute to <I|H|J>, 
+        when I and J differ by exactly two orbitals within the same spin."""
         phase, h1, h2, p1, p2 = Hamiltonian.get_phase_idx_double_exc(sdet_i, sdet_j)
         yield (h1, h2, p1, p2), phase
         yield (h1, h2, p2, p1), -phase
 
     def H_i_j_doubleAB_4e_index(self, det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
-        """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
-        one beta spin-orbital."""
+        """indices of integrals that contribute to <I|H|J>, 
+        when I and J differ by exactly one alpha spin-orbital and one beta spin-orbital."""
         phaseA, h1, p1 = Hamiltonian.get_phase_idx_single_exc(det_i.alpha, det_j.alpha)
         phaseB, h2, p2 = Hamiltonian.get_phase_idx_single_exc(det_i.beta, det_j.beta)
         yield (h1, h2, p1, p2), phaseA * phaseB
 
     def H_i_j_4e_index(self, det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
         """General function to dispatch the evaluation of H_ij"""
+
+
+        # ~ ~ ~
+        # find exc_degree and call appropriate index function
+        # ~ ~ ~
+
         ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
         # Same determinant -> Diagonal element
         if (ed_up, ed_dn) == (0, 0):
@@ -499,13 +514,20 @@ class Hamiltonian(object):
         elif (ed_up, ed_dn) == (1, 1):
             yield from self.H_i_j_doubleAB_4e_index(det_i, det_j)
 
-    def H_4e_index(self, psi_i, psi_j) -> Iterator[Two_electron_integral_index_phase]:
-        for a, det_i in enumerate(psi_i):
-            for b, det_j in enumerate(psi_j):
-                for idx, phase in self.H_i_j_4e_index(det_i, det_j):
-                    yield (a, b), idx, phase
+    def H_4e_index(self, psi_i, psi_j) -> Iterator[Tuple[Tuple[int,int],Two_electron_integral_index_phase]]:
+        """
+        for all integrals connecting each pair of determinants, return 
+        pair of det indices, integral index, and phase
+        """
+        for (a,det_i),(b,det_j) in product(enumerate(psi_i),enumerate(psi_j)):
+            for idx, phase in self.H_i_j_4e_index(det_i, det_j):
+                yield (a, b), idx, phase
 
     def H_4e(self, psi_i, psi_j) -> List[List[Energy]]:
+        """
+        build H by iterating over all pairs of dets and all corresponding integrals 
+        and accumulating sums in np array
+        """
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_i), len(psi_j)))
         for (a, b), (i, j, k, l), phase in self.H_4e_index(psi_i, psi_j):
@@ -516,6 +538,9 @@ class Hamiltonian(object):
     # H_i_i
     # ~ ~ ~
     def H_i_i(self, det_i) -> List[Energy]:
+        """
+        return diagonal element of H for det_i (used in denominator for PT2)
+        """
         H_i_i_4e = sum(phase * self.H_two_e(*idx) for idx, phase in self.H_i_i_4e_index(det_i))
         return self.H_i_i_2e(det_i) + H_i_i_4e
 

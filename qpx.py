@@ -397,7 +397,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # load data
     n_orb, E0, d_one_e_integral, d_two_e_integral = load_integrals(args.fcidump)
     psi_coef, psi_det = load_wf(args.wf)
 
+    print(psi_det)
 
+    # prepare generator
+    lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0)

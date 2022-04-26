@@ -4,7 +4,24 @@
 # -----
 from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
 from dataclasses import dataclass
-from functools import cached_property
+try:
+    from functools import cached_property
+except ImportError:
+    class cached_property(object):
+        def __init__(self, func, name=None, doc=None):
+            self.__name__ = name or func.__name__
+            self.__module__ = func.__module__
+            self.__doc__ = doc or func.__doc__
+            self.func = func
+
+        def __get__(self, obj, type=None):
+            if obj is None:
+                return self
+            value = obj.__dict__.get(self.__name__, _missing)
+            if value is _missing:
+                value = self.func(obj)
+                obj.__dict__[self.__name__] = value
+            return value
 
 # Orbital index (1,2,...,n_orb)
 OrbitalIdx = NewType("OrbitalIdx", int)
@@ -303,6 +320,27 @@ class Excitation(object):
 # |_|  _. ._ _  o | _|_  _  ._  o  _. ._
 # | | (_| | | | | |  |_ (_) | | | (_| | |
 #
+
+# Determinant driven:
+#  - One electron
+#  - <ij||ji> (Two electrons diagonal)
+# Integral driven:
+#  - The rest
+
+
+# Determinant drivers, if double number of integral, fixed number of Determinant
+#               -> Selection time grow
+# In our case we can increase the number of node, so "fixed integral per node"
+#               -> Constant
+
+# New step:
+#  How to `//` determinant driven selection
+
+# Todo:
+#   - Clean up the repo!!!
+#   - Do the external H
+#   - Formalize the integral driver condon rules (check other paper)
+
 @dataclass
 class Hamiltonian(object):
     """
@@ -519,26 +557,13 @@ class Hamiltonian(object):
         return h
 
 
-
+    # Need to be inlined
     def H_i_j_4e_index_internal(self, det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
         """General function to dispatch the evaluation of H_ij"""
         ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
         # Same determinant -> Diagonal element
         if (ed_up, ed_dn) == (0, 0):
             yield from self.H_i_i_4e_index(det_i)
-        # Single excitation
-        #elif (ed_up, ed_dn) == (1, 0):
-        #    yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
-        #elif (ed_up, ed_dn) == (0, 1):
-        #    yield from self.H_i_j_single_4e_index(det_i.beta, det_j.beta, det_i.alpha)
-        # Double excitation of same spin
-        #elif (ed_up, ed_dn) == (2, 0):
-        #    yield from self.H_i_j_doubleAA_4e_index(det_i.alpha, det_j.alpha)
-        #elif (ed_up, ed_dn) == (0, 2):
-        #    yield from self.H_i_j_doubleAA_4e_index(det_i.beta, det_j.beta)
-        # Double excitation of opposite spins
-        #elif (ed_up, ed_dn) == (1, 1):
-        #    yield from self.H_i_j_doubleAB_4e_index(det_i, det_j)
 
     def H_pair_phase_from_idx(self,idx,da,db,psi_i):
         import itertools
@@ -550,11 +575,19 @@ class Hamiltonian(object):
         # Create map from orbital to determinant.alpha
         i,j,k,l = idx
 
+        # (h1,h2, p1,p2)
+        # 
+        # psi [ ( 0,1 ), (2,3) ] 4 Orbital SpinOrbital
+
+        # (0,1, 2,3)
+        # -> ( (0,1), (2,3) ),   1 
 
         # double AA
         if i<j:
             da_ij_not_kl = ( da[i] & da[j] ) - ( da[k] | da[l] )
             da_kl_not_ij = ( da[k] & da[l] ) - ( da[i] | da[j] )
+            # We maybe should not make the product and then filter the double exitation
+            # 
             for a,b in itertools.product(da_ij_not_kl,da_kl_not_ij):
                 det_i,det_j = psi_i[a], psi_i[b]
                 ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
@@ -594,7 +627,7 @@ class Hamiltonian(object):
                         yield (a,b), phaseA*phaseB
         # double BA
         # either double AB or double BA needs to account for the i==j cases
-        if i<=j:
+        if i <= j:
             dba_ij_not_kl = ( db[i] & da[j] ) - ( db[k] | da[l] )
             dba_kl_not_ij = ( db[k] & da[l] ) - ( db[i] | da[j] )
             for a,b in itertools.product(dba_ij_not_kl,dba_kl_not_ij):
@@ -651,6 +684,9 @@ class Hamiltonian(object):
 
 
     def H_4e_index_internal(self, psi_i) -> Iterator[Two_electron_integral_index_phase]:
+        # This only need iijj, ijji integral
+        # This can be stored in memory, hence we will do the determinant driven way
+        # Only one node will be responsible for it
         for a, det_i in enumerate(psi_i):
             for b, det_j in enumerate(psi_i):
                 for idx, phase in self.H_i_j_4e_index_internal(det_i, det_j):
@@ -659,6 +695,12 @@ class Hamiltonian(object):
         from collections import defaultdict
         da = defaultdict(set)
         db = defaultdict(set)
+        # det1 (1,2,3) 
+        # det2 (1,2,4)
+        # det3 (1,3,4)
+        #-> 1: 1,2,3
+        #-> 2: 1,2
+        #-> 3: 1,3
         for i, det in enumerate(psi_i):
             for o in det.alpha:
                 da[o].add(i)
@@ -666,9 +708,8 @@ class Hamiltonian(object):
                 db[o].add(i)
 
         from itertools import permutations
+        # Split intergral between nodes
         for idx in self.d_two_e_integral.keys():
-        #for (i,j),(k,l) in product(combinations(range(1,self.N_orb+1),2),permutations(range(1,self.N_orb+1),2)):
-            #idx = (i,j,k,l)
             for (a,b), phase in self.H_pair_phase_from_idx(idx,da,db,psi_i):
                 yield (a,b), idx, phase
 

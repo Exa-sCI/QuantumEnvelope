@@ -1068,7 +1068,3 @@ if __name__ == "__main__":
     #gtimers.quiet=True
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
     unittest.main(failfast=True)
-    for ij in range(10):
-        i,j = idx2_reverse(ij)
-        ij2 = get_idx2(i,j)
-        print(f'{ij}  {ij2}')

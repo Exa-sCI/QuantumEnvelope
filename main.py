@@ -581,7 +581,7 @@ class Hamiltonian(object):
 
         # (0,1, 2,3)
         # -> ( (0,1), (2,3) ),   1
-        def double_same(ds,deg,idx,spin):
+        def double_same(idx,ds,deg,spin):
             i,j,k,l = idx
             if i<j:
                 ds_ij_not_kl = ( ds[i] & ds[j] ) - ( ds[k] | ds[l] )
@@ -597,7 +597,7 @@ class Hamiltonian(object):
                             yield (a,b), phase
                         if (h1,h2,p2,p1 ) == (i,j,k,l):
                             yield (a,b), -phase
-        def double_different(ds0,ds1,idx,spin0,spin1):
+        def double_different(idx,ds0,ds1,spin0,spin1):
             i,j,k,l = idx
             if i<j:
                 dab_ij_not_kl = ( ds0[i] & ds1[j] ) - ( ds0[k] | ds1[l] )
@@ -612,16 +612,16 @@ class Hamiltonian(object):
                             yield (a,b), phaseA*phaseB
 
         # double AA <ia,ja|ka,la> & <ia,ja|la,ka>  i<j
-        yield from double_same(da,(2,0),idx,'alpha')
+        yield from double_same(idx,da,(2,0),'alpha')
 
         # double BB <ib,jb|kb,lb> & <ib,jb|lb,kb>  i<j
-        yield from double_same(db,(0,2),idx,'beta')
+        yield from double_same(idx,db,(0,2),'beta')
 
         # double AB <ia,jb|ka,lb>  i<j
-        yield from double_different(da,db,idx,'alpha','beta')
+        yield from double_different(idx,da,db,'alpha','beta')
 
         # double BA <ib,ja|kb,la>  i<j
-        yield from double_different(db,da,idx,'beta','alpha')
+        yield from double_different(idx,db,da,'beta','alpha')
 
         # <ib,ja|kb,la> i==j
         # either double AB or double BA needs to account for the i==j cases

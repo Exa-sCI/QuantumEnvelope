@@ -4,6 +4,7 @@
 # -----
 from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
 from dataclasses import dataclass
+from math import sqrt
 
 class gTimers(object):
     def __init__(self,quiet=False):
@@ -103,6 +104,51 @@ Psi_coef = List[float]
 # The pt2 Energy who correnpond to the pertubative energy induce by each determinant connected to Psi_det
 Energy = NewType("Energy", float)
 
+#TODO: cache?
+def get_idx2(i,j):
+    p,q = min(i,j),max(i,j)
+    return (q*(q+1))//2+p
+
+def get_idx4(i,j,k,l):
+    return get_idx2(get_idx2(i,j),get_idx2(k,l))
+
+def idx2_reverse(ij):
+    """
+    >>> [get_idx2(*idx2_reverse(i)) for i in range(10000)] == list(range(10000))
+    True
+    """
+    j=int((sqrt(1+8*ij)-1)/2)
+    i=ij-(j*(j+1)//2)
+    #assert(get_idx2(i,j)==ij)
+    return i,j
+
+def idx4_reverse(ijkl):
+    ij,kl = idx2_reverse(ijkl)
+    i,j = idx2_reverse(ij)
+    k,l = idx2_reverse(kl)
+    return i,j,k,l
+
+def idx4_reverse_all(ijkl):
+    """
+    return all 8 permutations that are equivalent for real orbitals
+    for complex orbitals, they are ordered as:
+    v, v, v*, v*, u, u, u*, u*
+    where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
+    """
+    i,j,k,l = idx4_reverse(ijkl)
+    return (i,j,k,l),(j,i,l,k),(k,l,i,j),(l,k,j,i),(i,j,l,k),(j,i,k,l),(l,k,i,j),(k,l,j,i)
+
+def canonical_4idx(i,j,k,l):
+    i,j = min(i,j),max(i,j)
+    ij = get_idx2(i,j)
+    k,l = min(k,l),max(k,l)
+    kl = get_idx2(k,l)
+    if ij<=kl:
+        return i,j,k,l
+    else:
+        return k,l,i,j
+
+
 #
 # ___
 #  |  ._  o _|_ o  _. | o _   _. _|_ o  _  ._
@@ -181,6 +227,7 @@ def load_integrals(fcidump_path) -> Tuple[int, float, One_electron_integral, Two
             d_two_e_integral[(k, l, i, j)] = v
             d_two_e_integral[(l, i, j, k)] = v
             d_two_e_integral[(l, k, j, i)] = v
+            #d_two_e_integral[canonical_4idx(i,j,k,l)] = v
 
     f.close()
 
@@ -1021,3 +1068,7 @@ if __name__ == "__main__":
     #gtimers.quiet=True
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
     unittest.main(failfast=True)
+    for ij in range(10):
+        i,j = idx2_reverse(ij)
+        ij2 = get_idx2(i,j)
+        print(f'{ij}  {ij2}')

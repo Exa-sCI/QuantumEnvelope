@@ -660,8 +660,6 @@ class Hamiltonian(object):
             i,j,k,l = idx
             ds_ij_not_kl = ( ds[i] & ds[j] ) - ( ds[k] | ds[l] )
             ds_kl_not_ij = ( ds[k] & ds[l] ) - ( ds[i] | ds[j] )
-            #ds_ij_not_kl = ( ds[i] & ds[j] ) -  ds[k] - ds[l]
-            #ds_kl_not_ij = ( ds[k] & ds[l] ) -  ds[i] - ds[j]
             # We maybe should not make the product and then filter the double exitation
             #
             for a,b in itertools.product(ds_ij_not_kl,ds_kl_not_ij):
@@ -679,8 +677,6 @@ class Hamiltonian(object):
             i,j,k,l = idx
             dab_ij_not_kl = ( ds0[i] & ds1[j] ) - ( ds0[k] | ds1[l] )
             dab_kl_not_ij = ( ds0[k] & ds1[l] ) - ( ds0[i] | ds1[j] )
-            #dab_ij_not_kl = ( ds0[i] & ds1[j] ) - ds0[k] - ds1[l]
-            #dab_kl_not_ij = ( ds0[k] & ds1[l] ) - ds0[i] - ds1[j]
             for a,b in itertools.product(dab_ij_not_kl,dab_kl_not_ij):
                 det_i,det_j = psi_i[a], psi_i[b]
                 ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
@@ -750,20 +746,6 @@ class Hamiltonian(object):
                     yield (a, b), idx, phase
 
         da,db = get_da_db(psi_i)
-        #from collections import defaultdict
-        #da = defaultdict(set)
-        #db = defaultdict(set)
-        ## det1 (1,2,3)
-        ## det2 (1,2,4)
-        ## det3 (1,3,4)
-        ##-> 1: 1,2,3
-        ##-> 2: 1,2
-        ##-> 3: 1,3
-        #for i, det in enumerate(psi_i):
-        #    for o in det.alpha:
-        #        da[o].add(i)
-        #    for o in det.beta:
-        #        db[o].add(i)
 
         from itertools import permutations
         # Split intergral between nodes

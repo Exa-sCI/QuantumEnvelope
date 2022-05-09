@@ -298,23 +298,11 @@ def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx,Set[int]]:
 def get_da_db(psi_i: Psi_det) -> Tuple[Dict[OrbitalIdx,Set[int]],Dict[OrbitalIdx,Set[int]]]:
     """
     TODO: more tests?
+    maybe use dict with spin as key instead of tuple?
     >>> get_da_db([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
     (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}), defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
     """
-    da = defaultdict(set)
-    db = defaultdict(set)
-        # det1 (1,2,3)
-        # det2 (1,2,4)
-        # det3 (1,3,4)
-        #-> 1: 1,2,3
-        #-> 2: 1,2
-        #-> 3: 1,3
-    for i, det in enumerate(psi_i):
-        for o in det.alpha:
-            da[o].add(i)
-        for o in det.beta:
-            db[o].add(i)
-    return da,db
+    return tuple(get_dets_occ(psi_i,spin) for spin in ['alpha','beta'])
 #  _
 # |_     _ o _|_  _. _|_ o  _  ._
 # |_ >< (_ |  |_ (_|  |_ | (_) | |

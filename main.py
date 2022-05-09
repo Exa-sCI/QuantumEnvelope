@@ -610,6 +610,9 @@ class Hamiltonian(object):
     # H_4e
     # ~ ~ ~
     def H_i_i_4e_index(self, det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
+        """
+        yield idx, phase for all 2-elec integrals that contribute to <det_i|H|det_i>
+        """
         for i, j in combinations(det_i.alpha, 2):
             yield (i, j, i, j), 1
             yield (i, j, j, i), -1
@@ -651,8 +654,8 @@ class Hamiltonian(object):
         if (ed_up, ed_dn) == (0, 0):
             yield from self.H_i_i_4e_index(det_i)
         # Single excitation
-        elif (ed_up, ed_dn) == (1, 0):
-            yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
+#        elif (ed_up, ed_dn) == (1, 0):
+#            yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
         elif (ed_up, ed_dn) == (0, 1):
             yield from self.H_i_j_single_4e_index(det_i.beta, det_j.beta, det_i.alpha)
         # Double excitation of same spin
@@ -669,6 +672,11 @@ class Hamiltonian(object):
             for b, det_j in enumerate(psi_j):
                 for idx, phase in self.H_i_j_4e_index(det_i, det_j):
                     yield (a, b), idx, phase
+        da_i,db_i = get_da_db(psi_i) 
+        da_j,db_j = get_da_db(psi_j) 
+        for idx in self.d_two_e_integral.keys():
+            for (a,b), phase in self.H_pair_phase_from_idx_ext(idx,da_i,db_i,psi_i,da_j,db_j,psi_j):
+                yield (a,b), idx, phase
 
     def H_4e(self, psi_i, psi_j) -> List[List[Energy]]:
         # This is the function who will take foreever
@@ -677,14 +685,6 @@ class Hamiltonian(object):
             h[a, b] += phase * self.H_two_e(i, j, k, l)
         return h
 
-
-    # Need to be inlined
-    def H_i_j_4e_index_internal(self, det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
-        """General function to dispatch the evaluation of H_ij"""
-        ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-        # Same determinant -> Diagonal element
-        if (ed_up, ed_dn) == (0, 0):
-            yield from self.H_i_i_4e_index(det_i)
 
     def H_pair_phase_from_idx(self,idx,da,db,psi_i):
         import itertools
@@ -702,7 +702,6 @@ class Hamiltonian(object):
 
         # (0,1, 2,3)
         # -> ( (0,1), (2,3) ),   1
-        @timer_wrap
         def double_same(idx,ds,deg,spin):
             i,j,k,l = idx
             ds_ij_not_kl = ( ds[i] & ds[j] ) - ( ds[k] | ds[l] )
@@ -719,7 +718,6 @@ class Hamiltonian(object):
                     if (h1,h2,p2,p1 ) == (i,j,k,l):
                         yield (a,b), -phase
 
-        @timer_wrap
         def double_different(idx,ds0,ds1,spin0,spin1):
             i,j,k,l = idx
             dab_ij_not_kl = ( ds0[i] & ds1[j] ) - ( ds0[k] | ds1[l] )
@@ -733,28 +731,27 @@ class Hamiltonian(object):
                     if (hA,hB,pA,pB ) == (i,j,k,l):
                         yield (a,b), phaseA*phaseB
 
-        @timer_wrap
-        def single_Ss(idx,ds0,ds1,exc,spin0,spin1):
+        def single_Ss(idx,spindet_a_occ,spindet_b_occ,exc,spin_a,spin_b):
             i,j,k,l = idx
 
-            S1 = (ds0[i] & ds0[j]) - ds0[k]
-            R1 = (ds0[k] & ds0[j]) - ds0[i]
-            S2 = (ds0[i] & ds1[j]) - ds0[k]
-            R2 = (ds0[k] & ds1[j]) - ds0[i]
-            S3 = (ds0[i] & ds0[j]) - ds0[l]
-            R3 = (ds0[l] & ds0[j]) - ds0[i]
+            S1 = (spindet_a_occ[i] & spindet_a_occ[j]) - spindet_a_occ[k]
+            R1 = (spindet_a_occ[k] & spindet_a_occ[j]) - spindet_a_occ[i]
+            S2 = (spindet_a_occ[i] & spindet_b_occ[j]) - spindet_a_occ[k]
+            R2 = (spindet_a_occ[k] & spindet_b_occ[j]) - spindet_a_occ[i]
+            S3 = (spindet_a_occ[i] & spindet_a_occ[j]) - spindet_a_occ[l]
+            R3 = (spindet_a_occ[l] & spindet_a_occ[j]) - spindet_a_occ[i]
 
             for a,b in set().union(product(S1,R1),product(S2,R2),product(S3,R3)):
                 det_i, det_j = psi_i[a], psi_i[b]
                 ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
                 if (ed_up, ed_dn) == exc:
-                    phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin0),getattr(det_j,spin0))
-                    if j in getattr(det_i,spin0) and hA!=j:
+                    phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
+                    if j in getattr(det_i,spin_a) and hA!=j:
                         if (hA,pA,j) == (i,k,l): # i->k j==l(alpha)
                             yield (a,b), phaseA
                         if (hA,j,pA) == (i,k,l): # i->l j==k(alpha)
                             yield (a,b), -phaseA
-                    if j in getattr(det_i,spin1):
+                    if j in getattr(det_i,spin_b):
                         if (hA,pA,j) == (i,k,l): # i->k j==l(beta)
                             yield (a,b), phaseA
         # <ij|kl> used for:
@@ -782,6 +779,59 @@ class Hamiltonian(object):
         # single Bb and Ba
         yield from single_Ss(idx,db,da,(0,1),'beta','alpha')
 
+    def H_pair_phase_from_idx_ext(self,idx,da_i,db_i,psi_i,da_j,db_j,psi_j):
+        import itertools
+        '''
+        for idx <- i,j,k,l
+        yield pairs of dets in d that are connected by idx
+        '''
+
+        def single_Ss_ext(idx,spindet_a_occ_i,spindet_b_occ_i,spindet_a_occ_j,spindet_b_occ_j,exc,spin_a,spin_b):
+            i,j,k,l = idx
+
+            # <ij|kj>
+            # from ia to ka where ja is occupied
+            S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - spindet_a_occ_i[k]
+            R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[j]) - spindet_a_occ_j[i]
+            # <ij|kj>
+            # from ia to ka where jb is occupied
+            S2 = (spindet_a_occ_i[i] & spindet_b_occ_i[j]) - spindet_a_occ_i[k]
+            R2 = (spindet_a_occ_j[k] & spindet_b_occ_j[j]) - spindet_a_occ_j[i]
+            # <ij|jl> = -<ij|lj>
+            # from ia to la where ja is occupied
+            S3 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - spindet_a_occ_i[l]
+            R3 = (spindet_a_occ_j[l] & spindet_a_occ_j[j]) - spindet_a_occ_j[i]
+
+            for a,b in set().union(product(S1,R1),product(S2,R2),product(S3,R3)):
+                det_i, det_j = psi_i[a], psi_j[b]
+                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == exc:
+                    phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
+                    if j in getattr(det_i,spin_a) and hA!=j:
+                        if (hA,pA,j) == (i,k,l): # i->k j==l(alpha)
+                            yield (a,b), phaseA
+                        if (hA,j,pA) == (i,k,l): # i->l j==k(alpha)
+                            yield (a,b), -phaseA
+                    if j in getattr(det_i,spin_b):
+                        if (hA,pA,j) == (i,k,l): # i->k j==l(beta)
+                            yield (a,b), phaseA
+        yield from single_Ss_ext(idx,da_i,db_i,da_j,db_j,(1,0),'alpha','beta')
+
+
+        # Create map from orbital to determinant.alpha
+        #i,j,k,l = idx
+        #for a, det_i in enumerate(psi_i):
+        #    for b, det_j in enumerate(psi_j):
+        #        ed_up,ed_dn = self.get_exc_degree(det_i,det_j)
+        #        if (ed_up,ed_dn) == (1,0):
+        #            for idx2, phase in self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta):
+        #                if idx2==idx:
+        #                    yield (a,b), phase 
+        #    
+
+
+
+
 
     def H_4e_index_internal(self, psi_i) -> Iterator[Two_electron_integral_index_phase]:
         # This only need iijj, ijji integral
@@ -789,8 +839,11 @@ class Hamiltonian(object):
         # Only one node will be responsible for it
         for a, det_i in enumerate(psi_i):
             for b, det_j in enumerate(psi_i):
-                for idx, phase in self.H_i_j_4e_index_internal(det_i, det_j):
-                    yield (a, b), idx, phase
+                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == (0, 0):
+                    for idx, phase in self.H_i_i_4e_index(det_i):
+                        yield (a, b), idx, phase
+               
 
         da,db = get_da_db(psi_i)
 

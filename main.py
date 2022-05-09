@@ -342,11 +342,11 @@ def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx,Set[int]]:
             ds[o].add(i)
     return ds
 
-def get_da_db(psi_i: Psi_det) -> Tuple[Dict[OrbitalIdx,Set[int]],Dict[OrbitalIdx,Set[int]]]:
+def get_spindet_a_occ_spindet_b_occ(psi_i: Psi_det) -> Tuple[Dict[OrbitalIdx,Set[int]],Dict[OrbitalIdx,Set[int]]]:
     """
     TODO: more tests?
     maybe use dict with spin as key instead of tuple?
-    >>> get_da_db([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
+    >>> get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
     (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}), defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
     """
     return tuple(get_dets_occ(psi_i,spin) for spin in ['alpha','beta'])
@@ -672,10 +672,10 @@ class Hamiltonian(object):
             for b, det_j in enumerate(psi_j):
                 for idx, phase in self.H_i_j_4e_index(det_i, det_j):
                     yield (a, b), idx, phase
-        da_i,db_i = get_da_db(psi_i) 
-        da_j,db_j = get_da_db(psi_j) 
+        spindet_a_occ_i,spindet_b_occ_i = get_spindet_a_occ_spindet_b_occ(psi_i) 
+        spindet_a_occ_j,spindet_b_occ_j = get_spindet_a_occ_spindet_b_occ(psi_j) 
         for idx in self.d_two_e_integral.keys():
-            for (a,b), phase in self.H_pair_phase_from_idx_ext(idx,da_i,db_i,psi_i,da_j,db_j,psi_j):
+            for (a,b), phase in self.H_pair_phase_from_idx_ext(idx,spindet_a_occ_i,spindet_b_occ_i,psi_i,spindet_a_occ_j,spindet_b_occ_j,psi_j):
                 yield (a,b), idx, phase
 
     def H_4e(self, psi_i, psi_j) -> List[List[Energy]]:
@@ -686,7 +686,7 @@ class Hamiltonian(object):
         return h
 
 
-    def H_pair_phase_from_idx(self,idx,da,db,psi_i):
+    def H_pair_phase_from_idx(self,idx,spindet_a_occ,spindet_b_occ,psi_i):
         import itertools
         '''
         for idx <- i,j,k,l
@@ -758,28 +758,28 @@ class Hamiltonian(object):
         # <D|H|D_{i(s1),j(s2)}^{k(s1),l(s2)}
         if i<j:
             # double AA <ia,ja|ka,la> & <ia,ja|la,ka>  i<j
-            yield from double_same(idx,da,(2,0),'alpha')
+            yield from double_same(idx,spindet_a_occ,(2,0),'alpha')
 
             # double BB <ib,jb|kb,lb> & <ib,jb|lb,kb>  i<j
-            yield from double_same(idx,db,(0,2),'beta')
+            yield from double_same(idx,spindet_b_occ,(0,2),'beta')
 
             # double AB <ia,jb|ka,lb>  i<j
-            yield from double_different(idx,da,db,'alpha','beta')
+            yield from double_different(idx,spindet_a_occ,spindet_b_occ,'alpha','beta')
 
             # double BA <ib,ja|kb,la>  i<j
-            yield from double_different(idx,db,da,'beta','alpha')
+            yield from double_different(idx,spindet_b_occ,spindet_a_occ,'beta','alpha')
 
         elif i==j:
             # <ib,ja|kb,la> i==j
             # either double AB or double BA needs to account for the i==j cases
-            yield from double_different(idx,db,da,'beta','alpha')
+            yield from double_different(idx,spindet_b_occ,spindet_a_occ,'beta','alpha')
 
         # single Aa and Ab
-        yield from single_Ss(idx,da,db,(1,0),'alpha','beta')
+        yield from single_Ss(idx,spindet_a_occ,spindet_b_occ,(1,0),'alpha','beta')
         # single Bb and Ba
-        yield from single_Ss(idx,db,da,(0,1),'beta','alpha')
+        yield from single_Ss(idx,spindet_b_occ,spindet_a_occ,(0,1),'beta','alpha')
 
-    def H_pair_phase_from_idx_ext(self,idx,da_i,db_i,psi_i,da_j,db_j,psi_j):
+    def H_pair_phase_from_idx_ext(self,idx,spindet_a_occ_i,spindet_b_occ_i,psi_i,spindet_a_occ_j,spindet_b_occ_j,psi_j):
         import itertools
         '''
         for idx <- i,j,k,l
@@ -815,7 +815,7 @@ class Hamiltonian(object):
                     if j in getattr(det_i,spin_b):
                         if (hA,pA,j) == (i,k,l): # i->k j==l(beta)
                             yield (a,b), phaseA
-        yield from single_Ss_ext(idx,da_i,db_i,da_j,db_j,(1,0),'alpha','beta')
+        yield from single_Ss_ext(idx,spindet_a_occ_i,spindet_b_occ_i,spindet_a_occ_j,spindet_b_occ_j,(1,0),'alpha','beta')
 
 
         # Create map from orbital to determinant.alpha
@@ -845,12 +845,12 @@ class Hamiltonian(object):
                         yield (a, b), idx, phase
                
 
-        da,db = get_da_db(psi_i)
+        spindet_a_occ,spindet_b_occ = get_spindet_a_occ_spindet_b_occ(psi_i)
 
         from itertools import permutations
         # Split intergral between nodes
         for idx in self.d_two_e_integral.keys():
-            for (a,b), phase in self.H_pair_phase_from_idx(idx,da,db,psi_i):
+            for (a,b), phase in self.H_pair_phase_from_idx(idx,spindet_a_occ,spindet_b_occ,psi_i):
                 yield (a,b), idx, phase
 
 

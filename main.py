@@ -810,12 +810,10 @@ class Hamiltonian(object):
                     ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
                     if (ed_up, ed_dn) == exc:
                         phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
-                        #if j in getattr(det_i,spin_a) and hA!=j: # i->k j==l(alpha)
-                        if i!=j: # i->k j==l(alpha)
-                            phaseA *= 2
-                            #yield (a,b), phaseA
-                        #if j in getattr(det_i,spin_b): # i->k j==l(beta)
-                        yield (a,b), phaseA
+                        if j in getattr(det_i,spin_a) and hA!=j: # i->k j==l(alpha)
+                            yield (a,b), phaseA
+                        if j in getattr(det_i,spin_b): # i->k j==l(beta)
+                            yield (a,b), phaseA
 
             # <ij|jl> = -<ij|lj>
             # from ia to la where ja is occupied
@@ -828,8 +826,8 @@ class Hamiltonian(object):
                     ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
                     if (ed_up, ed_dn) == exc:
                         phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
-                        #if j in getattr(det_i,spin_a) and hA!=j: # i->l j==k(alpha)
-                        if hA!=j: # i->l j==k(alpha)
+                        if j in getattr(det_i,spin_a) and hA!=j: # i->l j==k(alpha)
+                        #if hA!=j: # i->l j==k(alpha)
                             yield (a,b), -phaseA
         yield from single_Ss_ext(idx,spindet_a_occ_i,spindet_b_occ_i,spindet_a_occ_j,spindet_b_occ_j,(1,0),'alpha','beta')
         yield from single_Ss_ext(idx,spindet_b_occ_i,spindet_a_occ_i,spindet_b_occ_j,spindet_a_occ_j,(0,1),'beta','alpha')
@@ -975,6 +973,7 @@ import unittest
 
 class TestVariationalPowerplant(unittest.TestCase):
     def load_and_compute(self, fcidump_path, wf_path):
+        print(f'\nTestVar:{wf_path}')
         # Load integrals
         n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
@@ -982,7 +981,6 @@ class TestVariationalPowerplant(unittest.TestCase):
         # Computation of the Energy of the input wave function (variational energy)
         lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
         res = Powerplant(lewis, psi_det).E(psi_coef)
-        print(f'\nTestVar:{wf_path}')
         gtimers.print()
         return res
 
@@ -993,51 +991,52 @@ class TestVariationalPowerplant(unittest.TestCase):
         E = self.load_and_compute(fcidump_path, wf_path)
         self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_c2_eq_dz_4(self):
-        fcidump_path = "c2_eq_hf_dz.fcidump*"
-        wf_path = "c2_eq_hf_dz_4.*.wf*"
-        E_ref = load_eref("data/c2_eq_hf_dz_4.*.ref*")
-        E = self.load_and_compute(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_c2_eq_dz_4(self):
+    #    fcidump_path = "c2_eq_hf_dz.fcidump*"
+    #    wf_path = "c2_eq_hf_dz_4.*.wf*"
+    #    E_ref = load_eref("data/c2_eq_hf_dz_4.*.ref*")
+    #    E = self.load_and_compute(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_1det(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.1det.wf"
-        E_ref = -198.646096743145
-        E = self.load_and_compute(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_f2_631g_1det(self):
+    #    fcidump_path = "f2_631g.FCIDUMP"
+    #    wf_path = "f2_631g.1det.wf"
+    #    E_ref = -198.646096743145
+    #    E = self.load_and_compute(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_10det(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.10det.wf"
-        E_ref = -198.548963
-        E = self.load_and_compute(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_f2_631g_10det(self):
+    #    fcidump_path = "f2_631g.FCIDUMP"
+    #    wf_path = "f2_631g.10det.wf"
+    #    E_ref = -198.548963
+    #    E = self.load_and_compute(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_30det(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.30det.wf"
-        E_ref = -198.738780989106
-        E = self.load_and_compute(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_f2_631g_30det(self):
+    #    fcidump_path = "f2_631g.FCIDUMP"
+    #    wf_path = "f2_631g.30det.wf"
+    #    E_ref = -198.738780989106
+    #    E = self.load_and_compute(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_161det(self):
-        fcidump_path = "f2_631g.161det.fcidump"
-        wf_path = "f2_631g.161det.wf"
-        E_ref = -198.8084269796
-        E = self.load_and_compute(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_f2_631g_161det(self):
+    #    fcidump_path = "f2_631g.161det.fcidump"
+    #    wf_path = "f2_631g.161det.wf"
+    #    E_ref = -198.8084269796
+    #    E = self.load_and_compute(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_296det(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.296det.wf"
-        E_ref = -198.682736076007
-        E = self.load_and_compute(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_f2_631g_296det(self):
+    #    fcidump_path = "f2_631g.FCIDUMP"
+    #    wf_path = "f2_631g.296det.wf"
+    #    E_ref = -198.682736076007
+    #    E = self.load_and_compute(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
 
 class TestVariationalPT2Powerplant(unittest.TestCase):
     def load_and_compute_pt2(self, fcidump_path, wf_path):
+        print(f'\nTestVarPT2:{wf_path}')
         # Load integrals
         n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
@@ -1045,23 +1044,22 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
         # Computation of the Energy of the input wave function (variational energy)
         lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
         res = Powerplant(lewis, psi_det).E_pt2(psi_coef, n_ord)
-        print(f'\nTestVarPT2:{wf_path}')
         gtimers.print()
         return res
 
-    def test_f2_631g_1det(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.1det.wf"
-        E_ref = -0.367587988032339
-        E = self.load_and_compute_pt2(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_f2_631g_1det(self):
+    #    fcidump_path = "f2_631g.FCIDUMP"
+    #    wf_path = "f2_631g.1det.wf"
+    #    E_ref = -0.367587988032339
+    #    E = self.load_and_compute_pt2(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_2det(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.2det.wf"
-        E_ref = -0.253904406461572
-        E = self.load_and_compute_pt2(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_f2_631g_2det(self):
+    #    fcidump_path = "f2_631g.FCIDUMP"
+    #    wf_path = "f2_631g.2det.wf"
+    #    E_ref = -0.253904406461572
+    #    E = self.load_and_compute_pt2(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
     def test_f2_631g_10det(self):
         fcidump_path = "f2_631g.FCIDUMP"
@@ -1078,13 +1076,13 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
     #    self.assertAlmostEqual(E_ref, E, places=6)
 
 
-class TestSelection(unittest.TestCase):
+class aTestSelection(unittest.TestCase):
     def load(self, fcidump_path, wf_path):
+        print(f'\nTestSelection:{wf_path}')
         # Load integrals
         n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
-        print(f'\nTestSelection:{wf_path}')
         return n_ord, psi_coef, psi_det, Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
 
 

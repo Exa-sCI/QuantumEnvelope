@@ -627,6 +627,7 @@ class Hamiltonian(object):
     def H_i_j_single_4e_index(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> Iterator[Two_electron_integral_index_phase]:
         """<I|H|J>, when I and J differ by exactly one orbital."""
         phase, m, p = Hamiltonian.get_phase_idx_single_exc(sdet_i, sdet_j)
+        phase=0
         for i in sdet_i:
             yield (m, i, p, i), phase
             yield (m, i, i, p), -phase
@@ -654,8 +655,8 @@ class Hamiltonian(object):
         if (ed_up, ed_dn) == (0, 0):
             yield from self.H_i_i_4e_index(det_i)
         # Single excitation
-#        elif (ed_up, ed_dn) == (1, 0):
-#            yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
+        elif (ed_up, ed_dn) == (1, 0):
+            yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
         elif (ed_up, ed_dn) == (0, 1):
             yield from self.H_i_j_single_4e_index(det_i.beta, det_j.beta, det_i.alpha)
         # Double excitation of same spin
@@ -787,35 +788,51 @@ class Hamiltonian(object):
         '''
 
         def single_Ss_ext(idx,spindet_a_occ_i,spindet_b_occ_i,spindet_a_occ_j,spindet_b_occ_j,exc,spin_a,spin_b):
+            """
+            yield all det pairs (a,b) and phase where <a|H|b> depends on the integral with index idx
+            filter out anything that isn't a single excitation
+            """
             i,j,k,l = idx
-
+            
+            # limit to only single excitations
+            if (j==l):
             # <ij|kj>
             # from ia to ka where ja is occupied
-            S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - spindet_a_occ_i[k]
-            R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[j]) - spindet_a_occ_j[i]
+                S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - spindet_a_occ_i[k]
+                R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[j]) - spindet_a_occ_j[i]
             # <ij|kj>
             # from ia to ka where jb is occupied
-            S2 = (spindet_a_occ_i[i] & spindet_b_occ_i[j]) - spindet_a_occ_i[k]
-            R2 = (spindet_a_occ_j[k] & spindet_b_occ_j[j]) - spindet_a_occ_j[i]
+                S2 = (spindet_a_occ_i[i] & spindet_b_occ_i[j]) - spindet_a_occ_i[k]
+                R2 = (spindet_a_occ_j[k] & spindet_b_occ_j[j]) - spindet_a_occ_j[i]
+            # j==l
+                for a,b in set().union(product(S1,R1),product(S2,R2)):
+                    det_i, det_j = psi_i[a], psi_j[b]
+                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                    if (ed_up, ed_dn) == exc:
+                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
+                        #if j in getattr(det_i,spin_a) and hA!=j: # i->k j==l(alpha)
+                        if i!=j: # i->k j==l(alpha)
+                            phaseA *= 2
+                            #yield (a,b), phaseA
+                        #if j in getattr(det_i,spin_b): # i->k j==l(beta)
+                        yield (a,b), phaseA
+
             # <ij|jl> = -<ij|lj>
             # from ia to la where ja is occupied
-            S3 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - spindet_a_occ_i[l]
-            R3 = (spindet_a_occ_j[l] & spindet_a_occ_j[j]) - spindet_a_occ_j[i]
+            if (j==k):
+                S3 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - spindet_a_occ_i[l]
+                R3 = (spindet_a_occ_j[l] & spindet_a_occ_j[j]) - spindet_a_occ_j[i]
 
-            for a,b in set().union(product(S1,R1),product(S2,R2),product(S3,R3)):
-                det_i, det_j = psi_i[a], psi_j[b]
-                ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
-                if (ed_up, ed_dn) == exc:
-                    phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
-                    if j in getattr(det_i,spin_a) and hA!=j:
-                        if (hA,pA,j) == (i,k,l): # i->k j==l(alpha)
-                            yield (a,b), phaseA
-                        if (hA,j,pA) == (i,k,l): # i->l j==k(alpha)
+                for a,b in product(S3,R3):
+                    det_i, det_j = psi_i[a], psi_j[b]
+                    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                    if (ed_up, ed_dn) == exc:
+                        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
+                        #if j in getattr(det_i,spin_a) and hA!=j: # i->l j==k(alpha)
+                        if hA!=j: # i->l j==k(alpha)
                             yield (a,b), -phaseA
-                    if j in getattr(det_i,spin_b):
-                        if (hA,pA,j) == (i,k,l): # i->k j==l(beta)
-                            yield (a,b), phaseA
         yield from single_Ss_ext(idx,spindet_a_occ_i,spindet_b_occ_i,spindet_a_occ_j,spindet_b_occ_j,(1,0),'alpha','beta')
+        yield from single_Ss_ext(idx,spindet_b_occ_i,spindet_a_occ_i,spindet_b_occ_j,spindet_a_occ_j,(0,1),'beta','alpha')
 
 
         # Create map from orbital to determinant.alpha

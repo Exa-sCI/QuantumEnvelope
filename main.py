@@ -627,7 +627,6 @@ class Hamiltonian(object):
     def H_i_j_single_4e_index(self, sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> Iterator[Two_electron_integral_index_phase]:
         """<I|H|J>, when I and J differ by exactly one orbital."""
         phase, m, p = Hamiltonian.get_phase_idx_single_exc(sdet_i, sdet_j)
-        phase=0
         for i in sdet_i:
             yield (m, i, p, i), phase
             yield (m, i, i, p), -phase
@@ -655,10 +654,10 @@ class Hamiltonian(object):
         if (ed_up, ed_dn) == (0, 0):
             yield from self.H_i_i_4e_index(det_i)
         # Single excitation
-        elif (ed_up, ed_dn) == (1, 0):
-            yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
-        elif (ed_up, ed_dn) == (0, 1):
-            yield from self.H_i_j_single_4e_index(det_i.beta, det_j.beta, det_i.alpha)
+        #elif (ed_up, ed_dn) == (1, 0):
+        #    yield from self.H_i_j_single_4e_index(det_i.alpha, det_j.alpha, det_i.beta)
+        #elif (ed_up, ed_dn) == (0, 1):
+        #    yield from self.H_i_j_single_4e_index(det_i.beta, det_j.beta, det_i.alpha)
         # Double excitation of same spin
         elif (ed_up, ed_dn) == (2, 0):
             yield from self.H_i_j_doubleAA_4e_index(det_i.alpha, det_j.alpha)
@@ -805,6 +804,41 @@ class Hamiltonian(object):
                 S2 = (spindet_a_occ_i[i] & spindet_b_occ_i[j]) - spindet_a_occ_i[k]
                 R2 = (spindet_a_occ_j[k] & spindet_b_occ_j[j]) - spindet_a_occ_j[i]
             # j==l
+                # separating these two is incorrect because it double counts the intersection of the two products
+                # might be useful to form (a_i[i] - a_i[k]) (used in S1 and S2)
+                #                         (a_j[k] - a_j[i]) (used in R1 and R2)
+                #for a,b in product(S1,R1):
+                #    det_i, det_j = psi_i[a], psi_j[b]
+                #    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                #    if (ed_up, ed_dn) == exc:
+                #        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
+                #        if j in getattr(det_i,spin_a) and hA!=j: # i->k j==l(alpha)
+                #            yield (a,b), phaseA
+                #        else:
+                #            print(f't1a: {j in getattr(det_i,spin_a)}, {hA!=j}')
+                #        if j in getattr(det_i,spin_b): # i->k j==l(beta)
+                #            yield (a,b), phaseA
+                #        else:
+                #            pass
+                #            #print(f't1b: {j in getattr(det_i,spin_b)}')
+
+                #for a,b in product(S2,R2):
+                #    det_i, det_j = psi_i[a], psi_j[b]
+                #    ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
+                #    if (ed_up, ed_dn) == exc:
+                #        phaseA,hA,pA = Hamiltonian.get_phase_idx_single_exc(getattr(det_i,spin_a),getattr(det_j,spin_a))
+                #        if j in getattr(det_i,spin_a) and hA!=j: # i->k j==l(alpha)
+                #            #print('t20')
+                #            yield (a,b), phaseA
+                #        else:
+                #            pass
+                #            #print(f't2a: {j in getattr(det_i,spin_a)}, {hA!=j}')
+                #        if j in getattr(det_i,spin_b): # i->k j==l(beta)
+                #            yield (a,b), phaseA
+                #        else:
+                #            pass
+                #            #print(f't2b: {j in getattr(det_i,spin_b)}')
+
                 for a,b in set().union(product(S1,R1),product(S2,R2)):
                     det_i, det_j = psi_i[a], psi_j[b]
                     ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
@@ -1047,26 +1081,26 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
         gtimers.print()
         return res
 
-    #def test_f2_631g_1det(self):
-    #    fcidump_path = "f2_631g.FCIDUMP"
-    #    wf_path = "f2_631g.1det.wf"
-    #    E_ref = -0.367587988032339
-    #    E = self.load_and_compute_pt2(fcidump_path, wf_path)
-    #    self.assertAlmostEqual(E_ref, E, places=6)
-
-    #def test_f2_631g_2det(self):
-    #    fcidump_path = "f2_631g.FCIDUMP"
-    #    wf_path = "f2_631g.2det.wf"
-    #    E_ref = -0.253904406461572
-    #    E = self.load_and_compute_pt2(fcidump_path, wf_path)
-    #    self.assertAlmostEqual(E_ref, E, places=6)
-
-    def test_f2_631g_10det(self):
+    def test_f2_631g_1det(self):
         fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.10det.wf"
-        E_ref = -0.24321128
+        wf_path = "f2_631g.1det.wf"
+        E_ref = -0.367587988032339
         E = self.load_and_compute_pt2(fcidump_path, wf_path)
         self.assertAlmostEqual(E_ref, E, places=6)
+
+    def test_f2_631g_2det(self):
+        fcidump_path = "f2_631g.FCIDUMP"
+        wf_path = "f2_631g.2det.wf"
+        E_ref = -0.253904406461572
+        E = self.load_and_compute_pt2(fcidump_path, wf_path)
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+    #def test_f2_631g_10det(self):
+    #    fcidump_path = "f2_631g.FCIDUMP"
+    #    wf_path = "f2_631g.10det.wf"
+    #    E_ref = -0.24321128
+    #    E = self.load_and_compute_pt2(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
     #def test_f2_631g_28det(self):
     #    fcidump_path = "f2_631g.FCIDUMP"

@@ -4,6 +4,57 @@
 # -----
 from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
 from dataclasses import dataclass
+
+class gTimers(object):
+    def __init__(self,quiet=False):
+        self.quiet = quiet
+    def reset(self):
+        try:
+            delattr(self,'_timers')
+        except AttributeError:
+            pass
+        try:
+            delattr(self,'_counts')
+        except AttributeError:
+            pass
+    def print(self,reset=True):
+        if not self.quiet:
+            t_d = {key: (self._timers[key],self._counts[key]) for key in self._timers}
+            funclist = list(t_d)
+            fstrmaxchar = max(map(len,funclist))
+            print(' '*fstrmaxchar )
+            print('function name'.ljust(fstrmaxchar) + ('t_tot'.rjust(17) + 't_per_call'.rjust(16) + '  calls'))
+            for f in funclist:
+                fpad = f.ljust(fstrmaxchar)
+                ftimes = f' |{t_d[f][0]:15.6f} {t_d[f][0]/t_d[f][1]:15.6f} {t_d[f][1]:6d}'
+                print(fpad+ftimes)
+        if reset:
+            self.reset()
+
+gtimers = gTimers()
+from functools import wraps
+import time
+def timer_wrap(f):
+    @wraps(f)
+    def wrap(*args,**kw):
+        global_timer = gtimers
+        t0=time.time()
+        result = f(*args,**kw)
+        t1=time.time()
+        name = f.__name__
+        if not hasattr(global_timer,"_timers"):
+            setattr(global_timer,"_timers",{})
+        if not name in global_timer._timers:
+            global_timer._timers[name]=0
+        global_timer._timers[name] += t1-t0
+        if not hasattr(global_timer,"_counts"):
+            setattr(global_timer,"_counts",{})
+        if not name in global_timer._counts:
+            global_timer._counts[name]=0
+        global_timer._counts[name] += 1
+        return result
+    return wrap
+
 try:
     from functools import cached_property
 except ImportError:
@@ -61,6 +112,7 @@ Energy = NewType("Energy", float)
 # ~
 # Integrals of the Hamiltonian over molecular orbitals
 # ~
+@timer_wrap
 def load_integrals(fcidump_path) -> Tuple[int, float, One_electron_integral, Two_electron_integral]:
     """Read all the Hamiltonian integrals from the data file.
     Returns: (E0, d_one_e_integral, d_two_e_integral).
@@ -134,7 +186,7 @@ def load_integrals(fcidump_path) -> Tuple[int, float, One_electron_integral, Two
 
     return n_orb, E0, d_one_e_integral, d_two_e_integral
 
-
+@timer_wrap
 def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
     """Read the input file :
     Representation of the Slater determinants (basis) and
@@ -228,7 +280,41 @@ def load_eref(path_ref) -> float:
 # Yes, I like itertools
 from itertools import chain, product, combinations, takewhile
 import numpy as np
+from collections import defaultdict
 
+def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx,Set[int]]:
+    """
+    >>> get_dets_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))],'alpha')
+    defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}})
+    >>> get_dets_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))],'beta')
+    defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}})
+    """
+    ds = defaultdict(set)
+    for i, det in enumerate(psi_i):
+        for o in getattr(det,spin):
+            ds[o].add(i)
+    return ds
+
+def get_da_db(psi_i: Psi_det) -> Tuple[Dict[OrbitalIdx,Set[int]],Dict[OrbitalIdx,Set[int]]]:
+    """
+    TODO: more tests?
+    >>> get_da_db([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
+    (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}), defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
+    """
+    da = defaultdict(set)
+    db = defaultdict(set)
+        # det1 (1,2,3)
+        # det2 (1,2,4)
+        # det3 (1,3,4)
+        #-> 1: 1,2,3
+        #-> 2: 1,2
+        #-> 3: 1,3
+    for i, det in enumerate(psi_i):
+        for o in det.alpha:
+            da[o].add(i)
+        for o in det.beta:
+            db[o].add(i)
+    return da,db
 #  _
 # |_     _ o _|_  _. _|_ o  _  ._
 # |_ >< (_ |  |_ (_|  |_ | (_) | |
@@ -581,10 +667,13 @@ class Hamiltonian(object):
 
         # (0,1, 2,3)
         # -> ( (0,1), (2,3) ),   1
+        @timer_wrap
         def double_same(idx,ds,deg,spin):
             i,j,k,l = idx
             ds_ij_not_kl = ( ds[i] & ds[j] ) - ( ds[k] | ds[l] )
             ds_kl_not_ij = ( ds[k] & ds[l] ) - ( ds[i] | ds[j] )
+            #ds_ij_not_kl = ( ds[i] & ds[j] ) -  ds[k] - ds[l]
+            #ds_kl_not_ij = ( ds[k] & ds[l] ) -  ds[i] - ds[j]
             # We maybe should not make the product and then filter the double exitation
             #
             for a,b in itertools.product(ds_ij_not_kl,ds_kl_not_ij):
@@ -597,10 +686,13 @@ class Hamiltonian(object):
                     if (h1,h2,p2,p1 ) == (i,j,k,l):
                         yield (a,b), -phase
 
+        @timer_wrap
         def double_different(idx,ds0,ds1,spin0,spin1):
             i,j,k,l = idx
             dab_ij_not_kl = ( ds0[i] & ds1[j] ) - ( ds0[k] | ds1[l] )
             dab_kl_not_ij = ( ds0[k] & ds1[l] ) - ( ds0[i] | ds1[j] )
+            #dab_ij_not_kl = ( ds0[i] & ds1[j] ) - ds0[k] - ds1[l]
+            #dab_kl_not_ij = ( ds0[k] & ds1[l] ) - ds0[i] - ds1[j]
             for a,b in itertools.product(dab_ij_not_kl,dab_kl_not_ij):
                 det_i,det_j = psi_i[a], psi_i[b]
                 ed_up, ed_dn = Hamiltonian.get_exc_degree(det_i, det_j)
@@ -610,6 +702,7 @@ class Hamiltonian(object):
                     if (hA,hB,pA,pB ) == (i,j,k,l):
                         yield (a,b), phaseA*phaseB
 
+        @timer_wrap
         def single_Ss(idx,ds0,ds1,exc,spin0,spin1):
             i,j,k,l = idx
 
@@ -633,7 +726,8 @@ class Hamiltonian(object):
                     if j in getattr(det_i,spin1):
                         if (hA,pA,j) == (i,k,l): # i->k j==l(beta)
                             yield (a,b), phaseA
-
+        # <ij|kl> used for:
+        # <D|H|D_{i(s1),j(s2)}^{k(s1),l(s2)}
         if i<j:
             # double AA <ia,ja|ka,la> & <ia,ja|la,ka>  i<j
             yield from double_same(idx,da,(2,0),'alpha')
@@ -667,20 +761,21 @@ class Hamiltonian(object):
                 for idx, phase in self.H_i_j_4e_index_internal(det_i, det_j):
                     yield (a, b), idx, phase
 
-        from collections import defaultdict
-        da = defaultdict(set)
-        db = defaultdict(set)
-        # det1 (1,2,3)
-        # det2 (1,2,4)
-        # det3 (1,3,4)
-        #-> 1: 1,2,3
-        #-> 2: 1,2
-        #-> 3: 1,3
-        for i, det in enumerate(psi_i):
-            for o in det.alpha:
-                da[o].add(i)
-            for o in det.beta:
-                db[o].add(i)
+        da,db = get_da_db(psi_i)
+        #from collections import defaultdict
+        #da = defaultdict(set)
+        #db = defaultdict(set)
+        ## det1 (1,2,3)
+        ## det2 (1,2,4)
+        ## det3 (1,3,4)
+        ##-> 1: 1,2,3
+        ##-> 2: 1,2
+        ##-> 3: 1,3
+        #for i, det in enumerate(psi_i):
+        #    for o in det.alpha:
+        #        da[o].add(i)
+        #    for o in det.beta:
+        #        db[o].add(i)
 
         from itertools import permutations
         # Split intergral between nodes
@@ -728,6 +823,7 @@ class Powerplant(object):
     lewis: Hamiltonian
     psi_det: Psi_det
 
+    @timer_wrap
     def E(self, psi_coef: Psi_coef) -> Energy:
         # Vector * Vector.T * Matrix
         return np.einsum("i,j,ij ->", psi_coef, psi_coef, self.lewis.H(self.psi_det, self.psi_det))
@@ -739,6 +835,7 @@ class Powerplant(object):
         energies, coeffs = np.linalg.eigh(psi_H_psi)
         return energies[0], coeffs[:, 0]
 
+    @timer_wrap
     def psi_external_pt2(self, psi_coef: Psi_coef, n_orb) -> Tuple[Psi_det, List[Energy]]:
         # Compute the pt2 contrution of all the external (aka connected) determinant.
         #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
@@ -749,6 +846,7 @@ class Powerplant(object):
 
         return psi_external, np.einsum("i,i,i -> i", nomitator, nomitator, denominator)  # vector * vector * vector -> scalar
 
+    @timer_wrap
     def E_pt2(self, psi_coef: Psi_coef, n_orb) -> Energy:
         # The sum of the pt2 contribution of each external determinant
         _, psi_external_energy = self.psi_external_pt2(psi_coef, n_orb)
@@ -759,6 +857,7 @@ class Powerplant(object):
 # (_   _  |  _   _ _|_ o  _  ._
 # __) (/_ | (/_ (_  |_ | (_) | |
 #
+@timer_wrap
 def selection_step(lewis: Hamiltonian, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n) -> Tuple[Energy, Psi_coef, Psi_det]:
     # 1. Generate a list of all the external determinant and their pt2 contribution
     # 2. Take the n  determinants who have the biggest contribution and add it the wave function psi
@@ -795,7 +894,10 @@ class TestVariationalPowerplant(unittest.TestCase):
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
         lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
-        return Powerplant(lewis, psi_det).E(psi_coef)
+        res = Powerplant(lewis, psi_det).E(psi_coef)
+        print(f'\nTestVar:{wf_path}')
+        gtimers.print()
+        return res
 
     def test_c2_eq_dz_3(self):
         fcidump_path = "c2_eq_hf_dz.fcidump*"
@@ -855,7 +957,10 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
         lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
-        return Powerplant(lewis, psi_det).E_pt2(psi_coef, n_ord)
+        res = Powerplant(lewis, psi_det).E_pt2(psi_coef, n_ord)
+        print(f'\nTestVarPT2:{wf_path}')
+        gtimers.print()
+        return res
 
     def test_f2_631g_1det(self):
         fcidump_path = "f2_631g.FCIDUMP"
@@ -878,12 +983,12 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
         E = self.load_and_compute_pt2(fcidump_path, wf_path)
         self.assertAlmostEqual(E_ref, E, places=6)
 
-    def test_f2_631g_28det(self):
-        fcidump_path = "f2_631g.FCIDUMP"
-        wf_path = "f2_631g.28det.wf"
-        E_ref = -0.244245625775444
-        E = self.load_and_compute_pt2(fcidump_path, wf_path)
-        self.assertAlmostEqual(E_ref, E, places=6)
+    #def test_f2_631g_28det(self):
+    #    fcidump_path = "f2_631g.FCIDUMP"
+    #    wf_path = "f2_631g.28det.wf"
+    #    E_ref = -0.244245625775444
+    #    E = self.load_and_compute_pt2(fcidump_path, wf_path)
+    #    self.assertAlmostEqual(E_ref, E, places=6)
 
 
 class TestSelection(unittest.TestCase):
@@ -892,7 +997,9 @@ class TestSelection(unittest.TestCase):
         n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
+        print(f'\nTestSelection:{wf_path}')
         return n_ord, psi_coef, psi_det, Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
+
 
     def test_f2_631g_1p0det(self):
         # Verify that selecting 0 determinant is egual that computing the variational energy
@@ -903,6 +1010,7 @@ class TestSelection(unittest.TestCase):
         E_var = Powerplant(lewis, psi_det).E(psi_coef)
 
         E_selection, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 0)
+        gtimers.print()
 
         self.assertAlmostEqual(E_var, E_selection, places=6)
 
@@ -915,6 +1023,7 @@ class TestSelection(unittest.TestCase):
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
         E, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 10)
+        gtimers.print()
 
         self.assertAlmostEqual(E_ref, E, places=6)
 
@@ -929,7 +1038,9 @@ class TestSelection(unittest.TestCase):
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
         e0, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
+        gtimers.print()
         E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
+        gtimers.print()
 
         self.assertAlmostEqual(e0_ref, e0, places=6)
         self.assertAlmostEqual(E_ref, E, places=6)
@@ -937,6 +1048,6 @@ class TestSelection(unittest.TestCase):
 
 if __name__ == "__main__":
     import doctest
-
+    #gtimers.quiet=True
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE)
     unittest.main(failfast=True)

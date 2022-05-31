@@ -934,7 +934,7 @@ def selection_step(
 import unittest
 
 
-class Test1_VariationalPowerplant:
+class Test_VariationalPowerplant:
     def test_c2_eq_dz_3(self):
         fcidump_path = "c2_eq_hf_dz.fcidump*"
         wf_path = "c2_eq_hf_dz_3.*.wf*"
@@ -995,12 +995,12 @@ def load_and_compute(fcidump_path, wf_path, driven_by):
     return Powerplant(lewis, psi_det).E(psi_coef)
 
 
-class Test1_VariationalPowerplant_Determinant(unittest.TestCase, Test1_VariationalPowerplant):
+class Test1_VariationalPowerplant_Determinant(unittest.TestCase, Test_VariationalPowerplant):
     def load_and_compute(self, fcidump_path, wf_path):
         return load_and_compute(fcidump_path, wf_path, "determinant")
 
 
-class Test1_VariationalPowerplant_Integral(unittest.TestCase, Test1_VariationalPowerplant):
+class Test1_VariationalPowerplant_Integral(unittest.TestCase, Test_VariationalPowerplant):
     def load_and_compute(self, fcidump_path, wf_path):
         return load_and_compute(fcidump_path, wf_path, "integral")
 

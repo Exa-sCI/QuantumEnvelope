@@ -4,6 +4,7 @@
 # -----
 from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
 from dataclasses import dataclass
+
 # Yes, I like itertools
 from itertools import chain, product, combinations, takewhile
 from functools import partial, cached_property
@@ -48,7 +49,9 @@ Energy = NewType("Energy", float)
 # ~
 # Integrals of the Hamiltonian over molecular orbitals
 # ~
-def load_integrals(fcidump_path) -> Tuple[int, float, One_electron_integral, Two_electron_integral]:
+def load_integrals(
+    fcidump_path,
+) -> Tuple[int, float, One_electron_integral, Two_electron_integral]:
     """Read all the Hamiltonian integrals from the data file.
     Returns: (E0, d_one_e_integral, d_two_e_integral).
     E0 : a float containing the nuclear repulsion energy (V_nn),
@@ -236,10 +239,9 @@ class Excitation(object):
 
     @staticmethod
     def apply_excitation(spindet, exc: Tuple[Tuple[int, ...], Tuple[int, ...]]):
-            lh, lp = exc
-            s = (set(spindet) - set(lh)) | set(lp)
-            return tuple(sorted(s))
-
+        lh, lp = exc
+        s = (set(spindet) - set(lh)) | set(lp)
+        return tuple(sorted(s))
 
     def gen_all_connected_spindet(self, spindet: Spin_determinant, ed: int) -> Iterator:
         """
@@ -249,7 +251,7 @@ class Excitation(object):
         [(1, 3), (1, 4), (2, 3), (2, 4)]
         """
         l_exc = self.gen_all_excitation(spindet, ed)
-        apply_excitation_to_spindet = partial(Excitation.apply_excitation,spindet)
+        apply_excitation_to_spindet = partial(Excitation.apply_excitation, spindet)
         return map(apply_excitation_to_spindet, l_exc)
 
     def gen_all_connected_det_from_det(self, det: Determinant) -> Iterator[Determinant]:
@@ -275,12 +277,18 @@ class Excitation(object):
         l_single_a = set(self.gen_all_connected_spindet(det.alpha, 1))
         l_double_aa = self.gen_all_connected_spindet(det.alpha, 2)
 
-        s_a = (Determinant(det_alpha, det.beta) for det_alpha in chain(l_single_a, l_double_aa))
+        s_a = (
+            Determinant(det_alpha, det.beta)
+            for det_alpha in chain(l_single_a, l_double_aa)
+        )
 
         l_single_b = set(self.gen_all_connected_spindet(det.beta, 1))
         l_double_bb = self.gen_all_connected_spindet(det.beta, 2)
 
-        s_b = (Determinant(det.alpha, det_beta) for det_beta in chain(l_single_b, l_double_bb))
+        s_b = (
+            Determinant(det.alpha, det_beta)
+            for det_beta in chain(l_single_b, l_double_bb)
+        )
 
         l_double_ab = product(l_single_a, l_single_b)
 
@@ -296,11 +304,13 @@ class Excitation(object):
 
         We remove the connected determinant who are already inside the wave function. Order doesn't matter
         """
-        return list(set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det))) - set(psi_det))
+        return list(
+            set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det)))
+            - set(psi_det)
+        )
 
 
 class PhaseIdx(object):
-
     @staticmethod
     def single_phase(sdet_i, sdet_j, h, p):
         phase = 1
@@ -310,7 +320,9 @@ class PhaseIdx(object):
         return phase
 
     @staticmethod
-    def single_exc(sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
+    def single_exc(
+        sdet_i: Spin_determinant, sdet_j: Spin_determinant
+    ) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
         """phase, hole, particle of <I|H|J> when I and J differ by exactly one orbital
            h is occupied only in I
            p is occupied only in J
@@ -323,10 +335,10 @@ class PhaseIdx(object):
         (h,) = set(sdet_i) - set(sdet_j)
         (p,) = set(sdet_j) - set(sdet_i)
 
-        return PhaseIdx.single_phase(sdet_i,sdet_j, h, p), h, p
+        return PhaseIdx.single_phase(sdet_i, sdet_j, h, p), h, p
 
     @staticmethod
-    def double_phase(sdet_i, sdet_j,  h1, h2, p1, p2):
+    def double_phase(sdet_i, sdet_j, h1, h2, p1, p2):
         # Compute phase. See paper to have a loopless algorithm
         # https://arxiv.org/abs/1311.6244
         phase = 1
@@ -338,12 +350,17 @@ class PhaseIdx(object):
         # Look like to be always true in our tests
         if (min(h2, p2) < max(h1, p1)) != (h2 < p1 or p2 < h1):
             phase = -phase
-            print(">>> double_exc QP conditional was trigered! Please repport to the developpers", sdet_i, sdet_j)
+            print(
+                ">>> double_exc QP conditional was trigered! Please repport to the developpers",
+                sdet_i,
+                sdet_j,
+            )
         return phase
 
-
     @staticmethod
-    def double_exc(sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Tuple[int, OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
+    def double_exc(
+        sdet_i: Spin_determinant, sdet_j: Spin_determinant
+    ) -> Tuple[int, OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
         """phase, holes, particles of <I|H|J> when I and J differ by exactly two orbitals
            h1, h2 are occupied only in I
            p1, p2 are occupied only in J
@@ -374,10 +391,12 @@ class PhaseIdx(object):
         ed_dn = len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
         return ed_up, ed_dn
 
+
 #
 # |_|  _. ._ _  o | _|_  _  ._  o  _. ._
 # | | (_| | | | | |  |_ (_) | | | (_| | |
 #
+
 
 @dataclass
 class Hamiltonian_one_electron(object):
@@ -406,7 +425,7 @@ class Hamiltonian_one_electron(object):
         def H_ij_spindet(sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Energy:
             """<I|H|J>, when I and J differ by exactly one orbital."""
             phase, m, p = PhaseIdx.single_exc(sdet_i, sdet_j)
-            return self.H_ij_orbital(m, p)*phase
+            return self.H_ij_orbital(m, p) * phase
 
         ed_up, ed_dn = PhaseIdx.exc_degree(det_i, det_j)
         # Same determinant -> Diagonal element
@@ -420,15 +439,20 @@ class Hamiltonian_one_electron(object):
         else:
             return 0.0
 
-    def H(self,psi_i, psi_j) -> List[List[Energy]]:
-        h = np.array([self.H_ij(det_i, det_j) for det_i, det_j in product(psi_i, psi_j)])
+    def H(self, psi_i, psi_j) -> List[List[Energy]]:
+        h = np.array(
+            [self.H_ij(det_i, det_j) for det_i, det_j in product(psi_i, psi_j)]
+        )
         return h.reshape(len(psi_i), len(psi_j))
+
 
 @dataclass
 class Hamiltonian_two_electrons_determinant_driven(object):
     d_two_e_integral: Two_electron_integral
 
-    def H_ijkl_orbital(self, i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx) -> float:
+    def H_ijkl_orbital(
+        self, i: OrbitalIdx, j: OrbitalIdx, k: OrbitalIdx, l: OrbitalIdx
+    ) -> float:
         """Assume that *all* the integrals are in
         `d_two_e_integral` In this function, for simplicity we don't use any
         symmetry sparse representation.  For real calculations, symmetries and
@@ -440,41 +464,49 @@ class Hamiltonian_two_electrons_determinant_driven(object):
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
         """Diagonal element of the Hamiltonian : <I|H|I>.
         >>> sorted(Hamiltonian_two_electrons_determinant_driven.H_ii_indices( Determinant((1,2),(3,4))))
-        [((1, 2, 1, 2), 1), ((1, 2, 2, 1), -1), ((1, 3, 1, 3), 1), ((1, 4, 1, 4), 1), 
+        [((1, 2, 1, 2), 1), ((1, 2, 2, 1), -1), ((1, 3, 1, 3), 1), ((1, 4, 1, 4), 1),
          ((2, 3, 2, 3), 1), ((2, 4, 2, 4), 1), ((3, 4, 3, 4), 1), ((3, 4, 4, 3), -1)]
         """
         for i, j in combinations(det_i.alpha, 2):
-            yield (i,j,i,j), 1 
-            yield (i,j,j,i), -1 
+            yield (i, j, i, j), 1
+            yield (i, j, j, i), -1
 
         for i, j in combinations(det_i.beta, 2):
-            yield (i,j,i,j), 1 
-            yield (i,j,j,i), -1 
+            yield (i, j, i, j), 1
+            yield (i, j, j, i), -1
 
         for i, j in product(det_i.alpha, det_i.beta):
-            yield (i,j,i,j), 1
+            yield (i, j, i, j), 1
 
     @staticmethod
-    def H_ij_indices(det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
+    def H_ij_indices(
+        det_i: Determinant, det_j: Determinant
+    ) -> Iterator[Two_electron_integral_index_phase]:
         """General function to dispatch the evaluation of H_ij"""
 
-        def H_ij_single_indices(sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant) -> Iterator[Two_electron_integral_index_phase]:
+        def H_ij_single_indices(
+            sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant
+        ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one orbital"""
             phase, h, p = PhaseIdx.single_exc(sdet_i, sdet_j)
             for i in sdet_i:
-                yield (h,i,p,i), phase
-                yield (h,i,i,p), -phase
+                yield (h, i, p, i), phase
+                yield (h, i, i, p), -phase
             for i in sdet_k:
-                yield (h,i,p,i), phase
+                yield (h, i, p, i), phase
 
-        def H_ij_doubleAA_indices(sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Iterator[Two_electron_integral_index_phase]:
+        def H_ij_doubleAA_indices(
+            sdet_i: Spin_determinant, sdet_j: Spin_determinant
+        ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly two orbitals within
             the same spin."""
             phase, h1, h2, p1, p2 = PhaseIdx.double_exc(sdet_i, sdet_j)
-            yield (h1,h2,p1,p2), phase
-            yield (h1,h2,p2,p1), -phase
+            yield (h1, h2, p1, p2), phase
+            yield (h1, h2, p2, p1), -phase
 
-        def H_ij_doubleAB_2e_index(det_i: Determinant, det_j: Determinant) -> Iterator[Two_electron_integral_index_phase]:
+        def H_ij_doubleAB_2e_index(
+            det_i: Determinant, det_j: Determinant
+        ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
             one beta spin-orbital."""
             phaseA, h1, p1 = PhaseIdx.single_exc(det_i.alpha, det_j.alpha)
@@ -500,7 +532,9 @@ class Hamiltonian_two_electrons_determinant_driven(object):
             yield from H_ij_doubleAB_2e_index(det_i, det_j)
 
     @staticmethod
-    def H_indices(psi_internal: Psi_det, n_orb) -> Iterator[Two_electron_integral_index_phase]:
+    def H_indices(
+        psi_internal: Psi_det, n_orb
+    ) -> Iterator[Two_electron_integral_index_phase]:
         """
         We generate all the determinant for now.
         He will filter later on
@@ -510,78 +544,98 @@ class Hamiltonian_two_electrons_determinant_driven(object):
         for a, det_i in enumerate(psi_internal):
 
             # Single exitation
-            for ( (h,), (p,) ) in e.gen_all_excitation(det_i.alpha, 1):
-                det_j_alpha = Excitation.apply_excitation(det_i.alpha, ( (h,), (p,) ))
-                det_j= Determinant(det_j_alpha, det_i.beta)
+            for ((h,), (p,)) in e.gen_all_excitation(det_i.alpha, 1):
+                det_j_alpha = Excitation.apply_excitation(det_i.alpha, ((h,), (p,)))
+                det_j = Determinant(det_j_alpha, det_i.beta)
                 phase = PhaseIdx.single_phase(det_i.alpha, det_j_alpha, h, p)
                 for i in det_i.alpha:
-                    yield (a,det_j),(h,i,p,i), phase
-                    yield (a,det_j),(h,i,i,p), -phase
+                    yield (a, det_j), (h, i, p, i), phase
+                    yield (a, det_j), (h, i, i, p), -phase
                 for i in det_i.beta:
-                    yield (a,det_j),(h,i,p,i), phase
+                    yield (a, det_j), (h, i, p, i), phase
 
-            for ( (h,), (p,) ) in e.gen_all_excitation(det_i.beta, 1):
-                det_j_beta = Excitation.apply_excitation(det_i.beta, ( (h,), (p,) ))
-                det_j= Determinant(det_i.alpha, det_j_beta)
+            for ((h,), (p,)) in e.gen_all_excitation(det_i.beta, 1):
+                det_j_beta = Excitation.apply_excitation(det_i.beta, ((h,), (p,)))
+                det_j = Determinant(det_i.alpha, det_j_beta)
                 phase = PhaseIdx.single_phase(det_i.beta, det_j_beta, h, p)
                 for i in det_i.beta:
-                    yield (a,det_j),(h,i,p,i), phase
-                    yield (a,det_j),(h,i,i,p), -phase
+                    yield (a, det_j), (h, i, p, i), phase
+                    yield (a, det_j), (h, i, i, p), -phase
                 for i in det_i.alpha:
-                    yield (a,det_j),(h,i,p,i), phase
+                    yield (a, det_j), (h, i, p, i), phase
 
             # Double exitation
-            for (h1,h2), (p1,p2) in e.gen_all_excitation(det_i.alpha, 2):
-                det_j_alpha = Excitation.apply_excitation(det_i.alpha, ( (h1,h2), (p1,p2) ))
+            for (h1, h2), (p1, p2) in e.gen_all_excitation(det_i.alpha, 2):
+                det_j_alpha = Excitation.apply_excitation(
+                    det_i.alpha, ((h1, h2), (p1, p2))
+                )
                 det_j = Determinant(det_j_alpha, det_i.beta)
-                phase = PhaseIdx.double_phase(det_i.alpha, det_j_alpha,  h1, h2, p1, p2)
-                yield (a,det_j), (h1,h2,p1,p2), phase
-                yield (a,det_j), (h1,h2,p2,p1), -phase
+                phase = PhaseIdx.double_phase(det_i.alpha, det_j_alpha, h1, h2, p1, p2)
+                yield (a, det_j), (h1, h2, p1, p2), phase
+                yield (a, det_j), (h1, h2, p2, p1), -phase
 
-            for (h1,h2), (p1,p2) in e.gen_all_excitation(det_i.beta, 2):
-                det_j_beta = Excitation.apply_excitation(det_i.beta, ( (h1,h2), (p1,p2) ))
-                det_j = Determinant(det_i.alpha,det_j_beta)
-                phase = PhaseIdx.double_phase(det_i.beta, det_j_beta,  h1, h2, p1, p2)
-                yield (a,det_j), (h1,h2,p1,p2), phase
-                yield (a,det_j), (h1,h2,p2,p1), -phase
+            for (h1, h2), (p1, p2) in e.gen_all_excitation(det_i.beta, 2):
+                det_j_beta = Excitation.apply_excitation(
+                    det_i.beta, ((h1, h2), (p1, p2))
+                )
+                det_j = Determinant(det_i.alpha, det_j_beta)
+                phase = PhaseIdx.double_phase(det_i.beta, det_j_beta, h1, h2, p1, p2)
+                yield (a, det_j), (h1, h2, p1, p2), phase
+                yield (a, det_j), (h1, h2, p2, p1), -phase
 
-            for ( (h_a,), (p_a,) ) in e.gen_all_excitation(det_i.alpha, 1):
-                for  ( (h_b,), (p_b,) ) in e.gen_all_excitation(det_i.beta, 1):
-                    det_j_alpha = Excitation.apply_excitation(det_i.alpha, ( (h_a,), (p_a,) ))
-                    det_j_beta = Excitation.apply_excitation(det_i.beta, ( (h_b,), (p_b,) ))
-                    det_j = Determinant(det_j_alpha,det_j_beta)
+            for ((h_a,), (p_a,)) in e.gen_all_excitation(det_i.alpha, 1):
+                for ((h_b,), (p_b,)) in e.gen_all_excitation(det_i.beta, 1):
+                    det_j_alpha = Excitation.apply_excitation(
+                        det_i.alpha, ((h_a,), (p_a,))
+                    )
+                    det_j_beta = Excitation.apply_excitation(
+                        det_i.beta, ((h_b,), (p_b,))
+                    )
+                    det_j = Determinant(det_j_alpha, det_j_beta)
                     phaseA = PhaseIdx.single_phase(det_i.alpha, det_j_alpha, h_a, p_a)
                     phaseB = PhaseIdx.single_phase(det_i.beta, det_j_beta, h_b, p_b)
                     yield (a, det_j), (h_a, h_b, p_a, p_b), phaseA * phaseB
 
     @staticmethod
-    def H_internal_indices(psi_i: Psi_det) -> Iterator[Two_electron_integral_index_phase]:
+    def H_internal_indices(
+        psi_i: Psi_det,
+    ) -> Iterator[Two_electron_integral_index_phase]:
         for a, det_i in enumerate(psi_i):
             for b, det_j in enumerate(psi_i):
-                for idx, phase in Hamiltonian_two_electrons_determinant_driven.H_ij_indices(det_i, det_j):
-                    yield (a,b), idx, phase
+                for (
+                    idx,
+                    phase,
+                ) in Hamiltonian_two_electrons_determinant_driven.H_ij_indices(
+                    det_i, det_j
+                ):
+                    yield (a, b), idx, phase
 
-    def H_internal(self,psi_i: Psi_det) -> List[List[Energy]]:
+    def H_internal(self, psi_i: Psi_det) -> List[List[Energy]]:
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_i), len(psi_i)))
-        for (a,b), (i,j,k,l), phase in self.H_internal_indices(psi_i):
-            h[a,b] += phase*self.H_ijkl_orbital(i,j,k,l)
+        for (a, b), (i, j, k, l), phase in self.H_internal_indices(psi_i):
+            h[a, b] += phase * self.H_ijkl_orbital(i, j, k, l)
         return h
 
-    def H(self, psi_internal: Psi_det, psi_external: Psi_det,n_orb) -> List[List[Energy]]:
-        det_external_to_index = { d:i for i,d in enumerate(psi_external)}
+    def H(
+        self, psi_internal: Psi_det, psi_external: Psi_det, n_orb
+    ) -> List[List[Energy]]:
+        det_external_to_index = {d: i for i, d in enumerate(psi_external)}
 
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_internal), len(psi_external)))
-        for (a,det_b), (i,j,k,l), phase in self.H_indices(psi_internal, n_orb):
+        for (a, det_b), (i, j, k, l), phase in self.H_indices(psi_internal, n_orb):
             if det_b in psi_internal:
                 continue
             b = det_external_to_index[det_b]
-            h[a,b] += phase*self.H_ijkl_orbital(i,j,k,l)
+            h[a, b] += phase * self.H_ijkl_orbital(i, j, k, l)
         return h
 
     def H_ii(self, det_i: Determinant):
-        return sum(phase*self.H_ijkl_orbital(*idx) for idx,phase in self.H_ii_indices(det_i))
+        return sum(
+            phase * self.H_ijkl_orbital(*idx) for idx, phase in self.H_ii_indices(det_i)
+        )
+
 
 @dataclass
 class Hamiltonian_two_electrons_integral_driven(object):
@@ -618,11 +672,11 @@ class Hamiltonian(object):
 
     @cached_property
     def n_orb(self):
-        return max(i for i,_ in self.d_one_e_integral.keys())
+        return max(i for i, _ in self.d_one_e_integral.keys())
 
     @cached_property
     def H_one_electron(self):
-        return Hamiltonian_one_electron(self.d_one_e_integral,self.E0)
+        return Hamiltonian_one_electron(self.d_one_e_integral, self.E0)
 
     @cached_property
     def H_two_electrons(self):
@@ -647,10 +701,15 @@ class Hamiltonian(object):
         If psi_j == None, then assume a return psi x psi hermitian Hamiltonian,
         if not not overlap exist between psi and psi_j"""
         if gen_connected is False:
-            return self.H_one_electron.H(psi,psi) + self.H_two_electrons.H_internal(psi)
+            return self.H_one_electron.H(psi, psi) + self.H_two_electrons.H_internal(
+                psi
+            )
 
         psi_external = Excitation(self.n_orb).gen_all_connected_determinant(psi)
-        return self.H_one_electron.H(psi,psi_external) + self.H_two_electrons.H(psi, psi_external,self.n_orb)
+        return self.H_one_electron.H(psi, psi_external) + self.H_two_electrons.H(
+            psi, psi_external, self.n_orb
+        )
+
 
 #  _                  _
 # |_) _        _  ._ |_) |  _. ._ _|_
@@ -677,15 +736,23 @@ class Powerplant(object):
         energies, coeffs = np.linalg.eigh(psi_H_psi)
         return energies[0], coeffs[:, 0]
 
-    def psi_external_pt2(self, psi_coef: Psi_coef, n_orb) -> Tuple[Psi_det, List[Energy]]:
+    def psi_external_pt2(
+        self, psi_coef: Psi_coef, n_orb
+    ) -> Tuple[Psi_det, List[Energy]]:
         # Compute the pt2 contrution of all the external (aka connected) determinant.
         #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
         psi_external = Excitation(n_orb).gen_all_connected_determinant(self.psi_det)
 
-        nomitator = np.einsum("i,ij -> j", psi_coef, self.lewis.H(self.psi_det, gen_connected=True))  # vector * Matrix -> vector
-        denominator = np.divide(1.0, self.E(psi_coef) - np.array([self.lewis.H_ii(d) for d in psi_external]))
+        nomitator = np.einsum(
+            "i,ij -> j", psi_coef, self.lewis.H(self.psi_det, gen_connected=True)
+        )  # vector * Matrix -> vector
+        denominator = np.divide(
+            1.0, self.E(psi_coef) - np.array([self.lewis.H_ii(d) for d in psi_external])
+        )
 
-        return psi_external, np.einsum("i,i,i -> i", nomitator, nomitator, denominator)  # vector * vector * vector -> scalar
+        return psi_external, np.einsum(
+            "i,i,i -> i", nomitator, nomitator, denominator
+        )  # vector * vector * vector -> scalar
 
     def E_pt2(self, psi_coef: Psi_coef, n_orb) -> Energy:
         # The sum of the pt2 contribution of each external determinant
@@ -697,7 +764,9 @@ class Powerplant(object):
 # (_   _  |  _   _ _|_ o  _  ._
 # __) (/_ | (/_ (_  |_ | (_) | |
 #
-def selection_step(lewis: Hamiltonian, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n) -> Tuple[Energy, Psi_coef, Psi_det]:
+def selection_step(
+    lewis: Hamiltonian, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n
+) -> Tuple[Energy, Psi_coef, Psi_det]:
     # 1. Generate a list of all the external determinant and their pt2 contribution
     # 2. Take the n  determinants who have the biggest contribution and add it the wave function psi
     # 3. Diagonalize H corresponding to this new wave function to get the new variational energy, and new psi_coef.
@@ -707,7 +776,9 @@ def selection_step(lewis: Hamiltonian, n_ord, psi_coef: Psi_coef, psi_det: Psi_d
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
 
     # 1.
-    psi_external_det, psi_external_energy = Powerplant(lewis, psi_det).psi_external_pt2(psi_coef, n_ord)
+    psi_external_det, psi_external_energy = Powerplant(lewis, psi_det).psi_external_pt2(
+        psi_coef, n_ord
+    )
 
     # 2.
     idx = np.argpartition(psi_external_energy, n)[:n]
@@ -724,10 +795,13 @@ def selection_step(lewis: Hamiltonian, n_ord, psi_coef: Psi_coef, psi_det: Psi_d
 
 import unittest
 
+
 class TestVariationalPowerplant(unittest.TestCase):
     def load_and_compute(self, fcidump_path, wf_path):
         # Load integrals
-        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(
+            f"data/{fcidump_path}"
+        )
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
@@ -787,7 +861,9 @@ class TestVariationalPowerplant(unittest.TestCase):
 class TestVariationalPT2Powerplant(unittest.TestCase):
     def load_and_compute_pt2(self, fcidump_path, wf_path):
         # Load integrals
-        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(
+            f"data/{fcidump_path}"
+        )
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
         # Computation of the Energy of the input wave function (variational energy)
@@ -826,10 +902,17 @@ class TestVariationalPT2Powerplant(unittest.TestCase):
 class TestSelection(unittest.TestCase):
     def load(self, fcidump_path, wf_path):
         # Load integrals
-        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(
+            f"data/{fcidump_path}"
+        )
         # Load wave function
         psi_coef, psi_det = load_wf(f"data/{wf_path}")
-        return n_ord, psi_coef, psi_det, Hamiltonian(d_one_e_integral, d_two_e_integral, E0)
+        return (
+            n_ord,
+            psi_coef,
+            psi_det,
+            Hamiltonian(d_one_e_integral, d_two_e_integral, E0),
+        )
 
     def test_f2_631g_1p0det(self):
         # Verify that selecting 0 determinant is egual that computing the variational energy
@@ -872,5 +955,6 @@ class TestSelection(unittest.TestCase):
 
 if __name__ == "__main__":
     import doctest
-    doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE,raise_on_error=True)
-    unittest.main(failfast=True,verbosity=2)
+
+    doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE, raise_on_error=True)
+    unittest.main(failfast=True, verbosity=2)

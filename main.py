@@ -374,7 +374,6 @@ class PhaseIdx(object):
         ed_dn = len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
         return ed_up, ed_dn
 
-
 #
 # |_|  _. ._ _  o | _|_  _  ._  o  _. ._
 # | | (_| | | | | |  |_ (_) | | | (_| | |
@@ -585,6 +584,11 @@ class Hamiltonian_two_electrons_determinant_driven(object):
         return sum(phase*self.H_ijkl_orbital(*idx) for idx,phase in self.H_ii_indices(det_i))
 
 @dataclass
+class Hamiltonian_two_electrons_integral_driven(object):
+    d_two_e_integral: Two_electron_integral
+
+
+@dataclass
 class Hamiltonian(object):
     """
     Now, we consider the Hamiltonian matrix in the basis of Slater determinants.
@@ -610,6 +614,7 @@ class Hamiltonian(object):
     d_one_e_integral: One_electron_integral
     d_two_e_integral: Two_electron_integral
     E0: Energy
+    driven_by: str = "determinant"
 
     @cached_property
     def n_orb(self):
@@ -621,7 +626,12 @@ class Hamiltonian(object):
 
     @cached_property
     def H_two_electrons(self):
-        return Hamiltonian_two_electrons_determinant_driven(self.d_two_e_integral)
+        if self.driven_by == "determinant":
+            return Hamiltonian_two_electrons_determinant_driven(self.d_two_e_integral)
+        elif self.driven_by == "integral":
+            return Hamiltonian_two_electrons_integral_driven(self.d_two_e_integral)
+        else:
+            raise NotImplementedError
 
     # ~ ~ ~
     # H_ii

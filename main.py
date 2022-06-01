@@ -618,7 +618,8 @@ def get_spindet_a_occ_spindet_b_occ(
     """
     maybe use dict with spin as key instead of tuple?
     >>> get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
-    (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}), defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
+    (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
+     defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
     """
 
     def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
@@ -1150,7 +1151,16 @@ def selection_step(
 #                      _|
 
 import unittest
+import time
 
+class Timing:
+    def setUp(self):
+        print(f"{self.id()} ... ", end='',flush=True)
+        self.startTime = time.perf_counter()
+
+    def tearDown(self):
+        t = time.perf_counter() - self.startTime
+        print (f"ok ({t:.3f}s)")
 
 class Test_VariationalPowerplant:
     def test_c2_eq_dz_3(self):
@@ -1213,12 +1223,11 @@ def load_and_compute(fcidump_path, wf_path, driven_by):
     return Powerplant(lewis, psi_det).E(psi_coef)
 
 
-class Test1_VariationalPowerplant_Determinant(unittest.TestCase, Test_VariationalPowerplant):
+class Test1_VariationalPowerplant_Determinant(Timing, unittest.TestCase, Test_VariationalPowerplant):
     def load_and_compute(self, fcidump_path, wf_path):
         return load_and_compute(fcidump_path, wf_path, "determinant")
 
-
-class Test1_VariationalPowerplant_Integral(unittest.TestCase, Test_VariationalPowerplant):
+class Test1_VariationalPowerplant_Integral(Timing, unittest.TestCase, Test_VariationalPowerplant):
     def load_and_compute(self, fcidump_path, wf_path):
         return load_and_compute(fcidump_path, wf_path, "integral")
 
@@ -1263,12 +1272,12 @@ def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
     return Powerplant(lewis, psi_det).E_pt2(psi_coef, n_ord)
 
 
-class Test_VariationalPT2_Determinant(unittest.TestCase, Test_VariationalPT2Powerplant):
+class Test_VariationalPT2_Determinant(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
     def load_and_compute_pt2(self, fcidump_path, wf_path):
         return load_and_compute_pt2(fcidump_path, wf_path, "determinant")
 
 
-class Test_VariationalPT2_Integral(unittest.TestCase, Test_VariationalPT2Powerplant):
+class Test_VariationalPT2_Integral(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
     def load_and_compute_pt2(self, fcidump_path, wf_path):
         return load_and_compute_pt2(fcidump_path, wf_path, "integral")
 
@@ -1329,4 +1338,4 @@ if __name__ == "__main__":
     import doctest
 
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE, raise_on_error=True)
-    unittest.main(failfast=True, verbosity=2)
+    unittest.main(failfast=True, verbosity=0)

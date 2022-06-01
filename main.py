@@ -375,12 +375,12 @@ class PhaseIdx(object):
         return PhaseIdx.double_phase(sdet_i, sdet_j, h1, h2, p1, p2), h1, h2, p1, p2
 
     @staticmethod
-    @cache # This is just a workarround for our stupidity... We do far too much `exc_degree` call  in integral driven
+    @cache 
     def exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
         """Compute the excitation degree, the number of orbitals which differ
            between the two determinants.
         >>> PhaseIdx.exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
-        ...                            Determinant(alpha=(1, 3), beta=(5, 7)))
+        ...                     Determinant(alpha=(1, 3), beta=(5, 7)))
         (1, 2)
         """
         ed_up = len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
@@ -599,7 +599,6 @@ class Hamiltonian_two_electrons_determinant_driven(object):
 
     def H(self, psi_internal: Psi_det, psi_external: Psi_det, n_orb) -> List[List[Energy]]:
         det_external_to_index = {d: i for i, d in enumerate(psi_external)}
-
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_internal), len(psi_external)))
         for (a, det_b), (i, j, k, l), phase in self.H_indices(psi_internal, n_orb):
@@ -670,12 +669,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
         """
 
         i, j, k, l = idx
-        # (h1,h2, p1,p2)
-        #
-        # psi [ ( 0,1 ), (2,3) ] 4 Orbital SpinOrbital
-
-        # (0,1, 2,3)
-        # -> ( (0,1), (2,3) ),   1
         def double_same(idx, ds, deg, spin):
             i, j, k, l = idx
             ds_ij_not_kl = (ds[i] & ds[j]) - (ds[k] | ds[l])
@@ -710,31 +703,45 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     if (hA, hB, pA, pB) == (i, j, k, l):
                         yield (a, b), phaseA * phaseB
 
-        def single_Ss(idx, spindet_a_occ, spindet_b_occ, exc, spin_a, spin_b):
+        def single_Ss(idx, spindet_a_occ, spindet_b_occ, exc, spin_a):
             i, j, k, l = idx
-
-            S1 = (spindet_a_occ[i] & spindet_a_occ[j]) - spindet_a_occ[k]
-            R1 = (spindet_a_occ[k] & spindet_a_occ[j]) - spindet_a_occ[i]
-            S2 = (spindet_a_occ[i] & spindet_b_occ[j]) - spindet_a_occ[k]
-            R2 = (spindet_a_occ[k] & spindet_b_occ[j]) - spindet_a_occ[i]
-            S3 = (spindet_a_occ[i] & spindet_a_occ[j]) - spindet_a_occ[l]
-            R3 = (spindet_a_occ[l] & spindet_a_occ[j]) - spindet_a_occ[i]
-
-            for a, b in set().union(product(S1, R1), product(S2, R2), product(S3, R3)):
-                det_i, det_j = psi_i[a], psi_i[b]
-                ed_up, ed_dn = PhaseIdx.exc_degree(det_i, det_j)
-                if (ed_up, ed_dn) == exc:
-                    phaseA, hA, pA = PhaseIdx.single_exc(
-                        getattr(det_i, spin_a), getattr(det_j, spin_a)
-                    )
-                    if j in getattr(det_i, spin_a) and hA != j:
-                        if (hA, pA, j) == (i, k, l):  # i->k j==l(alpha)
-                            yield (a, b), phaseA
-                        if (hA, j, pA) == (i, k, l):  # i->l j==k(alpha)
-                            yield (a, b), -phaseA
-                    if j in getattr(det_i, spin_b):
-                        if (hA, pA, j) == (i, k, l):  # i->k j==l(beta)
-                            yield (a, b), phaseA
+            if j == l:
+                S1 = (spindet_a_occ[i] & spindet_a_occ[j]) - spindet_a_occ[k]
+                R1 = (spindet_a_occ[k] & spindet_a_occ[j]) - spindet_a_occ[i]
+                for a, b in product(S1, R1):
+                    det_i, det_j = psi_i[a], psi_i[b]
+                    ed_up, ed_dn = PhaseIdx.exc_degree(det_i, det_j)
+                    if (ed_up, ed_dn) == exc:
+                        phaseA, _, _ = PhaseIdx.single_exc(
+                            getattr(det_i, spin_a), getattr(det_j, spin_a)
+                        )
+                        yield (a, b), phaseA
+    
+                S2 = (spindet_a_occ[i] & spindet_b_occ[j]) - spindet_a_occ[k]
+                R2 = (spindet_a_occ[k] & spindet_b_occ[j]) - spindet_a_occ[i]
+    
+                for a, b in product(S2, R2):
+                    det_i, det_j = psi_i[a], psi_i[b]
+                    ed_up, ed_dn = PhaseIdx.exc_degree(det_i, det_j)
+                    if (ed_up, ed_dn) == exc:
+                        phaseA, _, _ = PhaseIdx.single_exc(
+                            getattr(det_i, spin_a), getattr(det_j, spin_a)
+                        )
+                        # i->k j==l(beta)
+                        yield (a, b), phaseA
+    
+            if j == k:
+                S3 = (spindet_a_occ[i] & spindet_a_occ[j]) - spindet_a_occ[l]
+                R3 = (spindet_a_occ[l] & spindet_a_occ[j]) - spindet_a_occ[i]
+    
+                for a, b in product(S3, R3):
+                    det_i, det_j = psi_i[a], psi_i[b]
+                    ed_up, ed_dn = PhaseIdx.exc_degree(det_i, det_j)
+                    if (ed_up, ed_dn) == exc:
+                        phaseA, _, _ = PhaseIdx.single_exc(
+                            getattr(det_i, spin_a), getattr(det_j, spin_a)
+                        )
+                        yield (a, b), -phaseA
 
         # <ij|kl> used for:
         # <D|H|D_{i(s1),j(s2)}^{k(s1),l(s2)}
@@ -753,9 +760,9 @@ class Hamiltonian_two_electrons_integral_driven(object):
             yield from double_different(idx, spindet_b_occ, spindet_a_occ, "beta", "alpha")
 
         # single Aa and Ab
-        yield from single_Ss(idx, spindet_a_occ, spindet_b_occ, (1, 0), "alpha", "beta")
+        yield from single_Ss(idx, spindet_a_occ, spindet_b_occ, (1, 0), "alpha")
         # single Bb and Ba
-        yield from single_Ss(idx, spindet_b_occ, spindet_a_occ, (0, 1), "beta", "alpha")
+        yield from single_Ss(idx, spindet_b_occ, spindet_a_occ, (0, 1), "beta")
 
     def H_pair_phase_from_idx_ext(
         self, idx, spindet_a_occ_i, spindet_b_occ_i, psi_i, spindet_a_occ_j, spindet_b_occ_j, psi_j

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 # Yes, I like itertools
 from itertools import chain, product, combinations, takewhile
-from functools import partial, cached_property
+from functools import partial, cached_property, cache
 from collections import defaultdict
 import numpy as np
 
@@ -375,6 +375,7 @@ class PhaseIdx(object):
         return PhaseIdx.double_phase(sdet_i, sdet_j, h1, h2, p1, p2), h1, h2, p1, p2
 
     @staticmethod
+    @cache # This is just a workarround for our stupidity... We do far too much `exc_degree` call  in integral driven
     def exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
         """Compute the excitation degree, the number of orbitals which differ
            between the two determinants.
@@ -668,9 +669,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         yield pairs of dets in d that are connected by idx
         """
 
-        # Create map from orbital to determinant.alpha
         i, j, k, l = idx
-
         # (h1,h2, p1,p2)
         #
         # psi [ ( 0,1 ), (2,3) ] 4 Orbital SpinOrbital
@@ -1152,15 +1151,24 @@ def selection_step(
 
 import unittest
 import time
-
 class Timing:
     def setUp(self):
         print(f"{self.id()} ... ", end='',flush=True)
         self.startTime = time.perf_counter()
+        if PROFILING:
+            import cProfile
+            self.pr = cProfile.Profile()
+            self.pr.enable()
 
     def tearDown(self):
         t = time.perf_counter() - self.startTime
         print (f"ok ({t:.3f}s)")
+        if PROFILING:
+            from pstats import Stats
+            self.pr.disable()
+            p = Stats (self.pr)
+            p.strip_dirs().sort_stats ('tottime').print_stats (.05)
+
 
 class Test_VariationalPowerplant:
     def test_c2_eq_dz_3(self):
@@ -1230,7 +1238,6 @@ class Test1_VariationalPowerplant_Determinant(Timing, unittest.TestCase, Test_Va
 class Test1_VariationalPowerplant_Integral(Timing, unittest.TestCase, Test_VariationalPowerplant):
     def load_and_compute(self, fcidump_path, wf_path):
         return load_and_compute(fcidump_path, wf_path, "integral")
-
 
 class Test_VariationalPT2Powerplant:
     def test_f2_631g_1det(self):
@@ -1336,6 +1343,12 @@ class TestSelection(unittest.TestCase):
 
 if __name__ == "__main__":
     import doctest
-
+    import sys
+    try:
+        sys.argv.remove('--profiling')
+    except ValueError:
+        PROFILING = False
+    else:
+        PROFILING = True
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE, raise_on_error=True)
     unittest.main(failfast=True, verbosity=0)

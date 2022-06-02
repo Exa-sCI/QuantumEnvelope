@@ -311,6 +311,11 @@ class Excitation(object):
 
     @staticmethod
     # @cache
+    def exc_degree_spindet(spindet_i: Spin_determinant, spindet_j: Spin_determinant) -> int:
+        return len(set(spindet_i).symmetric_difference(set(spindet_j))) // 2
+
+    @staticmethod
+    # @cache
     def exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
         """Compute the excitation degree, the number of orbitals which differ
            between the two determinants.
@@ -318,9 +323,9 @@ class Excitation(object):
         ...                     Determinant(alpha=(1, 3), beta=(5, 7)))
         (1, 2)
         """
-        ed_up = len(set(det_i.alpha).symmetric_difference(set(det_j.alpha))) // 2
-        ed_dn = len(set(det_i.beta).symmetric_difference(set(det_j.beta))) // 2
-        return ed_up, ed_dn
+        ed_up = Excitation.exc_degree_spindet(det_i.alpha,det_j.alpha) 
+        ed_dn = Excitation.exc_degree_spindet(det_i.beta,det_j.beta)
+        return (ed_up, ed_dn)
 
 
 #  ______ _                        _   _       _
@@ -672,11 +677,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
     @staticmethod
     def double_same(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
-
-        # Double exictation from psi_i -> psi_j
         i, j, k, l = idx
-        # If k == l, p1 == p2, both phase will be compensate
-        if k == l:
+        if k == l: # p1 == p2, both branch should have been take, 0 contribution
             return
 
         S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
@@ -684,13 +686,14 @@ class Hamiltonian_two_electrons_integral_driven(object):
         for a, b in product(S1, R1):
             det_i, det_j = psi_i[a], psi_j[b]
             ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+            # Should some preselection to only double or at list only double+ but nothing in the other spin
             if (ed_up, ed_dn) == exc:
                 phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
                     getattr(det_i, spin), getattr(det_j, spin)
                 )
                 if (p1, p2) == (k, l):
                     yield (a, b), phase
-                elif (p2, p1) == (k, l):
+                elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
                     yield (a, b), -phase
 
     @staticmethod

@@ -91,8 +91,6 @@ def load_integrals(
     for _ in range(3):
         next(f)
 
-    from collections import defaultdict
-
     d_one_e_integral = defaultdict(int)
     d_two_e_integral = defaultdict(int)
 
@@ -183,7 +181,7 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
     return psi_coef, det
 
 
-def load_eref(path_ref) -> float:
+def load_eref(path_ref) -> Energy:
     """Read the input file :
     Representation of the Slater determinants (basis) and
     vector of coefficients in this basis (wave function)."""
@@ -310,7 +308,7 @@ class Excitation(object):
         )
 
     @staticmethod
-    # @cache
+    @cache
     def exc_degree_spindet(spindet_i: Spin_determinant, spindet_j: Spin_determinant) -> int:
         return len(set(spindet_i).symmetric_difference(set(spindet_j))) // 2
 
@@ -832,6 +830,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
             ):
                 yield (a, b), idx, phase
 
+
     def H(self, psi_i, psi_j) -> List[List[Energy]]:
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_i), len(psi_j)))
@@ -870,10 +869,6 @@ class Hamiltonian(object):
     d_two_e_integral: Two_electron_integral
     E0: Energy
     driven_by: str = "determinant"
-
-    @cached_property
-    def n_orb(self):
-        return max(i for i, _ in self.d_one_e_integral.keys())
 
     @cached_property
     def H_one_electron(self):

@@ -88,7 +88,7 @@ def compound_idx4(i,j,k,l):
     """
     nested calls to compound_idx2
     """
-    return compound_idx2(compound_idx2(i,j),compound_idx2(k,l))
+    return compound_idx2(compound_idx2(i,k),compound_idx2(j,l))
 
 @cache
 def compound_idx2_reverse(ij):
@@ -106,9 +106,9 @@ def compound_idx4_reverse(ijkl):
     >>> [compound_idx4(*compound_idx4_reverse(i)) for i in range(10000)] == list(range(10000))
     True
     """
-    ij,kl = compound_idx2_reverse(ijkl)
-    i,j = compound_idx2_reverse(ij)
-    k,l = compound_idx2_reverse(kl)
+    ik,jl = compound_idx2_reverse(ijkl)
+    i,k = compound_idx2_reverse(ik)
+    j,l = compound_idx2_reverse(jl)
     return i,j,k,l
 
 @cache
@@ -120,18 +120,29 @@ def compound_idx4_reverse_all(ijkl):
     where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
     """
     i,j,k,l = compound_idx4_reverse(ijkl)
-    return (i,j,k,l),(j,i,l,k),(k,l,i,j),(l,k,j,i),(i,j,l,k),(j,i,k,l),(l,k,i,j),(k,l,j,i)
+    return (i,j,k,l),(j,i,l,k),(k,l,i,j),(l,k,j,i),(i,l,k,j),(l,i,j,k),(k,j,i,l),(j,k,l,i)
+
+@cache
+def compound_idx4_reverse_all_unique(ijkl):
+    """
+    return all 8 permutations that are equivalent for real orbitals
+    for complex orbitals, they are ordered as:
+    v, v, v*, v*, u, u, u*, u*
+    where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
+    """
+    #i,j,k,l = compound_idx4_reverse(ijkl)
+    return tuple(set(compound_idx4_reverse_all(ijkl)))
 
 @cache
 def canonical_4idx(i,j,k,l):
-    i,j = min(i,j),max(i,j)
-    ij = get_idx2(i,j)
-    k,l = min(k,l),max(k,l)
-    kl = get_idx2(k,l)
-    if ij<=kl:
+    i,k = min(i,k),max(i,k)
+    ik = compound_idx2(i,k)
+    j,l = min(j,l),max(j,l)
+    jl = compound_idx2(j,l)
+    if ik<=jl:
         return i,j,k,l
     else:
-        return k,l,i,j
+        return j,i,l,k
 
 #   _____      _ _   _       _ _          _   _
 #  |_   _|    (_) | (_)     | (_)        | | (_)
@@ -203,18 +214,22 @@ def load_integrals(
             # Exchange r1 and r2 (indices i,k and j,l)
             # Exchange i,k
             # Exchange j,l
-            d_two_e_integral[(i, j, k, l)] = v
-            d_two_e_integral[(i, l, k, j)] = v
-            d_two_e_integral[(j, i, l, k)] = v
-            d_two_e_integral[(j, k, l, i)] = v
-            d_two_e_integral[(k, j, i, l)] = v
-            d_two_e_integral[(k, l, i, j)] = v
-            d_two_e_integral[(l, i, j, k)] = v
-            d_two_e_integral[(l, k, j, i)] = v
+            #d_two_e_integral[(i, j, k, l)] = v
+            #d_two_e_integral[(i, l, k, j)] = v
+            #d_two_e_integral[(j, i, l, k)] = v
+            #d_two_e_integral[(j, k, l, i)] = v
+            #d_two_e_integral[(k, j, i, l)] = v
+            #d_two_e_integral[(k, l, i, j)] = v
+            #d_two_e_integral[(l, i, j, k)] = v
+            #d_two_e_integral[(l, k, j, i)] = v
+            d_two_e_integral[canonical_4idx(i, j, k, l)] = v
 
     f.close()
 
     return n_orb, E0, d_one_e_integral, d_two_e_integral
+
+def get_2e_integral(d_two_e_integral,i,j,k,l):
+    return d_two_e_integral[canonical_4idx(i,j,k,l)]
 
 
 def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
@@ -573,7 +588,8 @@ class Hamiltonian_two_electrons_determinant_driven(object):
         symmetry sparse representation.  For real calculations, symmetries and
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
-        return self.d_two_e_integral[(i, j, k, l)]
+        return get_2e_integral(self.d_two_e_integral, i, j, k, l)
+        #return self.d_two_e_integral[(i, j, k, l)]
 
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
@@ -688,7 +704,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
         symmetry sparse representation.  For real calculations, symmetries and
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
-        return self.d_two_e_integral[(i, j, k, l)]
+        return get_2e_integral(self.d_two_e_integral, i, j, k, l)
+        #return self.d_two_e_integral[(i, j, k, l)]
 
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
@@ -908,17 +925,18 @@ class Hamiltonian_two_electrons_integral_driven(object):
         spindet_a_occ_i, spindet_b_occ_i = self.get_spindet_a_occ_spindet_b_occ(psi_i)
         spindet_a_occ_j, spindet_b_occ_j = self.get_spindet_a_occ_spindet_b_occ(psi_j)
 
-        for idx in self.d_two_e_integral.keys():
-            for (a, b), phase in self.H_pair_phase_from_idx(
-                idx,
-                spindet_a_occ_i,
-                spindet_b_occ_i,
-                psi_i,
-                spindet_a_occ_j,
-                spindet_b_occ_j,
-                psi_j,
-            ):
-                yield (a, b), idx, phase
+        for idx0 in self.d_two_e_integral.keys():
+            for idx in compound_idx4_reverse_all_unique(compound_idx4(*idx0)):
+                for (a, b), phase in self.H_pair_phase_from_idx(
+                    idx,
+                    spindet_a_occ_i,
+                    spindet_b_occ_i,
+                    psi_i,
+                    spindet_a_occ_j,
+                    spindet_b_occ_j,
+                    psi_j,
+                ):
+                    yield (a, b), idx, phase
 
 
     def H(self, psi_i, psi_j) -> List[List[Energy]]:

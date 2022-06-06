@@ -214,14 +214,6 @@ def load_integrals(
             # Exchange r1 and r2 (indices i,k and j,l)
             # Exchange i,k
             # Exchange j,l
-            #d_two_e_integral[(i, j, k, l)] = v
-            #d_two_e_integral[(i, l, k, j)] = v
-            #d_two_e_integral[(j, i, l, k)] = v
-            #d_two_e_integral[(j, k, l, i)] = v
-            #d_two_e_integral[(k, j, i, l)] = v
-            #d_two_e_integral[(k, l, i, j)] = v
-            #d_two_e_integral[(l, i, j, k)] = v
-            #d_two_e_integral[(l, k, j, i)] = v
             d_two_e_integral[canonical_4idx(i, j, k, l)] = v
 
     f.close()
@@ -589,7 +581,6 @@ class Hamiltonian_two_electrons_determinant_driven(object):
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
         return get_2e_integral(self.d_two_e_integral, i, j, k, l)
-        #return self.d_two_e_integral[(i, j, k, l)]
 
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
@@ -705,7 +696,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
         return get_2e_integral(self.d_two_e_integral, i, j, k, l)
-        #return self.d_two_e_integral[(i, j, k, l)]
 
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
@@ -926,6 +916,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         spindet_a_occ_j, spindet_b_occ_j = self.get_spindet_a_occ_spindet_b_occ(psi_j)
 
         for idx0 in self.d_two_e_integral.keys():
+            #TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             for idx in compound_idx4_reverse_all_unique(compound_idx4(*idx0)):
                 for (a, b), phase in self.H_pair_phase_from_idx(
                     idx,

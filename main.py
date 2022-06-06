@@ -118,11 +118,9 @@ def compound_idx4_reverse_all(ijkl):
     for complex orbitals, they are ordered as:
     v, v, v*, v*, u, u, u*, u*
     where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
-    >>> all(\
-            all(\
-                compound_idx4(i,j,k,l) == A \
-            for (i,j,k,l) in compound_idx4_reverse_all(A)) \
-        for A in range(1000))
+    >>> def check_idx(A):
+    ...     return all(compound_idx4(i,j,k,l)==A for i,j,k,l in compound_idx4_reverse_all(A))
+    >>> all(check_idx(A) for A in range(1000))
     True
     """
     i,j,k,l = compound_idx4_reverse(ijkl)
@@ -230,15 +228,11 @@ def load_integrals(
             # Exchange r1 and r2 (indices i,k and j,l)
             # Exchange i,k
             # Exchange j,l
-            d_two_e_integral[canonical_4idx(i, j, k, l)] = v
+            d_two_e_integral[compound_idx4(i, j, k, l)] = v
 
     f.close()
 
     return n_orb, E0, d_one_e_integral, d_two_e_integral
-
-def get_2e_integral(d_two_e_integral,i,j,k,l):
-    return d_two_e_integral[canonical_4idx(i,j,k,l)]
-
 
 def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
     """Read the input file :
@@ -596,7 +590,8 @@ class Hamiltonian_two_electrons_determinant_driven(object):
         symmetry sparse representation.  For real calculations, symmetries and
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
-        return get_2e_integral(self.d_two_e_integral, i, j, k, l)
+        key = compound_idx4(i,j,k,l)
+        return self.d_two_e_integral[key]
 
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
@@ -711,7 +706,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
         symmetry sparse representation.  For real calculations, symmetries and
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
-        return get_2e_integral(self.d_two_e_integral, i, j, k, l)
+        key = compound_idx4(i,j,k,l)
+        return self.d_two_e_integral[key]
 
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
@@ -795,8 +791,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
         S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
         R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[l]) - (spindet_a_occ_j[i] | spindet_a_occ_j[j])
 
-        S2 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
-        R2 = (spindet_a_occ_j[i] & spindet_a_occ_j[j]) - (spindet_a_occ_j[k] | spindet_a_occ_j[l])
+        #S2 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
+        #R2 = (spindet_a_occ_j[i] & spindet_a_occ_j[j]) - (spindet_a_occ_j[k] | spindet_a_occ_j[l])
         for a, b in product(S1, R1):
             det_i, det_j = psi_i[a], psi_j[b]
             ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
@@ -809,18 +805,18 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     yield (a, b), phase
                 elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
                     yield (a, b), -phase
-        for a, b in product(S2, R2):
-            det_i, det_j = psi_i[a], psi_j[b]
-            ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
-            # Should some preselection to only double or at list only double+ but nothing in the other spin
-            if (ed_up, ed_dn) == exc:
-                phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
-                    getattr(det_i, spin), getattr(det_j, spin)
-                )
-                if (p1, p2) == (i, j):
-                    yield (a, b), phase
-                elif (p2, p1) == (i, j): # elif because we took care of avoiding double counting
-                    yield (a, b), -phase
+        #for a, b in product(S2, R2):
+        #    det_i, det_j = psi_i[a], psi_j[b]
+        #    ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+        #    # Should some preselection to only double or at list only double+ but nothing in the other spin
+        #    if (ed_up, ed_dn) == exc:
+        #        phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
+        #            getattr(det_i, spin), getattr(det_j, spin)
+        #        )
+        #        if (p1, p2) == (i, j):
+        #            yield (a, b), phase
+        #        elif (p2, p1) == (i, j): # elif because we took care of avoiding double counting
+        #            yield (a, b), -phase
 
     @staticmethod
     def double_different(
@@ -879,8 +875,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
         )
 
         if not testflags[1]:
-            #if i < j:
-            if i != j:
+            if i < j:
+            #if i != j:
 
                 yield from self.double_same(
                     idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, (2, 0), "alpha"
@@ -954,10 +950,10 @@ class Hamiltonian_two_electrons_integral_driven(object):
         spindet_a_occ_i, spindet_b_occ_i = self.get_spindet_a_occ_spindet_b_occ(psi_i)
         spindet_a_occ_j, spindet_b_occ_j = self.get_spindet_a_occ_spindet_b_occ(psi_j)
 
-        for idx0 in self.d_two_e_integral.keys():
+        for key in self.d_two_e_integral:
             #TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
-            #for idx in compound_idx4_reverse_all_unique(compound_idx4(*idx0)):
-            for idx in (idx0,):
+            for idx in compound_idx4_reverse_all_unique(key):
+            #idx = compound_idx4_reverse(key)
                 for (a, b), phase in self.H_pair_phase_from_idx(
                     idx,
                     spindet_a_occ_i,
@@ -966,7 +962,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     spindet_a_occ_j,
                     spindet_b_occ_j,
                     psi_j,
-                    testmod=11
+                    testmod=0
                 ):
                     yield (a, b), idx, phase
 
@@ -1213,11 +1209,11 @@ def load_and_compute(fcidump_path, wf_path, driven_by):
     return Powerplant(lewis, psi_det).E(psi_coef)
 
 
-#class Test1_VariationalPowerplant_Determinant(
-#    Timing, unittest.TestCase, Test_VariationalPowerplant
-#):
-#    def load_and_compute(self, fcidump_path, wf_path):
-#        return load_and_compute(fcidump_path, wf_path, "determinant")
+class Test1_VariationalPowerplant_Determinant(
+    Timing, unittest.TestCase, Test_VariationalPowerplant
+):
+    def load_and_compute(self, fcidump_path, wf_path):
+        return load_and_compute(fcidump_path, wf_path, "determinant")
 
 
 class Test1_VariationalPowerplant_Integral(Timing, unittest.TestCase, Test_VariationalPowerplant):
@@ -1265,66 +1261,66 @@ def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
     return Powerplant(lewis, psi_det).E_pt2(psi_coef, n_ord)
 
 
-#class Test_VariationalPT2_Determinant(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
-#    def load_and_compute_pt2(self, fcidump_path, wf_path):
-#        return load_and_compute_pt2(fcidump_path, wf_path, "determinant")
+class Test_VariationalPT2_Determinant(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
+    def load_and_compute_pt2(self, fcidump_path, wf_path):
+        return load_and_compute_pt2(fcidump_path, wf_path, "determinant")
 
 
-#class Test_VariationalPT2_Integral(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
-#    def load_and_compute_pt2(self, fcidump_path, wf_path):
-#        return load_and_compute_pt2(fcidump_path, wf_path, "integral")
+class Test_VariationalPT2_Integral(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
+    def load_and_compute_pt2(self, fcidump_path, wf_path):
+        return load_and_compute_pt2(fcidump_path, wf_path, "integral")
 
 
-#class TestSelection(unittest.TestCase):
-#    def load(self, fcidump_path, wf_path):
-#        # Load integrals
-#        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
-#        # Load wave function
-#        psi_coef, psi_det = load_wf(f"data/{wf_path}")
-#        return (
-#            n_ord,
-#            psi_coef,
-#            psi_det,
-#            Hamiltonian(d_one_e_integral, d_two_e_integral, E0),
-#        )
-#
-#    def test_f2_631g_1p0det(self):
-#        # Verify that selecting 0 determinant is egual that computing the variational energy
-#        fcidump_path = "f2_631g.FCIDUMP"
-#        wf_path = "f2_631g.1det.wf"
-#
-#        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-#        E_var = Powerplant(lewis, psi_det).E(psi_coef)
-#
-#        E_selection, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 0)
-#
-#        self.assertAlmostEqual(E_var, E_selection, places=6)
-#
-#    def test_f2_631g_1p10det(self):
-#        fcidump_path = "f2_631g.FCIDUMP"
-#        wf_path = "f2_631g.1det.wf"
-#        # No a value optained with QP
-#        E_ref = -198.72696793971556
-#        # Selection 10 determinant and check if the result make sence
-#
-#        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-#        E, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 10)
-#
-#        self.assertAlmostEqual(E_ref, E, places=6)
-#
-#    def test_f2_631g_1p5p5det(self):
-#        fcidump_path = "f2_631g.FCIDUMP"
-#        wf_path = "f2_631g.1det.wf"
-#        # We will select 5 determinant, than 5 more.
-#        # The value is lower than the one optained by selecting 10 deterinant in one go.
-#        # Indeed, the pt2 get more precise whith the number of selection
-#        E_ref = -198.73029308564543
-#
-#        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-#        _, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
-#        E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
-#
-#        self.assertAlmostEqual(E_ref, E, places=6)
+class TestSelection(unittest.TestCase):
+    def load(self, fcidump_path, wf_path):
+        # Load integrals
+        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
+        # Load wave function
+        psi_coef, psi_det = load_wf(f"data/{wf_path}")
+        return (
+            n_ord,
+            psi_coef,
+            psi_det,
+            Hamiltonian(d_one_e_integral, d_two_e_integral, E0),
+        )
+
+    def test_f2_631g_1p0det(self):
+        # Verify that selecting 0 determinant is egual that computing the variational energy
+        fcidump_path = "f2_631g.FCIDUMP"
+        wf_path = "f2_631g.1det.wf"
+
+        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        E_var = Powerplant(lewis, psi_det).E(psi_coef)
+
+        E_selection, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 0)
+
+        self.assertAlmostEqual(E_var, E_selection, places=6)
+
+    def test_f2_631g_1p10det(self):
+        fcidump_path = "f2_631g.FCIDUMP"
+        wf_path = "f2_631g.1det.wf"
+        # No a value optained with QP
+        E_ref = -198.72696793971556
+        # Selection 10 determinant and check if the result make sence
+
+        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        E, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 10)
+
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+    def test_f2_631g_1p5p5det(self):
+        fcidump_path = "f2_631g.FCIDUMP"
+        wf_path = "f2_631g.1det.wf"
+        # We will select 5 determinant, than 5 more.
+        # The value is lower than the one optained by selecting 10 deterinant in one go.
+        # Indeed, the pt2 get more precise whith the number of selection
+        E_ref = -198.73029308564543
+
+        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        _, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
+        E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
+
+        self.assertAlmostEqual(E_ref, E, places=6)
 
 
 if __name__ == "__main__":

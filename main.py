@@ -93,7 +93,7 @@ def compound_idx4(i,j,k,l):
 @cache
 def compound_idx2_reverse(ij):
     """
-    >>> [compound_idx2(*compound_idx2_reverse(i)) for i in range(10000)] == list(range(10000))
+    >>> all(compound_idx2(*compound_idx2_reverse(A)) == A for A in range(10000))
     True
     """
     j=int((sqrt(1+8*ij)-1)/2)
@@ -103,7 +103,7 @@ def compound_idx2_reverse(ij):
 @cache
 def compound_idx4_reverse(ijkl):
     """
-    >>> all(compound_idx4(*compound_idx4_reverse(i))==i for i in range(10000))
+    >>> all(compound_idx4(*compound_idx4_reverse(A)) == A for A in range(10000))
     True
     """
     ik,jl = compound_idx2_reverse(ijkl)
@@ -118,7 +118,11 @@ def compound_idx4_reverse_all(ijkl):
     for complex orbitals, they are ordered as:
     v, v, v*, v*, u, u, u*, u*
     where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
-    >>> all(all(compound_idx4(i,j,k,l)==ii for (i,j,k,l) in compound_idx4_reverse_all(ii)) for ii in range(1000))
+    >>> all(\
+            all(\
+                compound_idx4(i,j,k,l) == A \
+            for (i,j,k,l) in compound_idx4_reverse_all(A)) \
+        for A in range(1000))
     True
     """
     i,j,k,l = compound_idx4_reverse(ijkl)
@@ -140,7 +144,11 @@ def canonical_4idx(i,j,k,l):
         j <= l
         (k < l) or (k==l and i <= j)
     the last of these is equivalent to (compound_idx2(i,k) <= compound_idx2(j,l))
-    >>> all(all(canonical_4idx(*compound_idx4_reverse(A))==B for B in (canonical_4idx(i,j,k,l) for (i,j,k,l) in compound_idx4_reverse_all(A))) for A in range(1000))
+    >>> all(\
+            all(\
+                canonical_4idx(*compound_idx4_reverse(A)) == B \
+            for B in (canonical_4idx(i,j,k,l) for (i,j,k,l) in compound_idx4_reverse_all(A)))\
+        for A in range(1000))
     True
     """
     i,k = min(i,k),max(i,k)

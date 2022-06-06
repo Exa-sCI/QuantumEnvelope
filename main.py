@@ -10,6 +10,7 @@ from itertools import chain, product, combinations, takewhile
 from functools import partial, cached_property, cache
 from collections import defaultdict
 import numpy as np
+from math import sqrt
 
 
 # Orbital index (1,2,...,n_orb)
@@ -41,6 +42,96 @@ Psi_coef = List[float]
 # The varitional Energy who correpond Psi_det
 # The pt2 Energy who correnpond to the pertubative energy induce by each determinant connected to Psi_det
 Energy = NewType("Energy", float)
+
+# _____          _           _               _   _ _   _ _
+#|_   _|        | |         (_)             | | | | | (_) |
+#  | | _ __   __| | _____  ___ _ __   __ _  | | | | |_ _| |___
+#  | || '_ \ / _` |/ _ \ \/ / | '_ \ / _` | | | | | __| | / __|
+# _| || | | | (_| |  __/>  <| | | | | (_| | | |_| | |_| | \__ \
+# \___/_| |_|\__,_|\___/_/\_\_|_| |_|\__, |  \___/ \__|_|_|___/
+#                                     __/ |
+#                                    |___/
+
+@cache
+def compound_idx2(i,j):
+    """
+    get compound (triangular) index from (i,j)
+
+    (first few elements of lower triangle shown below)
+          j
+        │ 0   1   2   3
+     ───┼───────────────
+    i 0 │ 0
+      1 │ 1   2
+      2 │ 3   4   5
+      3 │ 6   7   8   9
+
+    position of i,j in flattened triangle
+
+    >>> compound_idx2(0,0)
+    0
+    >>> compound_idx2(0,1)
+    1
+    >>> compound_idx2(1,0)
+    1
+    >>> compound_idx2(1,1)
+    2
+    >>> compound_idx2(1,2)
+    4
+    >>> compound_idx2(2,1)
+    4
+    """
+    p,q = min(i,j),max(i,j)
+    return (q*(q+1))//2+p
+
+def compound_idx4(i,j,k,l):
+    """
+    nested calls to compound_idx2
+    """
+    return compound_idx2(compound_idx2(i,j),compound_idx2(k,l))
+
+@cache
+def compound_idx2_reverse(ij):
+    """
+    >>> [compound_idx2(*compound_idx2_reverse(i)) for i in range(10000)] == list(range(10000))
+    True
+    """
+    j=int((sqrt(1+8*ij)-1)/2)
+    i=ij-(j*(j+1)//2)
+    return i,j
+
+@cache
+def compound_idx4_reverse(ijkl):
+    """
+    >>> [compound_idx4(*compound_idx4_reverse(i)) for i in range(10000)] == list(range(10000))
+    True
+    """
+    ij,kl = compound_idx2_reverse(ijkl)
+    i,j = compound_idx2_reverse(ij)
+    k,l = compound_idx2_reverse(kl)
+    return i,j,k,l
+
+@cache
+def compound_idx4_reverse_all(ijkl):
+    """
+    return all 8 permutations that are equivalent for real orbitals
+    for complex orbitals, they are ordered as:
+    v, v, v*, v*, u, u, u*, u*
+    where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
+    """
+    i,j,k,l = compound_idx4_reverse(ijkl)
+    return (i,j,k,l),(j,i,l,k),(k,l,i,j),(l,k,j,i),(i,j,l,k),(j,i,k,l),(l,k,i,j),(k,l,j,i)
+
+@cache
+def canonical_4idx(i,j,k,l):
+    i,j = min(i,j),max(i,j)
+    ij = get_idx2(i,j)
+    k,l = min(k,l),max(k,l)
+    kl = get_idx2(k,l)
+    if ij<=kl:
+        return i,j,k,l
+    else:
+        return k,l,i,j
 
 #   _____      _ _   _       _ _          _   _
 #  |_   _|    (_) | (_)     | (_)        | | (_)
@@ -173,7 +264,6 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
         det.append(Determinant(tuple(decode_det(det_i)), tuple(decode_det(det_j))))
 
     # Normalize psi_coef
-    from math import sqrt
 
     norm = sqrt(sum(c * c for c in psi_coef))
     psi_coef = [c / norm for c in psi_coef]

@@ -103,7 +103,7 @@ def compound_idx2_reverse(ij):
 @cache
 def compound_idx4_reverse(ijkl):
     """
-    >>> [compound_idx4(*compound_idx4_reverse(i)) for i in range(10000)] == list(range(10000))
+    >>> all(compound_idx4(*compound_idx4_reverse(i))==i for i in range(10000))
     True
     """
     ik,jl = compound_idx2_reverse(ijkl)
@@ -118,6 +118,8 @@ def compound_idx4_reverse_all(ijkl):
     for complex orbitals, they are ordered as:
     v, v, v*, v*, u, u, u*, u*
     where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
+    >>> all(all(compound_idx4(i,j,k,l)==ii for (i,j,k,l) in compound_idx4_reverse_all(ii)) for ii in range(1000))
+    True
     """
     i,j,k,l = compound_idx4_reverse(ijkl)
     return (i,j,k,l),(j,i,l,k),(k,l,i,j),(l,k,j,i),(i,l,k,j),(l,i,j,k),(k,j,i,l),(j,k,l,i)
@@ -125,16 +127,22 @@ def compound_idx4_reverse_all(ijkl):
 @cache
 def compound_idx4_reverse_all_unique(ijkl):
     """
-    return all 8 permutations that are equivalent for real orbitals
-    for complex orbitals, they are ordered as:
-    v, v, v*, v*, u, u, u*, u*
-    where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
+    return only the unique 4-tuples from compound_idx4_reverse_all
     """
-    #i,j,k,l = compound_idx4_reverse(ijkl)
     return tuple(set(compound_idx4_reverse_all(ijkl)))
 
 @cache
 def canonical_4idx(i,j,k,l):
+    """
+    for real orbitals, return same 4-tuple for all equivalent integrals
+    returned (i,j,k,l) should satisfy the following:
+        i <= k
+        j <= l
+        (k < l) or (k==l and i <= j)
+    the last of these is equivalent to (compound_idx2(i,k) <= compound_idx2(j,l))
+    >>> all(all(canonical_4idx(*compound_idx4_reverse(i))==j for j in (canonical_4idx(ii,jj,kk,ll) for (ii,jj,kk,ll) in compound_idx4_reverse_all(i))) for i in range(1000))
+    True
+    """
     i,k = min(i,k),max(i,k)
     ik = compound_idx2(i,k)
     j,l = min(j,l),max(j,l)

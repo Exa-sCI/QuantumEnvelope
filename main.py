@@ -93,7 +93,7 @@ def compound_idx4(i,j,k,l):
 @cache
 def compound_idx2_reverse(ij):
     """
-    >>> [compound_idx2(*compound_idx2_reverse(i)) for i in range(10000)] == list(range(10000))
+    >>> all(compound_idx2(*compound_idx2_reverse(A)) == A for A in range(10000))
     True
     """
     j=int((sqrt(1+8*ij)-1)/2)
@@ -103,7 +103,7 @@ def compound_idx2_reverse(ij):
 @cache
 def compound_idx4_reverse(ijkl):
     """
-    >>> [compound_idx4(*compound_idx4_reverse(i)) for i in range(10000)] == list(range(10000))
+    >>> all(compound_idx4(*compound_idx4_reverse(A)) == A for A in range(10000))
     True
     """
     ik,jl = compound_idx2_reverse(ijkl)
@@ -118,6 +118,12 @@ def compound_idx4_reverse_all(ijkl):
     for complex orbitals, they are ordered as:
     v, v, v*, v*, u, u, u*, u*
     where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
+    >>> all(\
+            all(\
+                compound_idx4(i,j,k,l) == A \
+            for (i,j,k,l) in compound_idx4_reverse_all(A)) \
+        for A in range(1000))
+    True
     """
     i,j,k,l = compound_idx4_reverse(ijkl)
     return (i,j,k,l),(j,i,l,k),(k,l,i,j),(l,k,j,i),(i,l,k,j),(l,i,j,k),(k,j,i,l),(j,k,l,i)
@@ -125,16 +131,26 @@ def compound_idx4_reverse_all(ijkl):
 @cache
 def compound_idx4_reverse_all_unique(ijkl):
     """
-    return all 8 permutations that are equivalent for real orbitals
-    for complex orbitals, they are ordered as:
-    v, v, v*, v*, u, u, u*, u*
-    where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
+    return only the unique 4-tuples from compound_idx4_reverse_all
     """
-    #i,j,k,l = compound_idx4_reverse(ijkl)
     return tuple(set(compound_idx4_reverse_all(ijkl)))
 
 @cache
 def canonical_4idx(i,j,k,l):
+    """
+    for real orbitals, return same 4-tuple for all equivalent integrals
+    returned (i,j,k,l) should satisfy the following:
+        i <= k
+        j <= l
+        (k < l) or (k==l and i <= j)
+    the last of these is equivalent to (compound_idx2(i,k) <= compound_idx2(j,l))
+    >>> all(\
+            all(\
+                canonical_4idx(*compound_idx4_reverse(A)) == B \
+            for B in (canonical_4idx(i,j,k,l) for (i,j,k,l) in compound_idx4_reverse_all(A)))\
+        for A in range(1000))
+    True
+    """
     i,k = min(i,k),max(i,k)
     ik = compound_idx2(i,k)
     j,l = min(j,l),max(j,l)
@@ -214,14 +230,6 @@ def load_integrals(
             # Exchange r1 and r2 (indices i,k and j,l)
             # Exchange i,k
             # Exchange j,l
-            #d_two_e_integral[(i, j, k, l)] = v
-            #d_two_e_integral[(i, l, k, j)] = v
-            #d_two_e_integral[(j, i, l, k)] = v
-            #d_two_e_integral[(j, k, l, i)] = v
-            #d_two_e_integral[(k, j, i, l)] = v
-            #d_two_e_integral[(k, l, i, j)] = v
-            #d_two_e_integral[(l, i, j, k)] = v
-            #d_two_e_integral[(l, k, j, i)] = v
             d_two_e_integral[canonical_4idx(i, j, k, l)] = v
 
     f.close()
@@ -589,7 +597,6 @@ class Hamiltonian_two_electrons_determinant_driven(object):
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
         return get_2e_integral(self.d_two_e_integral, i, j, k, l)
-        #return self.d_two_e_integral[(i, j, k, l)]
 
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
@@ -705,7 +712,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
         return get_2e_integral(self.d_two_e_integral, i, j, k, l)
-        #return self.d_two_e_integral[(i, j, k, l)]
 
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
@@ -949,6 +955,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         spindet_a_occ_j, spindet_b_occ_j = self.get_spindet_a_occ_spindet_b_occ(psi_j)
 
         for idx0 in self.d_two_e_integral.keys():
+            #TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             #for idx in compound_idx4_reverse_all_unique(compound_idx4(*idx0)):
             for idx in (idx0,):
                 for (a, b), phase in self.H_pair_phase_from_idx(

@@ -140,7 +140,7 @@ def canonical_4idx(i,j,k,l):
         j <= l
         (k < l) or (k==l and i <= j)
     the last of these is equivalent to (compound_idx2(i,k) <= compound_idx2(j,l))
-    >>> all(all(canonical_4idx(*compound_idx4_reverse(i))==j for j in (canonical_4idx(ii,jj,kk,ll) for (ii,jj,kk,ll) in compound_idx4_reverse_all(i))) for i in range(1000))
+    >>> all(all(canonical_4idx(*compound_idx4_reverse(A))==B for B in (canonical_4idx(i,j,k,l) for (i,j,k,l) in compound_idx4_reverse_all(A))) for A in range(1000))
     True
     """
     i,k = min(i,k),max(i,k)

@@ -35,6 +35,13 @@ class Determinant(NamedTuple):
     alpha: Spin_determinant
     beta: Spin_determinant
 
+class DetDiff(NamedTuple):
+
+    holes: Determinant
+    particles: Determinant
+    def __repr__(self):
+        return(f'DetDiff(hA={self.holes.alpha}, pA={self.particles.alpha}; hB={self.holes.beta}, pB={self.particles.beta})')
+
 
 Psi_det = List[Determinant]
 Psi_coef = List[float]
@@ -43,6 +50,13 @@ Psi_coef = List[float]
 # The pt2 Energy who correnpond to the pertubative energy induce by each determinant connected to Psi_det
 Energy = NewType("Energy", float)
 
+
+def det_diff(det1: Determinant, det2: Determinant) -> DetDiff:
+    return DetDiff(
+            Determinant( tuple(sorted(set(det1.alpha) - set(det2.alpha))),
+                         tuple(sorted(set(det1.beta)  - set(det2.beta)))),
+            Determinant( tuple(sorted(set(det2.alpha) - set(det1.alpha))),
+                         tuple(sorted(set(det2.beta)  - set(det1.beta)))))
 # _____          _           _               _   _ _   _ _
 #|_   _|        | |         (_)             | | | | | (_) |
 #  | | _ __   __| | _____  ___ _ __   __ _  | | | | |_ _| |___
@@ -791,8 +805,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
         S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
         R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[l]) - (spindet_a_occ_j[i] | spindet_a_occ_j[j])
 
-        #S2 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
-        #R2 = (spindet_a_occ_j[i] & spindet_a_occ_j[j]) - (spindet_a_occ_j[k] | spindet_a_occ_j[l])
         for a, b in product(S1, R1):
             det_i, det_j = psi_i[a], psi_j[b]
             ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
@@ -805,18 +817,21 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     yield (a, b), phase
                 elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
                     yield (a, b), -phase
-        #for a, b in product(S2, R2):
-        #    det_i, det_j = psi_i[a], psi_j[b]
-        #    ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
-        #    # Should some preselection to only double or at list only double+ but nothing in the other spin
-        #    if (ed_up, ed_dn) == exc:
-        #        phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
-        #            getattr(det_i, spin), getattr(det_j, spin)
-        #        )
-        #        if (p1, p2) == (i, j):
-        #            yield (a, b), phase
-        #        elif (p2, p1) == (i, j): # elif because we took care of avoiding double counting
-        #            yield (a, b), -phase
+
+     #   S2 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
+     #   R2 = (spindet_a_occ_j[i] & spindet_a_occ_j[j]) - (spindet_a_occ_j[k] | spindet_a_occ_j[l])
+     #   for a, b in product(S2, R2):
+     #       det_i, det_j = psi_i[a], psi_j[b]
+     #       ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+     #       # Should some preselection to only double or at list only double+ but nothing in the other spin
+     #       if (ed_up, ed_dn) == exc:
+     #           phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
+     #               getattr(det_i, spin), getattr(det_j, spin)
+     #           )
+     #           if (p1, p2) == (i, j):
+     #               yield (a, b), phase
+     #           elif (p2, p1) == (i, j): # elif because we took care of avoiding double counting
+     #               yield (a, b), -phase
 
     @staticmethod
     def double_different(
@@ -841,15 +856,261 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 phaseA, hA, pA = PhaseIdx.single_exc(getattr(det_i, spin_a), getattr(det_j, spin_a))
                 phaseB, hB, pB = PhaseIdx.single_exc(getattr(det_i, spin_b), getattr(det_j, spin_b))
                 yield (a, b), phaseA * phaseB
-
-    def H_pair_phase_from_idx(
-        self, idx, spindet_a_occ_i, spindet_b_occ_i, psi_i, spindet_a_occ_j, spindet_b_occ_j, psi_j, testmod=0
+    @staticmethod
+    def single_Ss_unique(
+        psi_i,
+        psi_j,
+        idx,
+        spindet_a_occ_i,
+        spindet_b_occ_i,
+        spindet_a_occ_j,
+        spindet_b_occ_j,
+        exc,
+        spin,
     ):
-        num_types = 4
-        testflags = list(map(int,bin(testmod)[2:].rjust(num_types,'0')))
+        """
+        yield all det pairs (a,b) and phase where <a|H|b> depends on the integral with index idx
+        filter out anything that isn't a single excitation
+        """
         i, j, k, l = idx
 
-        if not testflags[0]:
+        # limit to only single excitations
+        if j == l:
+            # <ij|kj>
+            # from ia to ka where ja is occupied
+            S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - spindet_a_occ_i[k]
+            R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[j]) - spindet_a_occ_j[i]
+            # <ij|kj>
+            # from ia to ka where jb is occupied
+            S2 = (spindet_a_occ_i[i] & spindet_b_occ_i[j]) - spindet_a_occ_i[k]
+            R2 = (spindet_a_occ_j[k] & spindet_b_occ_j[j]) - spindet_a_occ_j[i]
+            # j==l
+            # Kevin: separating these two is incorrect because it double counts the intersection of the two products
+            # Thomas & Brice: Realy?!
+            # might be useful to form (a_i[i] - a_i[k]) (used in S1 and S2)
+            #                         (a_j[k] - a_j[i]) (used in R1 and R2)
+            for a, b in chain(product(S1, R1), product(S2, R2)):
+                det_i, det_j = psi_i[a], psi_j[b]
+                ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == exc:
+                    yield (a, b), PhaseIdx.single_phase(
+                        getattr(det_i, spin), getattr(det_j, spin), i, k
+                    )
+
+        # <ij|jl> = -<ij|lj>
+        # from ia to la where ja is occupied
+        if j == k:
+            S3 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - spindet_a_occ_i[l]
+            R3 = (spindet_a_occ_j[l] & spindet_a_occ_j[j]) - spindet_a_occ_j[i]
+
+            for a, b in product(S3, R3):
+                det_i, det_j = psi_i[a], psi_j[b]
+                ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+                if (ed_up, ed_dn) == exc:
+                    yield (a, b), -PhaseIdx.single_phase(
+                        getattr(det_i, spin), getattr(det_j, spin), i, l
+                    )
+
+    @staticmethod
+    def double_same_unique(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
+        """
+        2 1 3 4 *  
+        2 4 3 1 * x
+        3 1 2 4
+        3 4 2 1 * x
+        1 2 4 3   x
+        1 3 4 2 * x
+        4 2 1 3
+        4 3 1 2
+        
+        ilkj -
+        klij -
+        jilk
+        jkli -
+
+        1 2 3 4 * a 
+        1 4 3 2 * b
+        3 2 1 4
+        3 4 1 2 * c
+        2 1 4 3
+        2 3 4 1 * d
+        4 1 2 3
+        4 3 2 1
+
+        ijkl
+        ilkj -
+        klij -
+        jkli -
+        """
+        def foo(i,j,k,l):
+            #if i>=j:
+            #    return
+            if k == l: # p1 == p2, both branch should have been take, 0 contribution
+                return
+            S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
+            R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[l]) - (spindet_a_occ_j[i] | spindet_a_occ_j[j])
+
+            for a, b in product(S1, R1):
+                det_i, det_j = psi_i[a], psi_j[b]
+                ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+                # Should some preselection to only double or at list only double+ but nothing in the other spin
+                if (ed_up, ed_dn) == exc:
+                    phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
+                        getattr(det_i, spin), getattr(det_j, spin)
+                    )
+                    if (p1, p2) == (k, l):
+                        yield (a, b), phase
+                    elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
+                        yield (a, b), -phase
+        i, j, k, l = idx
+        #yield from foo(i,j,k,l)
+        yield from foo(i,l,k,j)
+        yield from foo(k,l,i,j)
+        #yield from foo(k,j,i,l)
+        yield from foo(j,k,l,i)
+        #yield from foo(j,i,l,k)
+        #yield from foo(l,k,j,i)
+        #yield from foo(l,i,j,k)
+        if i<j:
+            yield from foo(i,j,k,l)
+        else:
+            yield from foo(j,i,l,k)
+
+        
+       # # a
+       # S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
+       # R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[l]) - (spindet_a_occ_j[i] | spindet_a_occ_j[j])
+
+       # for a, b in product(S1, R1):
+       #     det_i, det_j = psi_i[a], psi_j[b]
+       #     ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+       #     # Should some preselection to only double or at list only double+ but nothing in the other spin
+       #     if (ed_up, ed_dn) == exc:
+       #         phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
+       #             getattr(det_i, spin), getattr(det_j, spin)
+       #         )
+       #         if (p1, p2) == (k, l):
+       #             yield (a, b), phase
+       #         elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
+       #             yield (a, b), -phase
+
+       # S2 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
+       # R2 = (spindet_a_occ_j[i] & spindet_a_occ_j[j]) - (spindet_a_occ_j[k] | spindet_a_occ_j[l])
+       # for a, b in product(S2, R2):
+       #     det_i, det_j = psi_i[a], psi_j[b]
+       #     ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+       #     # Should some preselection to only double or at list only double+ but nothing in the other spin
+       #     if (ed_up, ed_dn) == exc:
+       #         phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
+       #             getattr(det_i, spin), getattr(det_j, spin)
+       #         )
+       #         if (p1, p2) == (i, j):
+       #             yield (a, b), phase
+       #         elif (p2, p1) == (i, j): # elif because we took care of avoiding double counting
+       #             yield (a, b), -phase
+
+    @staticmethod
+    def double_different_unique(
+        idx,
+        psi_i,
+        psi_j,
+        spindet_a_occ_i,
+        spindet_b_occ_i,
+        spindet_a_occ_j,
+        spindet_b_occ_j,
+        spin_a,
+        spin_b,
+    ):
+        i, j, k, l = idx
+
+        S1 = (spindet_a_occ_i[i] & spindet_b_occ_i[j]) - (spindet_a_occ_i[k] | spindet_b_occ_i[l])
+        R1 = (spindet_a_occ_j[k] & spindet_b_occ_j[l]) - (spindet_a_occ_j[i] | spindet_b_occ_j[j])
+        for a, b in product(S1, R1):
+            det_i, det_j = psi_i[a], psi_j[b]
+            ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+            if (ed_up, ed_dn) == (1, 1):
+                phaseA, hA, pA = PhaseIdx.single_exc(getattr(det_i, spin_a), getattr(det_j, spin_a))
+                phaseB, hB, pB = PhaseIdx.single_exc(getattr(det_i, spin_b), getattr(det_j, spin_b))
+                yield (a, b), phaseA * phaseB
+
+    def H_pair_phase_from_idx_unique(
+        self, idx, spindet_a_occ_i, spindet_b_occ_i, psi_i, spindet_a_occ_j, spindet_b_occ_j, psi_j, unique_idx_only=set(),reverse=False
+    ):
+        foo = lambda x: bool(x) ^ bool(reverse)
+        i, j, k, l = idx
+
+        if foo('single_Ss' in unique_idx_only):
+            yield from self.single_Ss_unique(
+            psi_i,
+            psi_j,
+            idx,
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+            spindet_a_occ_j,
+            spindet_b_occ_j,
+            (1, 0),
+            "alpha",
+        )
+        if foo('single_Ss' in unique_idx_only):
+            yield from self.single_Ss_unique(
+            psi_i,
+            psi_j,
+            idx,
+            spindet_b_occ_i,
+            spindet_a_occ_i,
+            spindet_b_occ_j,
+            spindet_a_occ_j,
+            (0, 1),
+            "beta",
+        )
+
+        if foo('double_same' in unique_idx_only):
+            #if i < j:
+            if i != j:
+
+                yield from self.double_same_unique(
+                    idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, (2, 0), "alpha"
+                )
+                yield from self.double_same_unique(
+                    idx, psi_i, psi_j, spindet_b_occ_i, spindet_b_occ_j, (0, 2), "beta"
+                )
+
+        if foo('double_different' in unique_idx_only):
+            if i < j:
+
+                yield from self.double_different_unique(
+                    idx,
+                    psi_i,
+                    psi_j,
+                    spindet_a_occ_i,
+                    spindet_b_occ_i,
+                    spindet_a_occ_j,
+                    spindet_b_occ_j,
+                    "alpha",
+                    "beta",
+                )
+        if foo('double_different2' in unique_idx_only):
+            # above we do (hA < hB) so (hB < hA) and (hA==hB)
+            if i <= j:
+                yield from self.double_different_unique(
+                    idx,
+                    psi_i,
+                    psi_j,
+                    spindet_b_occ_i,
+                    spindet_a_occ_i,
+                    spindet_b_occ_j,
+                    spindet_a_occ_j,
+                    "beta",
+                    "alpha",
+                )
+
+    def H_pair_phase_from_idx(
+        self, idx, spindet_a_occ_i, spindet_b_occ_i, psi_i, spindet_a_occ_j, spindet_b_occ_j, psi_j, unique_idx_only=set()
+    ):
+        foo = lambda x: not x
+        i, j, k, l = idx
+
+        if foo('single_Ss' in unique_idx_only):
             yield from self.single_Ss(
             psi_i,
             psi_j,
@@ -861,7 +1122,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
             (1, 0),
             "alpha",
         )
-        if not testflags[0]:
+        if foo('single_Ss' in unique_idx_only):
             yield from self.single_Ss(
             psi_i,
             psi_j,
@@ -874,7 +1135,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
             "beta",
         )
 
-        if not testflags[1]:
+        if foo('double_same' in unique_idx_only):
             if i < j:
             #if i != j:
 
@@ -885,7 +1146,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     idx, psi_i, psi_j, spindet_b_occ_i, spindet_b_occ_j, (0, 2), "beta"
                 )
 
-        if not testflags[2]:
+        if foo('double_different' in unique_idx_only):
             if i < j:
 
                 yield from self.double_different(
@@ -899,7 +1160,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     "alpha",
                     "beta",
                 )
-        if not testflags[3]:
+        if foo('double_different2' in unique_idx_only):
             # above we do (hA < hB) so (hB < hA) and (hA==hB)
             if i <= j:
                 yield from self.double_different(
@@ -950,7 +1211,20 @@ class Hamiltonian_two_electrons_integral_driven(object):
         spindet_a_occ_i, spindet_b_occ_i = self.get_spindet_a_occ_spindet_b_occ(psi_i)
         spindet_a_occ_j, spindet_b_occ_j = self.get_spindet_a_occ_spindet_b_occ(psi_j)
 
+        l1 = defaultdict(list)
+        l2 = defaultdict(list)
+        v1 = defaultdict(float)
+        v2 = defaultdict(float)
         for key in self.d_two_e_integral:
+            # ( 0 , 15)  0000 1111
+            # (1, 14)    0001 1110
+            # (2, 13)    0010 1101
+            # (4, 11)    0100 1011 
+            # (8, 7)     1000 0111 single_Ss
+
+            testmod=set(['single_Ss','double_same','double_different','double_different2'])
+            testmod=set(['single_Ss','double_different','double_different2'])
+
             #TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             for idx in compound_idx4_reverse_all_unique(key):
             #idx = compound_idx4_reverse(key)
@@ -962,9 +1236,45 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     spindet_a_occ_j,
                     spindet_b_occ_j,
                     psi_j,
-                    testmod=0
+                    testmod
                 ):
-                    yield (a, b), idx, phase
+                    #yield (a, b), idx, phase
+                    l1[a,b].append(( idx, phase))
+                    v1[a,b] += phase * self.H_ijkl_orbital(*idx)
+
+            idx = compound_idx4_reverse(key)
+            for (a, b), phase in self.H_pair_phase_from_idx_unique(
+                idx,
+                spindet_a_occ_i,
+                spindet_b_occ_i,
+                psi_i,
+                spindet_a_occ_j,
+                spindet_b_occ_j,
+                psi_j,
+                testmod,
+                reverse=True
+            ):
+                #yield (a, b), idx, phase
+                l2[a, b].append((idx, phase))
+                v2[a,b] += phase * self.H_ijkl_orbital(*idx)
+        l1=dict(l1)
+        l2=dict(l2)
+        print('')
+        idx1 = sorted(l1)
+        idx2 = sorted(l2)
+        for ij in idx1:
+            print(f'{ij=}')
+            print(f' {det_diff(psi_i[ij[0]],psi_j[ij[1]])}')
+            print(f'  {psi_i[ij[0]]=}')
+            print(f'  {psi_j[ij[1]]=}')
+            print(f'  {v1[ij]=}')
+            print(f'  {v2[ij]=}')
+            print(f'  {l1[ij]=}')
+            print(f'  {l2[ij]=}')
+        for ij in idx2:
+            if ij not in l1:
+                print(f'*{ij=}')
+                print(f'  {l2[ij]=}')
 
 
     def H(self, psi_i, psi_j) -> List[List[Energy]]:
@@ -1334,4 +1644,4 @@ if __name__ == "__main__":
     else:
         PROFILING = True
     doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE, raise_on_error=True)
-    unittest.main(failfast=False, verbosity=0)
+    unittest.main(failfast=True, verbosity=0)

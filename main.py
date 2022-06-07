@@ -148,7 +148,7 @@ def compound_idx4_reverse_all_unique(ijkl):
     return tuple(set(compound_idx4_reverse_all(ijkl)))
 
 @cache
-def canonical_4idx(i,j,k,l):
+def canonical_idx4(i,j,k,l):
     """
     for real orbitals, return same 4-tuple for all equivalent integrals
     returned (i,j,k,l) should satisfy the following:
@@ -158,8 +158,8 @@ def canonical_4idx(i,j,k,l):
     the last of these is equivalent to (compound_idx2(i,k) <= compound_idx2(j,l))
     >>> all(\
             all(\
-                canonical_4idx(*compound_idx4_reverse(A)) == B \
-            for B in (canonical_4idx(i,j,k,l) for (i,j,k,l) in compound_idx4_reverse_all(A)))\
+                canonical_idx4(*compound_idx4_reverse(A)) == B \
+            for B in (canonical_idx4(i,j,k,l) for (i,j,k,l) in compound_idx4_reverse_all(A)))\
         for A in range(1000))
     True
     """
@@ -171,6 +171,9 @@ def canonical_4idx(i,j,k,l):
         return i,j,k,l
     else:
         return j,i,l,k
+@cache
+def canonical_idx4_reverse(ijkl):
+    return canonical_idx4(*compound_idx4_reverse(ijkl))
 
 #   _____      _ _   _       _ _          _   _
 #  |_   _|    (_) | (_)     | (_)        | | (_)
@@ -942,9 +945,9 @@ class Hamiltonian_two_electrons_integral_driven(object):
         klij -
         jkli -
         """
-        def foo(i,j,k,l):
-            #if i>=j:
-            #    return
+        def foo(i,j,k,l,pfac=1):
+            if i==j:
+                return
             if k == l: # p1 == p2, both branch should have been take, 0 contribution
                 return
             S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
@@ -958,23 +961,26 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
                         getattr(det_i, spin), getattr(det_j, spin)
                     )
+                    phase *= pfac
+                    if (h2,h1) == (i,j):
+                        phase *= -1
                     if (p1, p2) == (k, l):
                         yield (a, b), phase
                     elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
-                        yield (a, b), -phase
+                        yield (a, b), -(phase+0.1)
         i, j, k, l = idx
-        #yield from foo(i,j,k,l)
-        yield from foo(i,l,k,j)
-        yield from foo(k,l,i,j)
-        #yield from foo(k,j,i,l)
-        yield from foo(j,k,l,i)
-        #yield from foo(j,i,l,k)
-        #yield from foo(l,k,j,i)
-        #yield from foo(l,i,j,k)
+        #yield from foo(i,j,k,l,8)#
+        yield from foo(i,l,k,j,2)
+        yield from foo(k,l,i,j,3)
+        #yield from foo(k,j,i,l,7)#
+        yield from foo(j,k,l,i,4)
+        #yield from foo(j,i,l,k,9)#
+        #yield from foo(l,k,j,i,10)#
+        #yield from foo(l,i,j,k,11)#
         if i<j:
-            yield from foo(i,j,k,l)
+            yield from foo(i,j,k,l,5)
         else:
-            yield from foo(j,i,l,k)
+            yield from foo(j,i,l,k,6)
 
         
        # # a
@@ -1239,10 +1245,11 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     testmod
                 ):
                     #yield (a, b), idx, phase
-                    l1[a,b].append(( idx, phase))
+                    l1[a,b].append(( idx,compound_idx4(*idx), phase))
                     v1[a,b] += phase * self.H_ijkl_orbital(*idx)
 
-            idx = compound_idx4_reverse(key)
+            #idx = compound_idx4_reverse(key)
+            idx = canonical_idx4_reverse(key)
             for (a, b), phase in self.H_pair_phase_from_idx_unique(
                 idx,
                 spindet_a_occ_i,
@@ -1255,8 +1262,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 reverse=True
             ):
                 #yield (a, b), idx, phase
-                l2[a, b].append((idx, phase))
-                v2[a,b] += phase * self.H_ijkl_orbital(*idx)
+                l2[a, b].append((idx,compound_idx4(*idx), phase))
+                v2[a,b] += phase/abs(phase) * self.H_ijkl_orbital(*idx)
         l1=dict(l1)
         l2=dict(l2)
         print('')

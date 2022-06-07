@@ -945,7 +945,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         klij -
         jkli -
         """
-        def foo(i,j,k,l,pfac=1):
+        def foo(i,j,k,l):
             if i==j:
                 return
             if k == l: # p1 == p2, both branch should have been take, 0 contribution
@@ -961,25 +961,16 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
                         getattr(det_i, spin), getattr(det_j, spin)
                     )
-                    phase *= pfac
                     if j<i:
                         phase *= -1
                     if l<k:
                         phase *= -1
                     yield (a,b),phase
-                    #if (h2,h1) == (i,j):
-                    #    phase *= -1
-                    #if (p1, p2) == (k, l):
-                    #    yield (a, b), phase
-                    #elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
-                    #    yield (a, b), -(phase+0.1)
-                    #else:
-                    #    assert(False)
         i, j, k, l = idx
-        yield from foo(i,l,k,j,2)
-        yield from foo(k,l,i,j,3)
-        yield from foo(j,k,l,i,4)
-        yield from foo(i,j,k,l,5)
+        yield from foo(i,l,k,j)
+        yield from foo(k,l,i,j)
+        yield from foo(j,k,l,i)
+        yield from foo(i,j,k,l)
 
     @staticmethod
     def double_same_unique_internal(idx, psi_i, spindet_a_occ_i, exc, spin):
@@ -1233,7 +1224,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
             # (8, 7)     1000 0111 single_Ss
 
             testmod=set(['single_Ss','double_same','double_different','double_different2'])
-            testmod=set(['single_Ss','double_different','double_different2'])
+            #testmod=set(['single_Ss','double_different','double_different2'])
+            testmod=set(['double_same','double_different','double_different2'])
 
             #TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             for idx in compound_idx4_reverse_all_unique(key):

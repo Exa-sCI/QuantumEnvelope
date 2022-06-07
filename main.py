@@ -687,7 +687,7 @@ class Hamiltonian_two_electrons_determinant_driven(object):
         return h
 
     def H_ii(self, det_i: Determinant):
-        return sum(phase * self.H_ijkl_orbital(*idx) for idx, phase in self.H_ii_indices(det_i))
+        return sum(phase * self.H_ijkl_orbital(i, j, k, l) for (i, j, k, l), phase in self.H_ii_indices(det_i))
 
 
 #   ___            _

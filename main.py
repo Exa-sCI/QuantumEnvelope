@@ -35,6 +35,7 @@ class Determinant(NamedTuple):
     alpha: Spin_determinant
     beta: Spin_determinant
 
+
 Psi_det = List[Determinant]
 Psi_coef = List[float]
 # We have two type of energy.
@@ -42,17 +43,18 @@ Psi_coef = List[float]
 # The pt2 Energy who correnpond to the pertubative energy induce by each determinant connected to Psi_det
 Energy = NewType("Energy", float)
 
-# _____          _           _               _   _ _   _ _
-#|_   _|        | |         (_)             | | | | | (_) |
-#  | | _ __   __| | _____  ___ _ __   __ _  | | | | |_ _| |___
-#  | || '_ \ / _` |/ _ \ \/ / | '_ \ / _` | | | | | __| | / __|
-# _| || | | | (_| |  __/>  <| | | | | (_| | | |_| | |_| | \__ \
-# \___/_| |_|\__,_|\___/_/\_\_|_| |_|\__, |  \___/ \__|_|_|___/
-#                                     __/ |
-#                                    |___/
+#  _____          _           _               _   _ _   _ _
+# |_   _|        | |         (_)             | | | | | (_) |
+#   | | _ __   __| | _____  ___ _ __   __ _  | | | | |_ _| |___
+#   | || '_ \ / _` |/ _ \ \/ / | '_ \ / _` | | | | | __| | / __|
+#  _| || | | | (_| |  __/>  <| | | | | (_| | | |_| | |_| | \__ \
+#  \___/_| |_|\__,_|\___/_/\_\_|_| |_|\__, |  \___/ \__|_|_|___/
+#                                      __/ |
+#                                     |___/
+
 
 @cache
-def compound_idx2(i,j):
+def compound_idx2(i, j):
     """
     get compound (triangular) index from (i,j)
 
@@ -80,14 +82,17 @@ def compound_idx2(i,j):
     >>> compound_idx2(2,1)
     4
     """
-    p,q = min(i,j),max(i,j)
-    return (q*(q+1))//2+p
+    p, q = min(i, j), max(i, j)
+    return (q * (q + 1)) // 2 + p
 
-def compound_idx4(i,j,k,l):
+
+@cache
+def compound_idx4(i, j, k, l):
     """
     nested calls to compound_idx2
     """
-    return compound_idx2(compound_idx2(i,k),compound_idx2(j,l))
+    return compound_idx2(compound_idx2(i, k), compound_idx2(j, l))
+
 
 @cache
 def compound_idx2_reverse(ij):
@@ -95,9 +100,10 @@ def compound_idx2_reverse(ij):
     >>> all(compound_idx2(*compound_idx2_reverse(A)) == A for A in range(10000))
     True
     """
-    j=int((sqrt(1+8*ij)-1)/2)
-    i=ij-(j*(j+1)//2)
-    return i,j
+    j = int((sqrt(1 + 8 * ij) - 1) / 2)
+    i = ij - (j * (j + 1) // 2)
+    return i, j
+
 
 @cache
 def compound_idx4_reverse(ijkl):
@@ -105,10 +111,11 @@ def compound_idx4_reverse(ijkl):
     >>> all(compound_idx4(*compound_idx4_reverse(A)) == A for A in range(10000))
     True
     """
-    ik,jl = compound_idx2_reverse(ijkl)
-    i,k = compound_idx2_reverse(ik)
-    j,l = compound_idx2_reverse(jl)
-    return i,j,k,l
+    ik, jl = compound_idx2_reverse(ijkl)
+    i, k = compound_idx2_reverse(ik)
+    j, l = compound_idx2_reverse(jl)
+    return i, j, k, l
+
 
 @cache
 def compound_idx4_reverse_all(ijkl):
@@ -122,8 +129,18 @@ def compound_idx4_reverse_all(ijkl):
     >>> all(check_idx(A) for A in range(1000))
     True
     """
-    i,j,k,l = compound_idx4_reverse(ijkl)
-    return (i,j,k,l),(j,i,l,k),(k,l,i,j),(l,k,j,i),(i,l,k,j),(l,i,j,k),(k,j,i,l),(j,k,l,i)
+    i, j, k, l = compound_idx4_reverse(ijkl)
+    return (
+        (i, j, k, l),
+        (j, i, l, k),
+        (k, l, i, j),
+        (l, k, j, i),
+        (i, l, k, j),
+        (l, i, j, k),
+        (k, j, i, l),
+        (j, k, l, i),
+    )
+
 
 @cache
 def compound_idx4_reverse_all_unique(ijkl):
@@ -132,8 +149,9 @@ def compound_idx4_reverse_all_unique(ijkl):
     """
     return tuple(set(compound_idx4_reverse_all(ijkl)))
 
+
 @cache
-def canonical_idx4(i,j,k,l):
+def canonical_idx4(i, j, k, l):
     """
     for real orbitals, return same 4-tuple for all equivalent integrals
     returned (i,j,k,l) should satisfy the following:
@@ -148,17 +166,20 @@ def canonical_idx4(i,j,k,l):
         for A in range(1000))
     True
     """
-    i,k = min(i,k),max(i,k)
-    ik = compound_idx2(i,k)
-    j,l = min(j,l),max(j,l)
-    jl = compound_idx2(j,l)
-    if ik<=jl:
-        return i,j,k,l
+    i, k = min(i, k), max(i, k)
+    ik = compound_idx2(i, k)
+    j, l = min(j, l), max(j, l)
+    jl = compound_idx2(j, l)
+    if ik <= jl:
+        return i, j, k, l
     else:
-        return j,i,l,k
+        return j, i, l, k
+
+
 @cache
 def canonical_idx4_reverse(ijkl):
     return canonical_idx4(*compound_idx4_reverse(ijkl))
+
 
 #   _____      _ _   _       _ _          _   _
 #  |_   _|    (_) | (_)     | (_)        | | (_)
@@ -236,6 +257,7 @@ def load_integrals(
     f.close()
 
     return n_orb, E0, d_one_e_integral, d_two_e_integral
+
 
 def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
     """Read the input file :
@@ -431,8 +453,8 @@ class Excitation(object):
         ...                     Determinant(alpha=(1, 3), beta=(5, 7)))
         (1, 2)
         """
-        ed_up = Excitation.exc_degree_spindet(det_i.alpha,det_j.alpha) 
-        ed_dn = Excitation.exc_degree_spindet(det_i.beta,det_j.beta)
+        ed_up = Excitation.exc_degree_spindet(det_i.alpha, det_j.alpha)
+        ed_dn = Excitation.exc_degree_spindet(det_i.beta, det_j.beta)
         return (ed_up, ed_dn)
 
 
@@ -593,7 +615,7 @@ class Hamiltonian_two_electrons_determinant_driven(object):
         symmetry sparse representation.  For real calculations, symmetries and
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
-        key = compound_idx4(i,j,k,l)
+        key = compound_idx4(i, j, k, l)
         return self.d_two_e_integral[key]
 
     @staticmethod
@@ -709,7 +731,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         symmetry sparse representation.  For real calculations, symmetries and
         storing only non-zeros needs to be implemented to avoid an explosion of
         the memory requirements."""
-        key = compound_idx4(i,j,k,l)
+        key = compound_idx4(i, j, k, l)
         return self.d_two_e_integral[key]
 
     @staticmethod
@@ -785,7 +807,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
                         getattr(det_i, spin), getattr(det_j, spin), i, l
                     )
 
-
     @staticmethod
     def double_different(
         idx,
@@ -812,18 +833,22 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
     @staticmethod
     def double_same_unique(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
-        def foo(i,j,k,l):
-            if i==j:
+        def foo(i, j, k, l):
+            if i == j:
                 return
-            if k == l: # p1 == p2, both branch should have been take, 0 contribution
+            if k == l:  # p1 == p2, both branch should have been take, 0 contribution
                 return
             phasemod = 1
-            if j<i:
+            if j < i:
                 phasemod *= -1
-            if l<k:
+            if l < k:
                 phasemod *= -1
-            S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
-            R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[l]) - (spindet_a_occ_j[i] | spindet_a_occ_j[j])
+            S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (
+                spindet_a_occ_i[k] | spindet_a_occ_i[l]
+            )
+            R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[l]) - (
+                spindet_a_occ_j[i] | spindet_a_occ_j[j]
+            )
 
             for a, b in product(S1, R1):
                 det_i, det_j = psi_i[a], psi_j[b]
@@ -833,14 +858,14 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
                         getattr(det_i, spin), getattr(det_j, spin)
                     )
-                    yield (a,b),phase*phasemod
+                    yield (a, b), phase * phasemod
+
         i, j, k, l = idx
-        yield from foo(i,j,k,l) # <psi_i|psi_j>
-        yield from foo(i,l,k,j) # <psi_i|psi_j>
+        yield from foo(i, j, k, l)  # <psi_i|psi_j>
+        yield from foo(i, l, k, j)  # <psi_i|psi_j>
 
-        yield from foo(k,l,i,j) # <psi_j|psi_i>
-        yield from foo(j,k,l,i) # <psi_j|psi_i>
-
+        yield from foo(k, l, i, j)  # <psi_j|psi_i>
+        yield from foo(j, k, l, i)  # <psi_j|psi_i>
 
     def H_pair_phase_from_idx_unique(
         self, idx, spindet_a_occ_i, spindet_b_occ_i, psi_i, spindet_a_occ_j, spindet_b_occ_j, psi_j
@@ -854,7 +879,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
             yield from self.double_same_unique(
                 idx, psi_i, psi_j, spindet_b_occ_i, spindet_b_occ_j, (0, 2), "beta"
             )
-
 
     def H_pair_phase_from_idx(
         self, idx, spindet_a_occ_i, spindet_b_occ_i, psi_i, spindet_a_occ_j, spindet_b_occ_j, psi_j
@@ -948,7 +972,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
         for key in self.d_two_e_integral:
 
-            #TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
+            # TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             for idx in compound_idx4_reverse_all_unique(key):
                 for (a, b), phase in self.H_pair_phase_from_idx(
                     idx,
@@ -957,7 +981,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     psi_i,
                     spindet_a_occ_j,
                     spindet_b_occ_j,
-                    psi_j
+                    psi_j,
                 ):
                     yield (a, b), idx, phase
 
@@ -969,10 +993,9 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 psi_i,
                 spindet_a_occ_j,
                 spindet_b_occ_j,
-                psi_j
+                psi_j,
             ):
                 yield (a, b), idx, phase
-
 
     def H(self, psi_i, psi_j) -> List[List[Energy]]:
         # This is the function who will take foreever

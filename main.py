@@ -35,20 +35,6 @@ class Determinant(NamedTuple):
     alpha: Spin_determinant
     beta: Spin_determinant
 
-class DetDiff(NamedTuple):
-    """
-    object to hold holes and particles of both spins between two determinants
-    """
-
-    holes: Determinant
-    particles: Determinant
-    def __repr__(self):
-        """
-        transpose of default repr is easier to read quickly
-        """
-        return(f'DetDiff(hA={self.holes.alpha}, pA={self.particles.alpha}; hB={self.holes.beta}, pB={self.particles.beta})')
-
-
 Psi_det = List[Determinant]
 Psi_coef = List[float]
 # We have two type of energy.
@@ -56,16 +42,6 @@ Psi_coef = List[float]
 # The pt2 Energy who correnpond to the pertubative energy induce by each determinant connected to Psi_det
 Energy = NewType("Energy", float)
 
-
-def det_diff(det1: Determinant, det2: Determinant) -> DetDiff:
-    """
-    return holes/particles corresponding to excitation from det1 to det2 as nested named tuples
-    """
-    return DetDiff(
-            Determinant( tuple(sorted(set(det1.alpha) - set(det2.alpha))),
-                         tuple(sorted(set(det1.beta)  - set(det2.beta)))),
-            Determinant( tuple(sorted(set(det2.alpha) - set(det1.alpha))),
-                         tuple(sorted(set(det2.beta)  - set(det1.beta)))))
 # _____          _           _               _   _ _   _ _
 #|_   _|        | |         (_)             | | | | | (_) |
 #  | | _ __   __| | _____  ___ _ __   __ _  | | | | |_ _| |___

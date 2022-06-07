@@ -915,7 +915,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     )
 
     @staticmethod
-    def double_same_unique(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
+    def double_same_unique_external(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
         """
         2 1 3 4 *  
         2 4 3 1 * x
@@ -962,58 +962,62 @@ class Hamiltonian_two_electrons_integral_driven(object):
                         getattr(det_i, spin), getattr(det_j, spin)
                     )
                     phase *= pfac
-                    if (h2,h1) == (i,j):
+                    if j<i:
                         phase *= -1
-                    if (p1, p2) == (k, l):
-                        yield (a, b), phase
-                    elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
-                        yield (a, b), -(phase+0.1)
+                    if l<k:
+                        phase *= -1
+                    yield (a,b),phase
+                    #if (h2,h1) == (i,j):
+                    #    phase *= -1
+                    #if (p1, p2) == (k, l):
+                    #    yield (a, b), phase
+                    #elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
+                    #    yield (a, b), -(phase+0.1)
+                    #else:
+                    #    assert(False)
         i, j, k, l = idx
-        #yield from foo(i,j,k,l,8)#
         yield from foo(i,l,k,j,2)
         yield from foo(k,l,i,j,3)
-        #yield from foo(k,j,i,l,7)#
         yield from foo(j,k,l,i,4)
-        #yield from foo(j,i,l,k,9)#
-        #yield from foo(l,k,j,i,10)#
-        #yield from foo(l,i,j,k,11)#
-        if i<j:
-            yield from foo(i,j,k,l,5)
+        yield from foo(i,j,k,l,5)
+
+    @staticmethod
+    def double_same_unique_internal(idx, psi_i, spindet_a_occ_i, exc, spin):
+        def foo(i,j,k,l,pfac=1):
+            if i==j:
+                return
+            if k == l: # p1 == p2, both branch should have been take, 0 contribution
+                return
+            S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
+            R1 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
+
+            for a, b in product(S1, R1):
+                det_i, det_j = psi_i[a], psi_i[b]
+                ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+                # Should some preselection to only double or at list only double+ but nothing in the other spin
+                if (ed_up, ed_dn) == exc:
+                    phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
+                        getattr(det_i, spin), getattr(det_j, spin)
+                    )
+                    phase *= pfac
+                    if j<i:
+                        phase *= -1
+                    if l<k:
+                        phase *= -1
+                    yield (a,b),phase
+                    yield (b,a),phase
+        i, j, k, l = idx
+        yield from foo(i,j,k,l)
+        yield from foo(i,l,k,j)
+
+
+    def double_same_unique(self,idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
+        # is it safe to use 'is' instead of '=='? maybe should just branch earlier? 
+        if psi_i == psi_j:
+            yield from self.double_same_unique_internal(idx,psi_i,spindet_a_occ_i,exc,spin)
         else:
-            yield from foo(j,i,l,k,6)
-
+            yield from self.double_same_unique_external(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin)
         
-       # # a
-       # S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
-       # R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[l]) - (spindet_a_occ_j[i] | spindet_a_occ_j[j])
-
-       # for a, b in product(S1, R1):
-       #     det_i, det_j = psi_i[a], psi_j[b]
-       #     ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
-       #     # Should some preselection to only double or at list only double+ but nothing in the other spin
-       #     if (ed_up, ed_dn) == exc:
-       #         phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
-       #             getattr(det_i, spin), getattr(det_j, spin)
-       #         )
-       #         if (p1, p2) == (k, l):
-       #             yield (a, b), phase
-       #         elif (p2, p1) == (k, l): # elif because we took care of avoiding double counting
-       #             yield (a, b), -phase
-
-       # S2 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
-       # R2 = (spindet_a_occ_j[i] & spindet_a_occ_j[j]) - (spindet_a_occ_j[k] | spindet_a_occ_j[l])
-       # for a, b in product(S2, R2):
-       #     det_i, det_j = psi_i[a], psi_j[b]
-       #     ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
-       #     # Should some preselection to only double or at list only double+ but nothing in the other spin
-       #     if (ed_up, ed_dn) == exc:
-       #         phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
-       #             getattr(det_i, spin), getattr(det_j, spin)
-       #         )
-       #         if (p1, p2) == (i, j):
-       #             yield (a, b), phase
-       #         elif (p2, p1) == (i, j): # elif because we took care of avoiding double counting
-       #             yield (a, b), -phase
 
     @staticmethod
     def double_different_unique(
@@ -1278,6 +1282,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
             print(f'  {v2[ij]=}')
             print(f'  {l1[ij]=}')
             print(f'  {l2[ij]=}')
+            assert(abs(v2[ij]-v1[ij]) < 1e-13)
         for ij in idx2:
             if ij not in l1:
                 print(f'*{ij=}')

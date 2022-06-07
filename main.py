@@ -950,6 +950,11 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 return
             if k == l: # p1 == p2, both branch should have been take, 0 contribution
                 return
+            phasemod = 1
+            if j<i:
+                phasemod *= -1
+            if l<k:
+                phasemod *= -1
             S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
             R1 = (spindet_a_occ_j[k] & spindet_a_occ_j[l]) - (spindet_a_occ_j[i] | spindet_a_occ_j[j])
 
@@ -961,16 +966,12 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
                         getattr(det_i, spin), getattr(det_j, spin)
                     )
-                    if j<i:
-                        phase *= -1
-                    if l<k:
-                        phase *= -1
-                    yield (a,b),phase
+                    yield (a,b),phase*phasemod
         i, j, k, l = idx
+        yield from foo(i,j,k,l)
         yield from foo(i,l,k,j)
         yield from foo(k,l,i,j)
         yield from foo(j,k,l,i)
-        yield from foo(i,j,k,l)
 
     @staticmethod
     def double_same_unique_internal(idx, psi_i, spindet_a_occ_i, exc, spin):
@@ -979,6 +980,11 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 return
             if k == l: # p1 == p2, both branch should have been take, 0 contribution
                 return
+            phasemod = 1
+            if j<i:
+                phasemod *= -1
+            if l<k:
+                phasemod *= -1
             S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
             R1 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
 
@@ -990,13 +996,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
                         getattr(det_i, spin), getattr(det_j, spin)
                     )
-                    phase *= pfac
-                    if j<i:
-                        phase *= -1
-                    if l<k:
-                        phase *= -1
-                    yield (a,b),phase
-                    yield (b,a),phase
+                    yield (a,b),phase*phasemod
+                    yield (b,a),phase*phasemod
         i, j, k, l = idx
         yield from foo(i,j,k,l)
         yield from foo(i,l,k,j)
@@ -1004,9 +1005,9 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
     def double_same_unique(self,idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
         # is it safe to use 'is' instead of '=='? maybe should just branch earlier? 
-        if psi_i == psi_j:
-            yield from self.double_same_unique_internal(idx,psi_i,spindet_a_occ_i,exc,spin)
-        else:
+        #if psi_i == psi_j:
+        #    yield from self.double_same_unique_internal(idx,psi_i,spindet_a_occ_i,exc,spin)
+        #else:
             yield from self.double_same_unique_external(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin)
         
 
@@ -1224,8 +1225,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
             # (8, 7)     1000 0111 single_Ss
 
             testmod=set(['single_Ss','double_same','double_different','double_different2'])
-            #testmod=set(['single_Ss','double_different','double_different2'])
-            testmod=set(['double_same','double_different','double_different2'])
+            testmod=set(['single_Ss','double_different','double_different2'])
+            #testmod=set(['double_same','double_different','double_different2'])
 
             #TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             for idx in compound_idx4_reverse_all_unique(key):

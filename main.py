@@ -36,10 +36,16 @@ class Determinant(NamedTuple):
     beta: Spin_determinant
 
 class DetDiff(NamedTuple):
+    """
+    object to hold holes and particles of both spins between two determinants
+    """
 
     holes: Determinant
     particles: Determinant
     def __repr__(self):
+        """
+        transpose of default repr is easier to read quickly
+        """
         return(f'DetDiff(hA={self.holes.alpha}, pA={self.particles.alpha}; hB={self.holes.beta}, pB={self.particles.beta})')
 
 
@@ -52,6 +58,9 @@ Energy = NewType("Energy", float)
 
 
 def det_diff(det1: Determinant, det2: Determinant) -> DetDiff:
+    """
+    return holes/particles corresponding to excitation from det1 to det2 as nested named tuples
+    """
     return DetDiff(
             Determinant( tuple(sorted(set(det1.alpha) - set(det2.alpha))),
                          tuple(sorted(set(det1.beta)  - set(det2.beta)))),
@@ -245,7 +254,8 @@ def load_integrals(
             # Exchange r1 and r2 (indices i,k and j,l)
             # Exchange i,k
             # Exchange j,l
-            d_two_e_integral[compound_idx4(i, j, k, l)] = v
+            key = compound_idx4(i, j, k, l)
+            d_two_e_integral[key] = v
 
     f.close()
 
@@ -825,7 +835,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 yield (a, b), phaseA * phaseB
 
     @staticmethod
-    def double_same_unique_external(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
+    def double_same_unique(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
         def foo(i,j,k,l):
             if i==j:
                 return
@@ -849,47 +859,12 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     )
                     yield (a,b),phase*phasemod
         i, j, k, l = idx
-        yield from foo(i,j,k,l)
-        yield from foo(i,l,k,j)
-        yield from foo(k,l,i,j)
-        yield from foo(j,k,l,i)
+        yield from foo(i,j,k,l) # <psi_i|psi_j>
+        yield from foo(i,l,k,j) # <psi_i|psi_j>
 
-    @staticmethod
-    def double_same_unique_internal(idx, psi_i, spindet_a_occ_i, exc, spin):
-        def foo(i,j,k,l,pfac=1):
-            if i==j:
-                return
-            if k == l: # p1 == p2, both branch should have been take, 0 contribution
-                return
-            phasemod = 1
-            if j<i:
-                phasemod *= -1
-            if l<k:
-                phasemod *= -1
-            S1 = (spindet_a_occ_i[i] & spindet_a_occ_i[j]) - (spindet_a_occ_i[k] | spindet_a_occ_i[l])
-            R1 = (spindet_a_occ_i[k] & spindet_a_occ_i[l]) - (spindet_a_occ_i[i] | spindet_a_occ_i[j])
+        yield from foo(k,l,i,j) # <psi_j|psi_i>
+        yield from foo(j,k,l,i) # <psi_j|psi_i>
 
-            for a, b in product(S1, R1):
-                det_i, det_j = psi_i[a], psi_i[b]
-                ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
-                # Should some preselection to only double or at list only double+ but nothing in the other spin
-                if (ed_up, ed_dn) == exc:
-                    phase, h1, h2, p1, p2 = PhaseIdx.double_exc(
-                        getattr(det_i, spin), getattr(det_j, spin)
-                    )
-                    yield (a,b),phase*phasemod
-                    yield (b,a),phase*phasemod
-        i, j, k, l = idx
-        yield from foo(i,j,k,l)
-        yield from foo(i,l,k,j)
-
-
-    def double_same_unique(self,idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin):
-        if psi_i == psi_j:
-            yield from self.double_same_unique_internal(idx,psi_i,spindet_a_occ_i,exc,spin)
-        else:
-            yield from self.double_same_unique_external(idx, psi_i, psi_j, spindet_a_occ_i, spindet_a_occ_j, exc, spin)
-        
 
     def H_pair_phase_from_idx_unique(
         self, idx, spindet_a_occ_i, spindet_b_occ_i, psi_i, spindet_a_occ_j, spindet_b_occ_j, psi_j
@@ -999,7 +974,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
             #TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             for idx in compound_idx4_reverse_all_unique(key):
-            #idx = compound_idx4_reverse(key)
                 for (a, b), phase in self.H_pair_phase_from_idx(
                     idx,
                     spindet_a_occ_i,

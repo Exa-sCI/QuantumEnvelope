@@ -1180,6 +1180,31 @@ class Timing:
             p.strip_dirs().sort_stats("tottime").print_stats(0.05)
 
 
+class Test_MinimalEquivalence(Timing, unittest.TestCase):
+    def simplify_indices(l):
+        d = defaultdict(int)
+        for (a, b), idx, phase in l:
+            key = ((a, b), compound_idx4(*idx))
+            d[key] += phase
+        return sorted((ab, idx, phase) for (ab, idx), phase in d.items() if phase)
+
+    def test_4electrons_4orbital(self):
+        # 4 Electron in 4 Orbital
+        # I'm stupid so let's do the product
+        psi = Excitation(4).gen_all_connected_determinant([Determinant((1, 2), (1, 2))])
+
+        d_two_e_integral = {}
+        for (i, j, k, l) in product(range(1, 5), repeat=4):
+            d_two_e_integral[compound_idx4(i, j, k, l)] = 1
+
+        h = Hamiltonian_two_electrons_determinant_driven(d_two_e_integral)
+        determinant_driven_indices = Test_MinimalEquivalence.simplify_indices(h.H_indices(psi, psi))
+
+        h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
+        integral_driven_indices = Test_MinimalEquivalence.simplify_indices(h.H_indices(psi, psi))
+        self.assertListEqual(determinant_driven_indices, integral_driven_indices)
+
+
 class Test_VariationalPowerplant:
     def test_c2_eq_dz_3(self):
         fcidump_path = "c2_eq_hf_dz.fcidump*"

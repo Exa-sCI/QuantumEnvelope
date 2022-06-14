@@ -13,7 +13,7 @@ import numpy as np
 from math import sqrt
 
 
-# Orbital index (1,2,...,n_orb)
+# Orbital index (0,1,2,...,n_orb-1)
 OrbitalIdx = NewType("OrbitalIdx", int)
 # Two-electron integral :
 # $<ij|kl> = \int \int \phi_i(r_1) \phi_j(r_2) \frac{1}{|r_1 - r_2|} \phi_k(r_1) \phi_l(r_2) dr_1 dr_2$
@@ -243,14 +243,16 @@ def load_integrals(
             E0 = v
         elif j == 0:
             # One-electron integrals are symmetric (when real, not complex)
-            d_one_e_integral[(i, k)] = v
-            d_one_e_integral[(k, i)] = v
+            d_one_e_integral[
+                (i - 1, k - 1)
+            ] = v  # index minus one to be consistent with determinant orbital indexing starting at zero
+            d_one_e_integral[(k - 1, i - 1)] = v
         else:
             # Two-electron integrals have many permutation symmetries:
             # Exchange r1 and r2 (indices i,k and j,l)
             # Exchange i,k
             # Exchange j,l
-            key = compound_idx4(i, j, k, l)
+            key = compound_idx4(i - 1, j - 1, k - 1, l - 1)
             d_two_e_integral[key] = v
 
     f.close()
@@ -289,7 +291,7 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
             data = f.read().split()
 
     def decode_det(str_):
-        for i, v in enumerate(str_, start=1):
+        for i, v in enumerate(str_):
             if v == "+":
                 yield i
 
@@ -354,18 +356,18 @@ def load_eref(path_ref) -> Energy:
 #  | |___>  < (__| | || (_| | |_| | (_) | | | |
 #  \____/_/\_\___|_|\__\__,_|\__|_|\___/|_| |_|
 #
-class Excitation(object):
+class Excitation:
     def __init__(self, n_orb):
-        self.all_orbs = frozenset(range(1, n_orb + 1))
+        self.all_orbs = frozenset(range(n_orb))
 
     def gen_all_excitation(self, spindet: Spin_determinant, ed: int) -> Iterator:
         """
         Generate list of pair -> hole from a determinant spin.
 
-        >>> sorted(Excitation(4).gen_all_excitation( (1,2),2))
-        [((1, 2), (3, 4))]
-        >>> sorted(Excitation(4).gen_all_excitation( (1,2),1))
-        [((1,), (3,)), ((1,), (4,)), ((2,), (3,)), ((2,), (4,))]
+        >>> sorted(Excitation(4).gen_all_excitation((0, 1),2))
+        [((0, 1), (2, 3))]
+        >>> sorted(Excitation(4).gen_all_excitation((0, 1),1))
+        [((0,), (2,)), ((0,), (3,)), ((1,), (2,)), ((1,), (3,))]
         """
         holes = combinations(spindet, ed)
         not_spindet = self.all_orbs - set(spindet)
@@ -382,8 +384,8 @@ class Excitation(object):
         """
         Generate all the posible spin determinant relative to a excitation degree
 
-        >>> sorted(Excitation(4).gen_all_connected_spindet( (1,2), 1))
-        [(1, 3), (1, 4), (2, 3), (2, 4)]
+        >>> sorted(Excitation(4).gen_all_connected_spindet((0, 1), 1))
+        [(0, 2), (0, 3), (1, 2), (1, 3)]
         """
         l_exc = self.gen_all_excitation(spindet, ed)
         apply_excitation_to_spindet = partial(Excitation.apply_excitation, spindet)
@@ -393,19 +395,19 @@ class Excitation(object):
         """
         Generate all the determinant who are single or double exictation (aka connected) from the input determinant
 
-        >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant( (1,2), (1,) )))
-        [Determinant(alpha=(1, 2), beta=(2,)),
-         Determinant(alpha=(1, 2), beta=(3,)),
-         Determinant(alpha=(1, 3), beta=(1,)),
-         Determinant(alpha=(1, 3), beta=(2,)),
-         Determinant(alpha=(1, 3), beta=(3,)),
-         Determinant(alpha=(2, 3), beta=(1,)),
-         Determinant(alpha=(2, 3), beta=(2,)),
-         Determinant(alpha=(2, 3), beta=(3,))]
+        >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant((0, 1), (0,))))
+        [Determinant(alpha=(0, 1), beta=(1,)),
+         Determinant(alpha=(0, 1), beta=(2,)),
+         Determinant(alpha=(0, 2), beta=(0,)),
+         Determinant(alpha=(0, 2), beta=(1,)),
+         Determinant(alpha=(0, 2), beta=(2,)),
+         Determinant(alpha=(1, 2), beta=(0,)),
+         Determinant(alpha=(1, 2), beta=(1,)),
+         Determinant(alpha=(1, 2), beta=(2,))]
         """
 
         # All single exitation from alpha or for beta determinant
-        # Then the production of the alpha, and beta (it's a double)
+        # Then the production of the alpha, and beta (its a double)
         # Then the double exitation form alpha or beta
 
         # We use l_single_a, and l_single_b twice. So we store them.
@@ -427,7 +429,7 @@ class Excitation(object):
 
     def gen_all_connected_determinant(self, psi_det: Psi_det) -> Psi_det:
         """
-        >>> d1 = Determinant( (1,2), (1,) ) ; d2 = Determinant( (1,3), (1,) )
+        >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
         >>> len(Excitation(4).gen_all_connected_determinant( [ d1,d2 ] ))
         22
 
@@ -448,8 +450,8 @@ class Excitation(object):
     def exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
         """Compute the excitation degree, the number of orbitals which differ
            between the two determinants.
-        >>> Excitation.exc_degree(Determinant(alpha=(1, 2), beta=(1, 2)),
-        ...                     Determinant(alpha=(1, 3), beta=(5, 7)))
+        >>> Excitation.exc_degree(Determinant(alpha=(0, 1), beta=(0, 1)),
+        ...                     Determinant(alpha=(0, 2), beta=(4, 6)))
         (1, 2)
         """
         ed_up = Excitation.exc_degree_spindet(det_i.alpha, det_j.alpha)
@@ -490,10 +492,10 @@ class PhaseIdx(object):
            h is occupied only in I
            p is occupied only in J
 
-        >>> PhaseIdx.single_exc((1, 5, 7), (1, 23, 7))
-        (1, 5, 23)
-        >>> PhaseIdx.single_exc((1, 2, 9), (1, 9, 18))
-        (-1, 2, 18)
+        >>> PhaseIdx.single_exc((0, 4, 6), (0, 22, 6))
+        (1, 4, 22)
+        >>> PhaseIdx.single_exc((0, 1, 8), (0, 8, 17))
+        (-1, 1, 17)
         """
         (h,) = set(sdet_i) - set(sdet_j)
         (p,) = set(sdet_j) - set(sdet_i)
@@ -524,10 +526,10 @@ class PhaseIdx(object):
            h1, h2 are occupied only in I
            p1, p2 are occupied only in J
 
-        >>> PhaseIdx.double_exc((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
-        (1, 3, 4, 12, 13)
-        >>> PhaseIdx.double_exc((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
-        (-1, 3, 9, 12, 18)
+        >>> PhaseIdx.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 4, 5, 6, 7, 8, 11, 12))
+        (1, 2, 3, 11, 12)
+        >>> PhaseIdx.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 3, 4, 5, 6, 7, 11, 17))
+        (-1, 2, 8, 11, 17)
         """
 
         # Holes
@@ -620,9 +622,9 @@ class Hamiltonian_two_electrons_determinant_driven(object):
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
         """Diagonal element of the Hamiltonian : <I|H|I>.
-        >>> sorted(Hamiltonian_two_electrons_determinant_driven.H_ii_indices( Determinant((1,2),(3,4))))
-        [((1, 2, 1, 2), 1), ((1, 2, 2, 1), -1), ((1, 3, 1, 3), 1), ((1, 4, 1, 4), 1),
-         ((2, 3, 2, 3), 1), ((2, 4, 2, 4), 1), ((3, 4, 3, 4), 1), ((3, 4, 4, 3), -1)]
+        >>> sorted(Hamiltonian_two_electrons_determinant_driven.H_ii_indices( Determinant((0,1),(2,3))))
+        [((0, 1, 0, 1), 1), ((0, 1, 1, 0), -1), ((0, 2, 0, 2), 1), ((0, 3, 0, 3), 1),
+         ((1, 2, 1, 2), 1), ((1, 3, 1, 3), 1), ((2, 3, 2, 3), 1), ((2, 3, 3, 2), -1)]
         """
         for i, j in combinations(det_i.alpha, 2):
             yield (i, j, i, j), 1
@@ -739,9 +741,9 @@ class Hamiltonian_two_electrons_integral_driven(object):
     @staticmethod
     def H_ii_indices(det_i: Determinant) -> Iterator[Two_electron_integral_index_phase]:
         """Diagonal element of the Hamiltonian : <I|H|I>.
-        >>> sorted(Hamiltonian_two_electrons_integral_driven.H_ii_indices( Determinant((1,2),(3,4))))
-        [((1, 2, 1, 2), 1), ((1, 2, 2, 1), -1), ((1, 3, 1, 3), 1), ((1, 4, 1, 4), 1),
-         ((2, 3, 2, 3), 1), ((2, 4, 2, 4), 1), ((3, 4, 3, 4), 1), ((3, 4, 4, 3), -1)]
+        >>> sorted(Hamiltonian_two_electrons_integral_driven.H_ii_indices( Determinant((0,1),(2,3))))
+        [((0, 1, 0, 1), 1), ((0, 1, 1, 0), -1), ((0, 2, 0, 2), 1), ((0, 3, 0, 3), 1),
+         ((1, 2, 1, 2), 1), ((1, 3, 1, 3), 1), ((2, 3, 2, 3), 1), ((2, 3, 3, 2), -1)]
         """
         for i, j in combinations(det_i.alpha, 2):
             yield (i, j, i, j), 1
@@ -1194,7 +1196,7 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase):
         psi = Excitation(4).gen_all_connected_determinant([Determinant((1, 2), (1, 2))])
 
         d_two_e_integral = {}
-        for (i, j, k, l) in product(range(1, 5), repeat=4):
+        for (i, j, k, l) in product(range(4), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1
 
         h = Hamiltonian_two_electrons_determinant_driven(d_two_e_integral)

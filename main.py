@@ -178,251 +178,258 @@ def canonical_idx4(i, j, k, l):
 @cache
 def canonical_idx4_reverse(ijkl):
     return canonical_idx4(*compound_idx4_reverse(ijkl))
-#  _____      _                       _   _                         
-# |_   _|    | |                     | | | |                        
-#   | | _ __ | |_ ___  __ _ _ __ __ _| | | |_ _   _ _ __   ___  ___ 
+
+
+#  _____      _                       _   _
+# |_   _|    | |                     | | | |
+#   | | _ __ | |_ ___  __ _ _ __ __ _| | | |_ _   _ _ __   ___  ___
 #   | || '_ \| __/ _ \/ _` | '__/ _` | | | __| | | | '_ \ / _ \/ __|
 #  _| || | | | ||  __/ (_| | | | (_| | | | |_| |_| | |_) |  __/\__ \
 #  \___/_| |_|\__\___|\__, |_|  \__,_|_|  \__|\__, | .__/ \___||___/
-#                      __/ |                   __/ | |              
-#                     |___/                   |___/|_|     
+#                      __/ |                   __/ | |
+#                     |___/                   |___/|_|
 
 
 @cache
-def integral_category(i,j,k,l):
+def integral_category(i, j, k, l):
     """
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
-| label |                   | ik/jl i/k j/l | i/j j/k k/l i/l | singles                       | doubles                      | diagonal                    |
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
-|   A   | i=j=k=l (1,1,1,1) |   =    =   =  |  =   =   =   =  |                               |                              | coul. (1 occ. both spins?)  |
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
-|   B   | i=k<j=l (1,2,1,2) |   <    =   =  |  <   >   <   <  |                               |                              | coul. (1,2 any spin occ.?)  |
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
-|       | i=k<j<l (1,2,1,3) |   <    =   <  |  <   >   <   <  | 2<->3, 1 occ. (any spin)      |                              |                             |
-|   C   | i<k<j=l (1,3,2,3) |   <    <   =  |  <   >   <   <  | 1<->2, 3 occ. (any spin)      |                              |                             |
-|       | j<i=k<l (2,1,2,3) |   <    =   <  |  >   <   <   <  | 1<->3, 2 occ. (any spin)      |                              |                             |
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
-|   D   | i=j=k<l (1,1,1,2) |   <    =   <  |  =   =   <   <  | 1<->2, 1 occ. (opposite spin) |                              |                             |  
-|       | i<j=k=l (1,2,2,2) |   <    <   =  |  <   =   =   <  | 1<->2, 2 occ. (opposite spin) |                              |                             |  
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
-|       | i=j<k<l (1,1,2,3) |   <    <   <  |  =   <   <   <  | 2<->3, 1 occ. (same spin)     | 1a<->2a x 1b<->3b, (and a/b) |                             |
-|   E   | i<j=k<l (1,2,2,3) |   <    <   <  |  <   =   <   <  | 1<->3, 2 occ. (same spin)     | 1a<->2a x 2b<->3b, (and a/b) |                             |
-|       | i<j<k=l (1,2,3,3) |   <    <   <  |  <   <   =   <  | 1<->2, 3 occ. (same spin)     | 1a<->3a x 2b<->3b, (and a/b) |                             |
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
-|   F   | i=j<k=l (1,1,2,2) |   =    <   <  |  =   <   =   <  |                               | 1a<->2a x 1b<->2b            | exch. (1,2 same spin occ.?) |
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
-|       | i<j<k<l (1,2,3,4) |   <    <   <  |  <   <   <   <  |                               | 1<->3 x 2<->4                |                             |
-|   G   | i<k<j<l (1,3,2,4) |   <    <   <  |  <   >   <   <  |                               | 1<->2 x 3<->4                |                             |
-|       | j<i<k<l (2,1,3,4) |   <    <   <  |  >   <   <   <  |                               | 1<->4 x 2<->3                |                             |
-+-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    | label |                   | ik/jl i/k j/l | i/j j/k k/l i/l | singles                       | doubles                      | diagonal                    |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |   A   | i=j=k=l (1,1,1,1) |   =    =   =  |  =   =   =   =  |                               |                              | coul. (1 occ. both spins?)  |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |   B   | i=k<j=l (1,2,1,2) |   <    =   =  |  <   >   <   <  |                               |                              | coul. (1,2 any spin occ.?)  |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |       | i=k<j<l (1,2,1,3) |   <    =   <  |  <   >   <   <  | 2<->3, 1 occ. (any spin)      |                              |                             |
+    |   C   | i<k<j=l (1,3,2,3) |   <    <   =  |  <   >   <   <  | 1<->2, 3 occ. (any spin)      |                              |                             |
+    |       | j<i=k<l (2,1,2,3) |   <    =   <  |  >   <   <   <  | 1<->3, 2 occ. (any spin)      |                              |                             |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |   D   | i=j=k<l (1,1,1,2) |   <    =   <  |  =   =   <   <  | 1<->2, 1 occ. (opposite spin) |                              |                             |
+    |       | i<j=k=l (1,2,2,2) |   <    <   =  |  <   =   =   <  | 1<->2, 2 occ. (opposite spin) |                              |                             |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |       | i=j<k<l (1,1,2,3) |   <    <   <  |  =   <   <   <  | 2<->3, 1 occ. (same spin)     | 1a<->2a x 1b<->3b, (and a/b) |                             |
+    |   E   | i<j=k<l (1,2,2,3) |   <    <   <  |  <   =   <   <  | 1<->3, 2 occ. (same spin)     | 1a<->2a x 2b<->3b, (and a/b) |                             |
+    |       | i<j<k=l (1,2,3,3) |   <    <   <  |  <   <   =   <  | 1<->2, 3 occ. (same spin)     | 1a<->3a x 2b<->3b, (and a/b) |                             |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |   F   | i=j<k=l (1,1,2,2) |   =    <   <  |  =   <   =   <  |                               | 1a<->2a x 1b<->2b            | exch. (1,2 same spin occ.?) |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |       | i<j<k<l (1,2,3,4) |   <    <   <  |  <   <   <   <  |                               | 1<->3 x 2<->4                |                             |
+    |   G   | i<k<j<l (1,3,2,4) |   <    <   <  |  <   >   <   <  |                               | 1<->2 x 3<->4                |                             |
+    |       | j<i<k<l (2,1,3,4) |   <    <   <  |  >   <   <   <  |                               | 1<->4 x 2<->3                |                             |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
     """
-    assert((i,j,k,l) == canonical_idx4_reverse(compound_idx4(i,j,k,l)))
-    if i==l:
-        return 'A'
-    elif (i==k) and (j==l):
-        return 'B'
-    elif (i==k) or (j==l):
-        if j==k:
-            return 'D'
+    assert (i, j, k, l) == canonical_idx4_reverse(compound_idx4(i, j, k, l))
+    if i == l:
+        return "A"
+    elif (i == k) and (j == l):
+        return "B"
+    elif (i == k) or (j == l):
+        if j == k:
+            return "D"
         else:
-            return 'C'
-    elif j==k:
-        return 'E'
-    elif (i==j) and (k==l):
-        return 'F'
-    elif (i==j) or (k==l):
-        return 'E'
+            return "C"
+    elif j == k:
+        return "E"
+    elif (i == j) and (k == l):
+        return "F"
+    elif (i == j) or (k == l):
+        return "E"
     else:
-        return 'G'
-    
-def test_pair_idx(dadb,idx,category):
-    foo={
-            'A':test_pair_idx_A,
-            'B':test_pair_idx_B,
-            'C':test_pair_idx_C,
-            'D':test_pair_idx_D,
-            'E':test_pair_idx_E,
-            'F':test_pair_idx_F,
-            'G':test_pair_idx_G,
-            }[category]
-    return foo(dadb,idx)
+        return "G"
 
 
-def test_pair_idx_A(dadb,idx):
-    da,db=dadb
-    assert(integral_category(*idx)=='A')
-    i,_,_,_=idx
-    assert((i,i,i,i)==idx)
-    assert(da==db)
-    assert((i in da.alpha) and (i in da.beta))
+def test_pair_idx(dadb, idx, category):
+    foo = {
+        "A": test_pair_idx_A,
+        "B": test_pair_idx_B,
+        "C": test_pair_idx_C,
+        "D": test_pair_idx_D,
+        "E": test_pair_idx_E,
+        "F": test_pair_idx_F,
+        "G": test_pair_idx_G,
+    }[category]
+    return foo(dadb, idx)
+
+
+def test_pair_idx_A(dadb, idx):
+    da, db = dadb
+    assert integral_category(*idx) == "A"
+    i, _, _, _ = idx
+    assert (i, i, i, i) == idx
+    assert da == db
+    assert (i in da.alpha) and (i in da.beta)
     return
 
-def test_pair_idx_B(dadb,idx):
-    da,db=dadb
-    assert(integral_category(*idx)=='B')
-    i,j,_,_=idx
-    assert((i,j,i,j)==idx)
-    assert(da==db)
-    assert((i in da.alpha + da.beta) and (j in da.alpha + da.beta))
+
+def test_pair_idx_B(dadb, idx):
+    da, db = dadb
+    assert integral_category(*idx) == "B"
+    i, j, _, _ = idx
+    assert (i, j, i, j) == idx
+    assert da == db
+    assert (i in da.alpha + da.beta) and (j in da.alpha + da.beta)
     return
 
-def test_pair_idx_C(dadb,idx):
-    da,db=dadb
-    assert(integral_category(*idx)=='C')
-    i,j,k,l=idx
-    exc = Excitation.exc_degree(da,db)
-    if exc==(1,0):
-        dsa=da.alpha
-        dsb=db.alpha
-    elif exc==(0,1):
-        dsa=da.beta
-        dsb=db.beta
-    else:
-        raise
-    _, h, p = PhaseIdx.single_exc(dsa,dsb)
-    if j==l:
-        assert(sorted((h,p))==sorted((i,k)))
-        assert((j in da.alpha+da.beta) and (j in db.alpha+db.beta))
-    elif i==k:
-        assert(sorted((h,p))==sorted((j,l)))
-        assert((i in da.alpha+da.beta) and (i in db.alpha+db.beta))
-    else:
-        raise
-    return
 
-def test_pair_idx_D(dadb,idx):
-    da,db=dadb
-    assert(integral_category(*idx)=='D')
-    i,j,k,l=idx
-    exc = Excitation.exc_degree(da,db)
-    if exc==(1,0):
-        dsa=da.alpha
-        dsb=db.alpha
-        dta=da.beta
-        dtb=db.beta
-    elif exc==(0,1):
-        dsa=da.beta
-        dsb=db.beta
-        dta=da.alpha
-        dtb=db.alpha
+def test_pair_idx_C(dadb, idx):
+    da, db = dadb
+    assert integral_category(*idx) == "C"
+    i, j, k, l = idx
+    exc = Excitation.exc_degree(da, db)
+    if exc == (1, 0):
+        dsa = da.alpha
+        dsb = db.alpha
+    elif exc == (0, 1):
+        dsa = da.beta
+        dsb = db.beta
     else:
         raise
-    _, h, p = PhaseIdx.single_exc(dsa,dsb)
-    if j==l:
-        assert(sorted((h,p))==sorted((i,k)))
-        assert((j in dta) and (j in dtb))
-    elif i==k:
-        assert(sorted((h,p))==sorted((j,l)))
-        assert((i in dta) and (i in dtb))
+    _, h, p = PhaseIdx.single_exc(dsa, dsb)
+    if j == l:
+        assert sorted((h, p)) == sorted((i, k))
+        assert (j in da.alpha + da.beta) and (j in db.alpha + db.beta)
+    elif i == k:
+        assert sorted((h, p)) == sorted((j, l))
+        assert (i in da.alpha + da.beta) and (i in db.alpha + db.beta)
     else:
         raise
     return
 
-def test_pair_idx_E(dadb,idx):
-    da,db=dadb
-    assert(integral_category(*idx)=='E')
-    i,j,k,l=idx
-    exc = Excitation.exc_degree(da,db)
-    if sum(exc)==1:
-        if exc==(1,0):
-            dsa=da.alpha
-            dsb=db.alpha
-        elif exc==(0,1):
-            dsa=da.beta
-            dsb=db.beta
+
+def test_pair_idx_D(dadb, idx):
+    da, db = dadb
+    assert integral_category(*idx) == "D"
+    i, j, k, l = idx
+    exc = Excitation.exc_degree(da, db)
+    if exc == (1, 0):
+        dsa = da.alpha
+        dsb = db.alpha
+        dta = da.beta
+        dtb = db.beta
+    elif exc == (0, 1):
+        dsa = da.beta
+        dsb = db.beta
+        dta = da.alpha
+        dtb = db.alpha
+    else:
+        raise
+    _, h, p = PhaseIdx.single_exc(dsa, dsb)
+    if j == l:
+        assert sorted((h, p)) == sorted((i, k))
+        assert (j in dta) and (j in dtb)
+    elif i == k:
+        assert sorted((h, p)) == sorted((j, l))
+        assert (i in dta) and (i in dtb)
+    else:
+        raise
+    return
+
+
+def test_pair_idx_E(dadb, idx):
+    da, db = dadb
+    assert integral_category(*idx) == "E"
+    i, j, k, l = idx
+    exc = Excitation.exc_degree(da, db)
+    if sum(exc) == 1:
+        if exc == (1, 0):
+            dsa = da.alpha
+            dsb = db.alpha
+        elif exc == (0, 1):
+            dsa = da.beta
+            dsb = db.beta
         else:
             raise
-        _, h, p = PhaseIdx.single_exc(dsa,dsb)
-        if i==j:
-            assert(sorted((h,p))==sorted((k,l)))
-            assert((i in dsa) and (i in dsb))
-        elif j==k:
-            assert(sorted((h,p))==sorted((i,l)))
-            assert((j in dsa) and (j in dsb))
-        elif k==l:
-            assert(sorted((h,p))==sorted((i,j)))
-            assert((k in dsa) and (k in dsb))
+        _, h, p = PhaseIdx.single_exc(dsa, dsb)
+        if i == j:
+            assert sorted((h, p)) == sorted((k, l))
+            assert (i in dsa) and (i in dsb)
+        elif j == k:
+            assert sorted((h, p)) == sorted((i, l))
+            assert (j in dsa) and (j in dsb)
+        elif k == l:
+            assert sorted((h, p)) == sorted((i, j))
+            assert (k in dsa) and (k in dsb)
         else:
             raise
-    elif sum(exc)==2:
-        if exc==(1,1):
-            dsa,dsb = da.alpha,db.alpha
-            dta,dtb = da.beta, db.beta
+    elif sum(exc) == 2:
+        if exc == (1, 1):
+            dsa, dsb = da.alpha, db.alpha
+            dta, dtb = da.beta, db.beta
         else:
             raise
-        if i==j:
-            p,r,s = i,k,l
-        elif j==k:
-            p,r,s = j,i,l
-        elif k==l:
-            p,r,s = k,j,i
+        if i == j:
+            p, r, s = i, k, l
+        elif j == k:
+            p, r, s = j, i, l
+        elif k == l:
+            p, r, s = k, j, i
         else:
             raise
-        _, hs, ps = PhaseIdx.single_exc(dsa,dsb)
-        _, ht, pt = PhaseIdx.single_exc(dta,dtb)
-        assert(
-                (sorted((hs,ps))==sorted((p,r)) and sorted((ht,pt))==sorted((p,s))) or
-                (sorted((hs,ps))==sorted((p,s)) and sorted((ht,pt))==sorted((p,r)))
+        _, hs, ps = PhaseIdx.single_exc(dsa, dsb)
+        _, ht, pt = PhaseIdx.single_exc(dta, dtb)
+        assert (sorted((hs, ps)) == sorted((p, r)) and sorted((ht, pt)) == sorted((p, s))) or (
+            sorted((hs, ps)) == sorted((p, s)) and sorted((ht, pt)) == sorted((p, r))
+        )
+    else:
+        raise
+
+    return
+
+
+def test_pair_idx_F(dadb, idx):
+    da, db = dadb
+    assert integral_category(*idx) == "F"
+    i, _, k, _ = idx
+    exc = Excitation.exc_degree(da, db)
+    if sum(exc) == 0:
+        assert da == db
+        assert ((i in da.alpha) and (k in da.alpha)) or ((i in da.beta) and (k in da.beta))
+    elif exc == (1, 1):
+        dsa = da.alpha
+        dsb = db.alpha
+        dta = da.beta
+        dtb = db.beta
+        _, hs, ps = PhaseIdx.single_exc(dsa, dsb)
+        _, ht, pt = PhaseIdx.single_exc(dta, dtb)
+        assert sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((i, k))
+    else:
+        raise
+    return
+
+
+def test_pair_idx_G(dadb, idx):
+    da, db = dadb
+    assert integral_category(*idx) == "G"
+    i, j, k, l = idx
+    exc = Excitation.exc_degree(da, db)
+    if sum(exc) != 2:
+        raise
+    else:
+        if exc == (1, 1):
+            dsa = da.alpha
+            dsb = db.alpha
+            dta = da.beta
+            dtb = db.beta
+            _, hs, ps = PhaseIdx.single_exc(dsa, dsb)
+            _, ht, pt = PhaseIdx.single_exc(dta, dtb)
+            assert (sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((j, l))) or (
+                sorted((hs, ps)) == sorted((j, l)) and sorted((ht, pt)) == sorted((i, k))
             )
-    else:
-        raise
-
-    return
-
-def test_pair_idx_F(dadb,idx):
-    da,db=dadb
-    assert(integral_category(*idx)=='F')
-    i,_,k,_=idx
-    exc = Excitation.exc_degree(da,db)
-    if sum(exc)==0:
-        assert(da==db)
-        assert(((i in da.alpha) and (k in da.alpha)) or
-               ((i in da.beta) and (k in da.beta)))
-    elif exc==(1,1):
-        dsa=da.alpha
-        dsb=db.alpha
-        dta=da.beta
-        dtb=db.beta
-        _, hs, ps = PhaseIdx.single_exc(dsa,dsb)
-        _, ht, pt = PhaseIdx.single_exc(dta,dtb)
-        assert(sorted((hs,ps))==sorted((i,k)) and sorted((ht,pt))==sorted((i,k)))
-    else:
-        raise
-    return
-
-def test_pair_idx_G(dadb,idx):
-    da,db=dadb
-    assert(integral_category(*idx)=='G')
-    i,j,k,l=idx
-    exc = Excitation.exc_degree(da,db)
-    if sum(exc)!=2:
-        raise
-    else:
-        if exc==(1,1):
-            dsa=da.alpha
-            dsb=db.alpha
-            dta=da.beta
-            dtb=db.beta
-            _, hs, ps = PhaseIdx.single_exc(dsa,dsb)
-            _, ht, pt = PhaseIdx.single_exc(dta,dtb)
-            assert(
-                    (sorted((hs,ps))==sorted((i,k)) and sorted((ht,pt))==sorted((j,l))) or
-                    (sorted((hs,ps))==sorted((j,l)) and sorted((ht,pt))==sorted((i,k)))
-                )
-        else:    
-            if exc==(2,0):
-                dsa=da.alpha
-                dsb=db.alpha
-            elif exc==(0,2):
-                dsa=da.beta
-                dsb=db.beta
+        else:
+            if exc == (2, 0):
+                dsa = da.alpha
+                dsb = db.alpha
+            elif exc == (0, 2):
+                dsa = da.beta
+                dsb = db.beta
             else:
                 raise
-            _,h1,h2,p1,p2 = PhaseIdx.double_exc(dsa,dsb)
-            assert(sorted((sorted((h1,h2)),sorted((p1,p2)))) in (sorted((sorted((i,j)),sorted((k,l)))),
-                    sorted((sorted((i,l)),sorted((k,j))))))
+            _, h1, h2, p1, p2 = PhaseIdx.double_exc(dsa, dsb)
+            assert sorted((sorted((h1, h2)), sorted((p1, p2)))) in (
+                sorted((sorted((i, j)), sorted((k, l)))),
+                sorted((sorted((i, l)), sorted((k, j)))),
+            )
     return
-
 
 
 #   _____      _ _   _       _ _          _   _
@@ -1449,11 +1456,10 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase):
         integral_driven_indices = Test_MinimalEquivalence.simplify_indices(h.H_indices(psi, psi))
         self.assertListEqual(determinant_driven_indices, integral_driven_indices)
 
-        for (a,b),idx4,phase in integral_driven_indices:
-            idx=canonical_idx4_reverse(idx4)
+        for (a, b), idx4, phase in integral_driven_indices:
+            idx = canonical_idx4_reverse(idx4)
             category = integral_category(*idx)
-            test_pair_idx((psi[a],psi[b]),idx,category)
-
+            test_pair_idx((psi[a], psi[b]), idx, category)
 
 
 class Test_VariationalPowerplant:

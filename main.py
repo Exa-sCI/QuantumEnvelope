@@ -242,9 +242,8 @@ def test_pair_idx(dadb,idx,category):
             'C':test_pair_idx_C,
             'D':test_pair_idx_D,
             'E':test_pair_idx_E,
-            'F':lambda x,y: True,
+            'F':test_pair_idx_F,
             'G':lambda x,y: True,
-#            'F':test_pair_idx_F,
 #            'G':test_pair_idx_G,
             }[category]
     return foo(dadb,idx)
@@ -371,6 +370,26 @@ def test_pair_idx_E(dadb,idx):
 
     return
 
+def test_pair_idx_F(dadb,idx):
+    da,db=dadb
+    assert(integral_category(*idx)=='F')
+    i,_,k,_=idx
+    exc = Excitation.exc_degree(da,db)
+    if sum(exc)==0:
+        assert(da==db)
+        assert(((i in da.alpha) and (k in da.alpha)) or
+               ((i in da.beta) and (k in da.beta)))
+    elif exc==(1,1):
+        dsa=da.alpha
+        dsb=db.alpha
+        dta=da.beta
+        dtb=db.beta
+        _, hs, ps = PhaseIdx.single_exc(dsa,dsb)
+        _, ht, pt = PhaseIdx.single_exc(dta,dtb)
+        assert(sorted((hs,ps))==sorted((i,k)) and sorted((ht,pt))==sorted((i,k)))
+    else:
+        raise
+    return
 
 
 

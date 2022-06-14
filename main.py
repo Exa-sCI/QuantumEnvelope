@@ -243,7 +243,7 @@ def load_integrals(
             E0 = v
         elif j == 0:
             # One-electron integrals are symmetric (when real, not complex)
-            d_one_e_integral[(i-1, k-1)] = v
+            d_one_e_integral[(i-1, k-1)] = v # index minus one to be consistent with determinant orbital indexing starting at zero
             d_one_e_integral[(k-1, i-1)] = v
         else:
             # Two-electron integrals have many permutation symmetries:
@@ -289,7 +289,7 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
             data = f.read().split()
 
     def decode_det(str_):
-        for i, v in enumerate(str_): # this line is the issue, changing this to 0 messes things up
+        for i, v in enumerate(str_):
             if v == "+":
                 yield i
 
@@ -356,7 +356,7 @@ def load_eref(path_ref) -> Energy:
 #
 class Excitation():
     def __init__(self, n_orb):
-        self.all_orbs = frozenset(range(n_orb)) # Why was this range(1, n_orb+1) before? Isn't that one too many things?
+        self.all_orbs = frozenset(range(n_orb))
 
     def gen_all_excitation(self, spindet: Spin_determinant, ed: int) -> Iterator:
         """

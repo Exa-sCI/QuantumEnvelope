@@ -240,11 +240,10 @@ def test_pair_idx(dadb,idx,category):
             'A':test_pair_idx_A,
             'B':test_pair_idx_B,
             'C':test_pair_idx_C,
-            'E':lambda x,y: True,
+            'D':test_pair_idx_D,
+            'E':test_pair_idx_E,
             'F':lambda x,y: True,
             'G':lambda x,y: True,
-            'D':test_pair_idx_D,
-#            'E':test_pair_idx_E,
 #            'F':test_pair_idx_F,
 #            'G':test_pair_idx_G,
             }[category]
@@ -319,6 +318,57 @@ def test_pair_idx_D(dadb,idx):
         assert((i in dta) and (i in dtb))
     else:
         raise
+    return
+
+def test_pair_idx_E(dadb,idx):
+    da,db=dadb
+    assert(integral_category(*idx)=='E')
+    i,j,k,l=idx
+    exc = Excitation.exc_degree(da,db)
+    if sum(exc)==1:
+        if exc==(1,0):
+            dsa=da.alpha
+            dsb=db.alpha
+        elif exc==(0,1):
+            dsa=da.beta
+            dsb=db.beta
+        else:
+            raise
+        _, h, p = PhaseIdx.single_exc(dsa,dsb)
+        if i==j:
+            assert(sorted((h,p))==sorted((k,l)))
+            assert((i in dsa) and (i in dsb))
+        elif j==k:
+            assert(sorted((h,p))==sorted((i,l)))
+            assert((j in dsa) and (j in dsb))
+        elif k==l:
+            assert(sorted((h,p))==sorted((i,j)))
+            assert((k in dsa) and (k in dsb))
+        else:
+            raise
+    elif sum(exc)==2:
+        if exc==(1,1):
+            dsa,dsb = da.alpha,db.alpha
+            dta,dtb = da.beta, db.beta
+        else:
+            raise
+        if i==j:
+            p,r,s = i,k,l
+        elif j==k:
+            p,r,s = j,i,l
+        elif k==l:
+            p,r,s = k,j,i
+        else:
+            raise
+        _, hs, ps = PhaseIdx.single_exc(dsa,dsb)
+        _, ht, pt = PhaseIdx.single_exc(dta,dtb)
+        assert(
+                (sorted((hs,ps))==sorted((p,r)) and sorted((ht,pt))==sorted((p,s))) or
+                (sorted((hs,ps))==sorted((p,s)) and sorted((ht,pt))==sorted((p,r)))
+            )
+    else:
+        raise
+
     return
 
 

@@ -258,7 +258,6 @@ def test_pair_idx_A(dadb, idx):
     assert (i, i, i, i) == idx
     assert da == db
     assert (i in da.alpha) and (i in da.beta)
-    
 
 
 def test_pair_idx_B(dadb, idx):
@@ -268,7 +267,6 @@ def test_pair_idx_B(dadb, idx):
     assert (i, j, i, j) == idx
     assert da == db
     assert (i in da.alpha + da.beta) and (j in da.alpha + da.beta)
-    return
 
 
 def test_pair_idx_C(dadb, idx):
@@ -292,8 +290,7 @@ def test_pair_idx_C(dadb, idx):
         assert sorted((h, p)) == sorted((j, l))
         assert (i in da.alpha + da.beta) and (i in db.alpha + db.beta)
     else:
-        raise
-    return
+        raise AssertionError
 
 
 def test_pair_idx_D(dadb, idx):
@@ -312,7 +309,7 @@ def test_pair_idx_D(dadb, idx):
         dta = da.alpha
         dtb = db.alpha
     else:
-        raise
+        raise AssertionError
     _, h, p = PhaseIdx.single_exc(dsa, dsb)
     if j == l:
         assert sorted((h, p)) == sorted((i, k))
@@ -321,8 +318,7 @@ def test_pair_idx_D(dadb, idx):
         assert sorted((h, p)) == sorted((j, l))
         assert (i in dta) and (i in dtb)
     else:
-        raise
-    return
+        raise AssertionError
 
 
 def test_pair_idx_E(dadb, idx):
@@ -338,7 +334,7 @@ def test_pair_idx_E(dadb, idx):
             dsa = da.beta
             dsb = db.beta
         else:
-            raise
+            raise AssertionError
         _, h, p = PhaseIdx.single_exc(dsa, dsb)
         if i == j:
             assert sorted((h, p)) == sorted((k, l))
@@ -350,13 +346,13 @@ def test_pair_idx_E(dadb, idx):
             assert sorted((h, p)) == sorted((i, j))
             assert (k in dsa) and (k in dsb)
         else:
-            raise
+            raise AssertionError
     elif sum(exc) == 2:
         if exc == (1, 1):
             dsa, dsb = da.alpha, db.alpha
             dta, dtb = da.beta, db.beta
         else:
-            raise
+            raise AssertionError
         if i == j:
             p, r, s = i, k, l
         elif j == k:
@@ -364,16 +360,14 @@ def test_pair_idx_E(dadb, idx):
         elif k == l:
             p, r, s = k, j, i
         else:
-            raise
+            raise AssertionError
         _, hs, ps = PhaseIdx.single_exc(dsa, dsb)
         _, ht, pt = PhaseIdx.single_exc(dta, dtb)
-        assert (sorted((hs, ps)) == sorted((p, r)) and sorted((ht, pt)) == sorted((p, s))) or (
-            sorted((hs, ps)) == sorted((p, s)) and sorted((ht, pt)) == sorted((p, r))
+        assert sorted((sorted((hs, ps)), sorted((ht, pt)))) == sorted(
+            (sorted((p, r)), sorted((p, s)))
         )
     else:
-        raise
-
-    return
+        raise AssertionError
 
 
 def test_pair_idx_F(dadb, idx):
@@ -393,8 +387,7 @@ def test_pair_idx_F(dadb, idx):
         _, ht, pt = PhaseIdx.single_exc(dta, dtb)
         assert sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((i, k))
     else:
-        raise
-    return
+        raise AssertionError
 
 
 def test_pair_idx_G(dadb, idx):
@@ -403,7 +396,7 @@ def test_pair_idx_G(dadb, idx):
     i, j, k, l = idx
     exc = Excitation.exc_degree(da, db)
     if sum(exc) != 2:
-        raise
+        raise AssertionError
     else:
         if exc == (1, 1):
             dsa = da.alpha
@@ -423,13 +416,12 @@ def test_pair_idx_G(dadb, idx):
                 dsa = da.beta
                 dsb = db.beta
             else:
-                raise
+                raise AssertionError
             _, h1, h2, p1, p2 = PhaseIdx.double_exc(dsa, dsb)
             assert sorted((sorted((h1, h2)), sorted((p1, p2)))) in (
                 sorted((sorted((i, j)), sorted((k, l)))),
                 sorted((sorted((i, l)), sorted((k, j)))),
             )
-    return
 
 
 #   _____      _ _   _       _ _          _   _

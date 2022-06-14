@@ -243,8 +243,7 @@ def test_pair_idx(dadb,idx,category):
             'D':test_pair_idx_D,
             'E':test_pair_idx_E,
             'F':test_pair_idx_F,
-            'G':lambda x,y: True,
-#            'G':test_pair_idx_G,
+            'G':test_pair_idx_G,
             }[category]
     return foo(dadb,idx)
 
@@ -389,6 +388,39 @@ def test_pair_idx_F(dadb,idx):
         assert(sorted((hs,ps))==sorted((i,k)) and sorted((ht,pt))==sorted((i,k)))
     else:
         raise
+    return
+
+def test_pair_idx_G(dadb,idx):
+    da,db=dadb
+    assert(integral_category(*idx)=='G')
+    i,j,k,l=idx
+    exc = Excitation.exc_degree(da,db)
+    if sum(exc)!=2:
+        raise
+    else:
+        if exc==(1,1):
+            dsa=da.alpha
+            dsb=db.alpha
+            dta=da.beta
+            dtb=db.beta
+            _, hs, ps = PhaseIdx.single_exc(dsa,dsb)
+            _, ht, pt = PhaseIdx.single_exc(dta,dtb)
+            assert(
+                    (sorted((hs,ps))==sorted((i,k)) and sorted((ht,pt))==sorted((j,l))) or
+                    (sorted((hs,ps))==sorted((j,l)) and sorted((ht,pt))==sorted((i,k)))
+                )
+        else:    
+            if exc==(2,0):
+                dsa=da.alpha
+                dsb=db.alpha
+            elif exc==(0,2):
+                dsa=da.beta
+                dsb=db.beta
+            else:
+                raise
+            _,h1,h2,p1,p2 = PhaseIdx.double_exc(dsa,dsb)
+            assert(sorted((sorted((h1,h2)),sorted((p1,p2)))) in (sorted((sorted((i,j)),sorted((k,l)))),
+                    sorted((sorted((i,l)),sorted((k,j))))))
     return
 
 

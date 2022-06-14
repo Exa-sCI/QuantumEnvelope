@@ -381,7 +381,7 @@ def test_pair_idx_F(dadb, idx):
     assert integral_category(*idx) == "F"
     i, _, k, _ = idx
     exc = Excitation.exc_degree(da, db)
-    if sum(exc) == 0:
+    if exc == (0, 0):
         assert da == db
         assert ((i in da.alpha) and (k in da.alpha)) or ((i in da.beta) and (k in da.beta))
     elif exc == (1, 1):

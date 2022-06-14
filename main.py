@@ -283,7 +283,7 @@ def test_pair_idx_C(dadb, idx):
         dsa = da.beta
         dsb = db.beta
     else:
-        raise
+        raise AssertionError
     _, h, p = PhaseIdx.single_exc(dsa, dsb)
     if j == l:
         assert sorted((h, p)) == sorted((i, k))

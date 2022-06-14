@@ -238,10 +238,6 @@ def integral_category(i, j, k, l):
         return "G"
 
 
-def test_pair_idx(dadb, idx, category):
-    globals()[f'test_pair_idx_{category}'](dadb,idx)
-
-
 def test_pair_idx_A(dadb, idx):
     da, db = dadb
     assert integral_category(*idx) == "A"
@@ -1442,7 +1438,7 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase):
         for (a, b), idx4, phase in integral_driven_indices:
             idx = canonical_idx4_reverse(idx4)
             category = integral_category(*idx)
-            test_pair_idx((psi[a], psi[b]), idx, category)
+            globals()[f"test_pair_idx_{category}"]((psi[a], psi[b]), idx)
 
 
 class Test_VariationalPowerplant:

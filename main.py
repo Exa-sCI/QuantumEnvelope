@@ -239,16 +239,7 @@ def integral_category(i, j, k, l):
 
 
 def test_pair_idx(dadb, idx, category):
-    foo = {
-        "A": test_pair_idx_A,
-        "B": test_pair_idx_B,
-        "C": test_pair_idx_C,
-        "D": test_pair_idx_D,
-        "E": test_pair_idx_E,
-        "F": test_pair_idx_F,
-        "G": test_pair_idx_G,
-    }[category]
-    return foo(dadb, idx)
+    globals()[f'test_pair_idx_{category}'](dadb,idx)
 
 
 def test_pair_idx_A(dadb, idx):

@@ -258,7 +258,7 @@ def test_pair_idx_A(dadb, idx):
     assert (i, i, i, i) == idx
     assert da == db
     assert (i in da.alpha) and (i in da.beta)
-    return
+    
 
 
 def test_pair_idx_B(dadb, idx):

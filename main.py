@@ -243,14 +243,16 @@ def load_integrals(
             E0 = v
         elif j == 0:
             # One-electron integrals are symmetric (when real, not complex)
-            d_one_e_integral[(i-1, k-1)] = v # index minus one to be consistent with determinant orbital indexing starting at zero
-            d_one_e_integral[(k-1, i-1)] = v
+            d_one_e_integral[
+                (i - 1, k - 1)
+            ] = v  # index minus one to be consistent with determinant orbital indexing starting at zero
+            d_one_e_integral[(k - 1, i - 1)] = v
         else:
             # Two-electron integrals have many permutation symmetries:
             # Exchange r1 and r2 (indices i,k and j,l)
             # Exchange i,k
             # Exchange j,l
-            key = compound_idx4(i-1, j-1, k-1, l-1)
+            key = compound_idx4(i - 1, j - 1, k - 1, l - 1)
             d_two_e_integral[key] = v
 
     f.close()
@@ -354,7 +356,7 @@ def load_eref(path_ref) -> Energy:
 #  | |___>  < (__| | || (_| | |_| | (_) | | | |
 #  \____/_/\_\___|_|\__\__,_|\__|_|\___/|_| |_|
 #
-class Excitation():
+class Excitation:
     def __init__(self, n_orb):
         self.all_orbs = frozenset(range(n_orb))
 

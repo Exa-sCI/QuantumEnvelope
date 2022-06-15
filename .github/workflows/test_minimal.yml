@@ -22,7 +22,7 @@ jobs:
           pip install -r requirements.txt
       - name: Run doctest and unitests
         run: |
-          ./main.py Test_MinimalEquivalence
+          ./main.py Test_Minimal
       - name: Run variational determinant-driven tests
         run: |
           ./main.py Test1_VariationalPowerplant_Determinant

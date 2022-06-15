@@ -1423,7 +1423,7 @@ class Test_Category:
             )
 
 
-class Test_MinimalEquivalence(Timing, unittest.TestCase, Test_Category):
+class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     @staticmethod
     def simplify_indices(l):
         d = defaultdict(int)
@@ -1432,7 +1432,8 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase, Test_Category):
             d[key] += phase
         return sorted((ab, idx, phase) for (ab, idx), phase in d.items() if phase)
 
-    def test_4electrons_4orbital(self):
+    @property
+    def psi_int(self):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         psi = Excitation(4).gen_all_connected_determinant([Determinant((1, 2), (1, 2))])
@@ -1440,14 +1441,24 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase, Test_Category):
         d_two_e_integral = {}
         for (i, j, k, l) in product(range(4), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1
+        return psi, d_two_e_integral
+
+    def test_equivalance(self):
+        # Does `integral` and `determinant` driven produce the same H
+        psi, d_two_e_integral = self.psi_int
 
         h = Hamiltonian_two_electrons_determinant_driven(d_two_e_integral)
-        determinant_driven_indices = Test_MinimalEquivalence.simplify_indices(h.H_indices(psi, psi))
+        determinant_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
 
         h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
-        integral_driven_indices = Test_MinimalEquivalence.simplify_indices(h.H_indices(psi, psi))
+        integral_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
         self.assertListEqual(determinant_driven_indices, integral_driven_indices)
 
+    def test_category(self):
+        # Does the assumtion of your Ingral category holds
+        psi, d_two_e_integral = self.psi_int
+        h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
+        integral_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
         for (a, b), idx4, phase in integral_driven_indices:
             idx = canonical_idx4_reverse(idx4)
             category = integral_category(*idx)

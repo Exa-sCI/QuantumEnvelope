@@ -148,7 +148,6 @@ def compound_idx4_reverse_all_unique(ijkl):
     return tuple(set(compound_idx4_reverse_all(ijkl)))
 
 
-
 def canonical_idx4(i, j, k, l):
     """
     for real orbitals, return same 4-tuple for all equivalent integrals
@@ -216,7 +215,7 @@ def integral_category(i, j, k, l):
     |       | j<i<k<l (2,1,3,4) |   <    <   <  |  >   <   <   <  |                               | 1<->4 x 2<->3                |                             |
     +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
     """
-    assert (i, j, k, l) == canonical_idx4_reverse(compound_idx4(i, j, k, l))
+    assert (i, j, k, l) == canonical_idx4(i, j, k, l)
     if i == l:
         return "A"
     elif (i == k) and (j == l):

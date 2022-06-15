@@ -269,7 +269,7 @@ class CategoryTest(object):
             (_, dsa), (_, dsb) = da, db
         else:
             raise AssertionError
-        _, h, p = PhaseIdx.single_exc(dsa, dsb)
+        h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
         if j == l:
             assert sorted((h, p)) == sorted((i, k))
             assert (j in da.alpha + da.beta) and (j in db.alpha + db.beta)
@@ -291,7 +291,7 @@ class CategoryTest(object):
             (dta, dsa), (dtb, dsb) = da, db
         else:
             raise AssertionError
-        _, h, p = PhaseIdx.single_exc(dsa, dsb)
+        h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
         if j == l:
             assert sorted((h, p)) == sorted((i, k))
             assert (j in dta) and (j in dtb)
@@ -314,7 +314,7 @@ class CategoryTest(object):
                 (_, dsa), (_, dsb) = da, db
             else:
                 raise AssertionError
-            _, h, p = PhaseIdx.single_exc(dsa, dsb)
+            h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
             if i == j:
                 assert sorted((h, p)) == sorted((k, l))
                 assert (i in dsa) and (i in dsb)
@@ -339,8 +339,8 @@ class CategoryTest(object):
                 p, r, s = k, j, i
             else:
                 raise AssertionError
-            _, hs, ps = PhaseIdx.single_exc(dsa, dsb)
-            _, ht, pt = PhaseIdx.single_exc(dta, dtb)
+            hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
             assert sorted((sorted((hs, ps)), sorted((ht, pt)))) == sorted(
                 (sorted((p, r)), sorted((p, s)))
             )
@@ -358,8 +358,8 @@ class CategoryTest(object):
             assert ((i in da.alpha) and (k in da.alpha)) or ((i in da.beta) and (k in da.beta))
         elif exc == (1, 1):
             (dsa, dta), (dsb, dtb) = da, db
-            _, hs, ps = PhaseIdx.single_exc(dsa, dsb)
-            _, ht, pt = PhaseIdx.single_exc(dta, dtb)
+            hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
             assert sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((i, k))
         else:
             raise AssertionError
@@ -375,8 +375,8 @@ class CategoryTest(object):
         else:
             if exc == (1, 1):
                 (dsa, dta), (dsb, dtb) = da, db
-                _, hs, ps = PhaseIdx.single_exc(dsa, dsb)
-                _, ht, pt = PhaseIdx.single_exc(dta, dtb)
+                hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+                ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
                 assert (
                     sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((j, l))
                 ) or (sorted((hs, ps)) == sorted((j, l)) and sorted((ht, pt)) == sorted((i, k)))
@@ -387,7 +387,7 @@ class CategoryTest(object):
                     (_, dsa), (_, dsb) = da, db
                 else:
                     raise AssertionError
-                _, h1, h2, p1, p2 = PhaseIdx.double_exc(dsa, dsb)
+                h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(dsa, dsb)
                 assert sorted((sorted((h1, h2)), sorted((p1, p2)))) in (
                     sorted((sorted((i, j)), sorted((k, l)))),
                     sorted((sorted((i, l)), sorted((k, j)))),
@@ -697,6 +697,24 @@ class PhaseIdx(object):
         return phase
 
     @staticmethod
+    def single_exc_no_phase(
+        sdet_i: Spin_determinant, sdet_j: Spin_determinant
+    ) -> Tuple[OrbitalIdx, OrbitalIdx]:
+        """hole, particle of <I|H|J> when I and J differ by exactly one orbital
+           h is occupied only in I
+           p is occupied only in J
+
+        >>> PhaseIdx.single_exc_no_phase((1, 5, 7), (1, 23, 7))
+        (5, 23)
+        >>> PhaseIdx.single_exc_no_phase((1, 2, 9), (1, 9, 18))
+        (2, 18)
+        """
+        (h,) = set(sdet_i) - set(sdet_j)
+        (p,) = set(sdet_j) - set(sdet_i)
+
+        return h, p
+
+    @staticmethod
     def single_exc(
         sdet_i: Spin_determinant, sdet_j: Spin_determinant
     ) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
@@ -709,8 +727,7 @@ class PhaseIdx(object):
         >>> PhaseIdx.single_exc((1, 2, 9), (1, 9, 18))
         (-1, 2, 18)
         """
-        (h,) = set(sdet_i) - set(sdet_j)
-        (p,) = set(sdet_j) - set(sdet_i)
+        h, p = PhaseIdx.single_exc_no_phase(sdet_i, sdet_j)
 
         return PhaseIdx.single_phase(sdet_i, sdet_j, h, p), h, p
 
@@ -731,6 +748,28 @@ class PhaseIdx(object):
         return phase
 
     @staticmethod
+    def double_exc_no_phase(
+        sdet_i: Spin_determinant, sdet_j: Spin_determinant
+    ) -> Tuple[OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
+        """holes, particles of <I|H|J> when I and J differ by exactly two orbitals
+           h1, h2 are occupied only in I
+           p1, p2 are occupied only in J
+
+        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
+        (3, 4, 12, 13)
+        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
+        (3, 9, 12, 18)
+        """
+
+        # Holes
+        h1, h2 = sorted(set(sdet_i) - set(sdet_j))
+
+        # Particles
+        p1, p2 = sorted(set(sdet_j) - set(sdet_i))
+
+        return h1, h2, p1, p2
+
+    @staticmethod
     def double_exc(
         sdet_i: Spin_determinant, sdet_j: Spin_determinant
     ) -> Tuple[int, OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
@@ -744,11 +783,7 @@ class PhaseIdx(object):
         (-1, 3, 9, 12, 18)
         """
 
-        # Holes
-        h1, h2 = sorted(set(sdet_i) - set(sdet_j))
-
-        # Particles
-        p1, p2 = sorted(set(sdet_j) - set(sdet_i))
+        h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(sdet_i, sdet_j)
 
         return PhaseIdx.double_phase(sdet_i, sdet_j, h1, h2, p1, p2), h1, h2, p1, p2
 

@@ -1,6 +1,6 @@
 name: Python package
 
-on: [push]
+on: [push, pull_request, pull_request_review]
 
 jobs:
   build:
@@ -29,3 +29,7 @@ jobs:
       - name: Run variational integral-driven tests
         run: |
           ./main.py Test1_VariationalPowerplant_Integral
+      - name: Run full tests
+        if: github.event.review.state == 'approved'
+        run: |
+          ./main.py

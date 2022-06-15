@@ -1402,10 +1402,6 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase):
             d[key] += phase
         return sorted((ab, idx, phase) for (ab, idx), phase in d.items() if phase)
 
-    @staticmethod
-    def test_pair_idx_category(dadb, idx, category):
-        CategoryTest.__dict__[f"test_pair_idx_{category}"].__get__(object)(dadb, idx)
-
     def test_4electrons_4orbital(self):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
@@ -1425,7 +1421,7 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase):
         for (a, b), idx4, phase in integral_driven_indices:
             idx = canonical_idx4_reverse(idx4)
             category = integral_category(*idx)
-            self.test_pair_idx_category((psi[a], psi[b]), idx, category)
+            getattr(CategoryTest, f"test_pair_idx_{category}")((psi[a], psi[b]), idx)
 
 
 class Test_VariationalPowerplant:

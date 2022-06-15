@@ -1273,162 +1273,150 @@ class Timing:
             p.strip_dirs().sort_stats("tottime").print_stats(0.05)
 
 
-class Test_MinimalEquivalence(Timing, unittest.TestCase):
-    class CategoryTest(object):
-        @staticmethod
-        def test_pair_idx_A(dadb, idx):
-            da, db = dadb
-            assert integral_category(*idx) == "A"
-            i, _, _, _ = idx
-            assert (i, i, i, i) == idx
-            assert da == db
-            assert (i in da.alpha) and (i in da.beta)
+class Test_Category:
+    def check_pair_idx_A(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "A")
+        i, _, _, _ = idx
+        self.assertEqual((i, i, i, i), idx)
+        self.assertEqual(da, db)
+        self.assertIn(i, da.alpha)
+        self.assertIn(i, da.beta)
 
-        @staticmethod
-        def test_pair_idx_B(dadb, idx):
-            da, db = dadb
-            assert integral_category(*idx) == "B"
-            i, j, _, _ = idx
-            assert (i, j, i, j) == idx
-            assert da == db
-            assert (i in da.alpha + da.beta) and (j in da.alpha + da.beta)
+    def check_pair_idx_B(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "B")
+        i, j, _, _ = idx
+        self.assertEqual((i, j, i, j), idx)
+        self.assertEqual(da, db)
+        self.assertIn(i, da.alpha + da.beta)
+        self.assertIn(j, da.alpha + da.beta)
 
-        @staticmethod
-        def test_pair_idx_C(dadb, idx):
-            da, db = dadb
-            assert integral_category(*idx) == "C"
-            i, j, k, l = idx
-            exc = Excitation.exc_degree(da, db)
+    def check_pair_idx_C(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "C")
+        i, j, k, l = idx
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc,((1,0),(0,1)))
+        if exc == (1, 0):
+            (dsa, _), (dsb, _) = da, db
+        elif exc == (0, 1):
+            (_, dsa), (_, dsb) = da, db
+        h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
+        self.assertTrue(j == l or i == k)
+        if j == l:
+            self.assertEqual(sorted((h, p)), sorted((i, k)))
+            self.assertIn(j, da.alpha + da.beta)
+            self.assertIn(j, db.alpha + db.beta)
+        elif i == k:
+            self.assertEqual(sorted((h, p)), sorted((j, l)))
+            self.assertIn(i, da.alpha + da.beta)
+            self.assertIn(i, db.alpha + db.beta)
+
+    def check_pair_idx_D(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "D")
+        i, j, k, l = idx
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc,((1,0),(0,1)))
+        if exc == (1, 0):
+            (dsa, dta), (dsb, dtb) = da, db
+        elif exc == (0, 1):
+            (dta, dsa), (dtb, dsb) = da, db
+        h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
+        self.assertTrue(j == l or i == k)
+        if j == l:
+            self.assertEqual(sorted((h, p)), sorted((i, k)))
+            self.assertIn(j, dta)
+            self.assertIn(j, dtb)
+        elif i == k:
+            self.assertEqual(sorted((h, p)), sorted((j, l)))
+            self.assertIn(i, dta)
+            self.assertIn(i, dtb)
+
+    def check_pair_idx_E(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "E")
+        i, j, k, l = idx
+        self.assertTrue(i == j or j == k or k == l)
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc,((1,0),(0,1),(1,1)))
+        if exc == (1,1):
+            (dsa, dta), (dsb, dtb) = da, db
+            if i == j:
+                p, r, s = i, k, l
+            elif j == k:
+                p, r, s = j, i, l
+            elif k == l:
+                p, r, s = k, j, i
+            hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
+            self.assertEqual(sorted((sorted((hs, ps)), sorted((ht, pt)))),
+                             sorted((sorted((p, r)), sorted((p, s)))))
+        else: # exc in ((1,0),(0,1))
             if exc == (1, 0):
                 (dsa, _), (dsb, _) = da, db
             elif exc == (0, 1):
                 (_, dsa), (_, dsb) = da, db
-            else:
-                raise AssertionError
             h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
-            if j == l:
-                assert sorted((h, p)) == sorted((i, k))
-                assert (j in da.alpha + da.beta) and (j in db.alpha + db.beta)
-            elif i == k:
-                assert sorted((h, p)) == sorted((j, l))
-                assert (i in da.alpha + da.beta) and (i in db.alpha + db.beta)
-            else:
-                raise AssertionError
+            if i == j:
+                self.assertEqual(sorted((h, p)), sorted((k, l)))
+                self.assertIn(i, dsa)
+                self.assertIn(i, dsb)
+            elif j == k:
+                self.assertEqual(sorted((h, p)), sorted((i, l)))
+                self.assertIn(j, dsa)
+                self.assertIn(j, dsb)
+            elif k == l:
+                self.assertEqual(sorted((h, p)), sorted((i, j)))
+                self.assertIn(k, dsa)
+                self.assertIn(k, dsb)
 
-        @staticmethod
-        def test_pair_idx_D(dadb, idx):
-            da, db = dadb
-            assert integral_category(*idx) == "D"
-            i, j, k, l = idx
-            exc = Excitation.exc_degree(da, db)
-            if exc == (1, 0):
-                (dsa, dta), (dsb, dtb) = da, db
-            elif exc == (0, 1):
-                (dta, dsa), (dtb, dsb) = da, db
-            else:
-                raise AssertionError
-            h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
-            if j == l:
-                assert sorted((h, p)) == sorted((i, k))
-                assert (j in dta) and (j in dtb)
-            elif i == k:
-                assert sorted((h, p)) == sorted((j, l))
-                assert (i in dta) and (i in dtb)
-            else:
-                raise AssertionError
+    def check_pair_idx_F(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "F")
+        i, _, k, _ = idx
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc,((0,0),(1,1)))
+        if exc == (0, 0):
+            self.assertEqual(da, db)
+            self.assertTrue(((i in da.alpha) and (k in da.alpha)) or ((i in da.beta) and (k in da.beta)))
+        elif exc == (1, 1):
+            (dsa, dta), (dsb, dtb) = da, db
+            hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
+            self.assertEqual(sorted((hs, ps)), sorted((i, k)))
+            self.assertEqual(sorted((ht, pt)), sorted((i, k)))
 
-        @staticmethod
-        def test_pair_idx_E(dadb, idx):
-            da, db = dadb
-            assert integral_category(*idx) == "E"
-            i, j, k, l = idx
-            exc = Excitation.exc_degree(da, db)
-            if sum(exc) == 1:
-                if exc == (1, 0):
-                    (dsa, _), (dsb, _) = da, db
-                elif exc == (0, 1):
-                    (_, dsa), (_, dsb) = da, db
-                else:
-                    raise AssertionError
-                h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
-                if i == j:
-                    assert sorted((h, p)) == sorted((k, l))
-                    assert (i in dsa) and (i in dsb)
-                elif j == k:
-                    assert sorted((h, p)) == sorted((i, l))
-                    assert (j in dsa) and (j in dsb)
-                elif k == l:
-                    assert sorted((h, p)) == sorted((i, j))
-                    assert (k in dsa) and (k in dsb)
-                else:
-                    raise AssertionError
-            elif sum(exc) == 2:
-                if exc == (1, 1):
-                    (dsa, dta), (dsb, dtb) = da, db
-                else:
-                    raise AssertionError
-                if i == j:
-                    p, r, s = i, k, l
-                elif j == k:
-                    p, r, s = j, i, l
-                elif k == l:
-                    p, r, s = k, j, i
-                else:
-                    raise AssertionError
-                hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
-                ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
-                assert sorted((sorted((hs, ps)), sorted((ht, pt)))) == sorted(
-                    (sorted((p, r)), sorted((p, s)))
-                )
+    def check_pair_idx_G(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "G")
+        i, j, k, l = idx
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc, ((1, 1), (2, 0), (0, 2)))
+        if exc == (1, 1):
+            (dsa, dta), (dsb, dtb) = da, db
+            hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
+            assert (
+                sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((j, l))
+            ) or (sorted((hs, ps)) == sorted((j, l)) and sorted((ht, pt)) == sorted((i, k)))
+        else:
+            if exc == (2, 0):
+                (dsa, _), (dsb, _) = da, db
+            elif exc == (0, 2):
+                (_, dsa), (_, dsb) = da, db
             else:
                 raise AssertionError
+            h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(dsa, dsb)
+            assert sorted((sorted((h1, h2)), sorted((p1, p2)))) in (
+                sorted((sorted((i, j)), sorted((k, l)))),
+                sorted((sorted((i, l)), sorted((k, j)))),
+            )
 
-        @staticmethod
-        def test_pair_idx_F(dadb, idx):
-            da, db = dadb
-            assert integral_category(*idx) == "F"
-            i, _, k, _ = idx
-            exc = Excitation.exc_degree(da, db)
-            if exc == (0, 0):
-                assert da == db
-                assert ((i in da.alpha) and (k in da.alpha)) or ((i in da.beta) and (k in da.beta))
-            elif exc == (1, 1):
-                (dsa, dta), (dsb, dtb) = da, db
-                hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
-                ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
-                assert sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((i, k))
-            else:
-                raise AssertionError
-
-        @staticmethod
-        def test_pair_idx_G(dadb, idx):
-            da, db = dadb
-            assert integral_category(*idx) == "G"
-            i, j, k, l = idx
-            exc = Excitation.exc_degree(da, db)
-            if sum(exc) != 2:
-                raise AssertionError
-            else:
-                if exc == (1, 1):
-                    (dsa, dta), (dsb, dtb) = da, db
-                    hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
-                    ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
-                    assert (
-                        sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((j, l))
-                    ) or (sorted((hs, ps)) == sorted((j, l)) and sorted((ht, pt)) == sorted((i, k)))
-                else:
-                    if exc == (2, 0):
-                        (dsa, _), (dsb, _) = da, db
-                    elif exc == (0, 2):
-                        (_, dsa), (_, dsb) = da, db
-                    else:
-                        raise AssertionError
-                    h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(dsa, dsb)
-                    assert sorted((sorted((h1, h2)), sorted((p1, p2)))) in (
-                        sorted((sorted((i, j)), sorted((k, l)))),
-                        sorted((sorted((i, l)), sorted((k, j)))),
-                    )
-
+class Test_MinimalEquivalence(Timing, unittest.TestCase, Test_Category):
+    
+    @staticmethod
     def simplify_indices(l):
         d = defaultdict(int)
         for (a, b), idx, phase in l:
@@ -1455,7 +1443,7 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase):
         for (a, b), idx4, phase in integral_driven_indices:
             idx = canonical_idx4_reverse(idx4)
             category = integral_category(*idx)
-            getattr(self.CategoryTest, f"test_pair_idx_{category}")((psi[a], psi[b]), idx)
+            getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), idx)
 
 
 class Test_VariationalPowerplant:

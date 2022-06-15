@@ -23,3 +23,9 @@ jobs:
       - name: Run doctest and unitests
         run: |
           ./main.py Test_MinimalEquivalence
+      - name: Run variational determinant-driven tests
+        run: |
+          ./main.py Test1_VariationalPowerplant_Determinant
+      - name: Run variational integral-driven tests
+        run: |
+          ./main.py Test1_VariationalPowerplant_Integral

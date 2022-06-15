@@ -104,7 +104,6 @@ def compound_idx2_reverse(ij):
     return i, j
 
 
-@cache
 def compound_idx4_reverse(ijkl):
     """
     >>> all(compound_idx4(*compound_idx4_reverse(A)) == A for A in range(10000))
@@ -149,7 +148,7 @@ def compound_idx4_reverse_all_unique(ijkl):
     return tuple(set(compound_idx4_reverse_all(ijkl)))
 
 
-@cache
+
 def canonical_idx4(i, j, k, l):
     """
     for real orbitals, return same 4-tuple for all equivalent integrals
@@ -190,7 +189,6 @@ def canonical_idx4_reverse(ijkl):
 #                     |___/                   |___/|_|
 
 
-@cache
 def integral_category(i, j, k, l):
     """
     +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+

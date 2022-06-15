@@ -1297,7 +1297,7 @@ class Test_Category:
         self.assertEqual(integral_category(*idx), "C")
         i, j, k, l = idx
         exc = Excitation.exc_degree(da, db)
-        self.assertIn(exc,((1,0),(0,1)))
+        self.assertIn(exc, ((1, 0), (0, 1)))
         if exc == (1, 0):
             (dsa, _), (dsb, _) = da, db
         elif exc == (0, 1):
@@ -1318,7 +1318,7 @@ class Test_Category:
         self.assertEqual(integral_category(*idx), "D")
         i, j, k, l = idx
         exc = Excitation.exc_degree(da, db)
-        self.assertIn(exc,((1,0),(0,1)))
+        self.assertIn(exc, ((1, 0), (0, 1)))
         if exc == (1, 0):
             (dsa, dta), (dsb, dtb) = da, db
         elif exc == (0, 1):
@@ -1340,8 +1340,8 @@ class Test_Category:
         i, j, k, l = idx
         self.assertTrue(i == j or j == k or k == l)
         exc = Excitation.exc_degree(da, db)
-        self.assertIn(exc,((1,0),(0,1),(1,1)))
-        if exc == (1,1):
+        self.assertIn(exc, ((1, 0), (0, 1), (1, 1)))
+        if exc == (1, 1):
             (dsa, dta), (dsb, dtb) = da, db
             if i == j:
                 p, r, s = i, k, l
@@ -1351,9 +1351,11 @@ class Test_Category:
                 p, r, s = k, j, i
             hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
             ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
-            self.assertEqual(sorted((sorted((hs, ps)), sorted((ht, pt)))),
-                             sorted((sorted((p, r)), sorted((p, s)))))
-        else: # exc in ((1,0),(0,1))
+            self.assertEqual(
+                sorted((sorted((hs, ps)), sorted((ht, pt)))),
+                sorted((sorted((p, r)), sorted((p, s)))),
+            )
+        else:  # exc in ((1,0),(0,1))
             if exc == (1, 0):
                 (dsa, _), (dsb, _) = da, db
             elif exc == (0, 1):
@@ -1377,10 +1379,12 @@ class Test_Category:
         self.assertEqual(integral_category(*idx), "F")
         i, _, k, _ = idx
         exc = Excitation.exc_degree(da, db)
-        self.assertIn(exc,((0,0),(1,1)))
+        self.assertIn(exc, ((0, 0), (1, 1)))
         if exc == (0, 0):
             self.assertEqual(da, db)
-            self.assertTrue(((i in da.alpha) and (k in da.alpha)) or ((i in da.beta) and (k in da.beta)))
+            self.assertTrue(
+                ((i in da.alpha) and (k in da.alpha)) or ((i in da.beta) and (k in da.beta))
+            )
         elif exc == (1, 1):
             (dsa, dta), (dsb, dtb) = da, db
             hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
@@ -1398,24 +1402,26 @@ class Test_Category:
             (dsa, dta), (dsb, dtb) = da, db
             hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
             ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
-            assert (
-                sorted((hs, ps)) == sorted((i, k)) and sorted((ht, pt)) == sorted((j, l))
-            ) or (sorted((hs, ps)) == sorted((j, l)) and sorted((ht, pt)) == sorted((i, k)))
+            self.assertEqual(
+                sorted((sorted((hs, ps)), sorted((ht, pt)))),
+                sorted((sorted((i, k)), sorted((j, l)))),
+            )
         else:
             if exc == (2, 0):
                 (dsa, _), (dsb, _) = da, db
             elif exc == (0, 2):
                 (_, dsa), (_, dsb) = da, db
-            else:
-                raise AssertionError
             h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(dsa, dsb)
-            assert sorted((sorted((h1, h2)), sorted((p1, p2)))) in (
-                sorted((sorted((i, j)), sorted((k, l)))),
-                sorted((sorted((i, l)), sorted((k, j)))),
+            self.assertIn(
+                sorted((sorted((h1, h2)), sorted((p1, p2)))),
+                (
+                    sorted((sorted((i, j)), sorted((k, l)))),
+                    sorted((sorted((i, l)), sorted((k, j)))),
+                ),
             )
 
+
 class Test_MinimalEquivalence(Timing, unittest.TestCase, Test_Category):
-    
     @staticmethod
     def simplify_indices(l):
         d = defaultdict(int)

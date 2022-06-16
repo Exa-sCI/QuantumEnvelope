@@ -104,7 +104,6 @@ def compound_idx2_reverse(ij):
     return i, j
 
 
-@cache
 def compound_idx4_reverse(ijkl):
     """
     >>> all(compound_idx4(*compound_idx4_reverse(A)) == A for A in range(10000))
@@ -149,7 +148,6 @@ def compound_idx4_reverse_all_unique(ijkl):
     return tuple(set(compound_idx4_reverse_all(ijkl)))
 
 
-@cache
 def canonical_idx4(i, j, k, l):
     """
     for real orbitals, return same 4-tuple for all equivalent integrals
@@ -178,6 +176,63 @@ def canonical_idx4(i, j, k, l):
 @cache
 def canonical_idx4_reverse(ijkl):
     return canonical_idx4(*compound_idx4_reverse(ijkl))
+
+
+#  _____      _                       _   _
+# |_   _|    | |                     | | | |
+#   | | _ __ | |_ ___  __ _ _ __ __ _| | | |_ _   _ _ __   ___  ___
+#   | || '_ \| __/ _ \/ _` | '__/ _` | | | __| | | | '_ \ / _ \/ __|
+#  _| || | | | ||  __/ (_| | | | (_| | | | |_| |_| | |_) |  __/\__ \
+#  \___/_| |_|\__\___|\__, |_|  \__,_|_|  \__|\__, | .__/ \___||___/
+#                      __/ |                   __/ | |
+#                     |___/                   |___/|_|
+
+
+def integral_category(i, j, k, l):
+    """
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    | label |                   | ik/jl i/k j/l | i/j j/k k/l i/l | singles                       | doubles                      | diagonal                    |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |   A   | i=j=k=l (1,1,1,1) |   =    =   =  |  =   =   =   =  |                               |                              | coul. (1 occ. both spins?)  |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |   B   | i=k<j=l (1,2,1,2) |   <    =   =  |  <   >   <   <  |                               |                              | coul. (1,2 any spin occ.?)  |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |       | i=k<j<l (1,2,1,3) |   <    =   <  |  <   >   <   <  | 2<->3, 1 occ. (any spin)      |                              |                             |
+    |   C   | i<k<j=l (1,3,2,3) |   <    <   =  |  <   >   <   <  | 1<->2, 3 occ. (any spin)      |                              |                             |
+    |       | j<i=k<l (2,1,2,3) |   <    =   <  |  >   <   <   <  | 1<->3, 2 occ. (any spin)      |                              |                             |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |   D   | i=j=k<l (1,1,1,2) |   <    =   <  |  =   =   <   <  | 1<->2, 1 occ. (opposite spin) |                              |                             |
+    |       | i<j=k=l (1,2,2,2) |   <    <   =  |  <   =   =   <  | 1<->2, 2 occ. (opposite spin) |                              |                             |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |       | i=j<k<l (1,1,2,3) |   <    <   <  |  =   <   <   <  | 2<->3, 1 occ. (same spin)     | 1a<->2a x 1b<->3b, (and a/b) |                             |
+    |   E   | i<j=k<l (1,2,2,3) |   <    <   <  |  <   =   <   <  | 1<->3, 2 occ. (same spin)     | 1a<->2a x 2b<->3b, (and a/b) |                             |
+    |       | i<j<k=l (1,2,3,3) |   <    <   <  |  <   <   =   <  | 1<->2, 3 occ. (same spin)     | 1a<->3a x 2b<->3b, (and a/b) |                             |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |   F   | i=j<k=l (1,1,2,2) |   =    <   <  |  =   <   =   <  |                               | 1a<->2a x 1b<->2b            | exch. (1,2 same spin occ.?) |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    |       | i<j<k<l (1,2,3,4) |   <    <   <  |  <   <   <   <  |                               | 1<->3 x 2<->4                |                             |
+    |   G   | i<k<j<l (1,3,2,4) |   <    <   <  |  <   >   <   <  |                               | 1<->2 x 3<->4                |                             |
+    |       | j<i<k<l (2,1,3,4) |   <    <   <  |  >   <   <   <  |                               | 1<->4 x 2<->3                |                             |
+    +-------+-------------------+---------------+-----------------+-------------------------------+------------------------------+-----------------------------+
+    """
+    assert (i, j, k, l) == canonical_idx4(i, j, k, l)
+    if i == l:
+        return "A"
+    elif (i == k) and (j == l):
+        return "B"
+    elif (i == k) or (j == l):
+        if j == k:
+            return "D"
+        else:
+            return "C"
+    elif j == k:
+        return "E"
+    elif (i == j) and (k == l):
+        return "F"
+    elif (i == j) or (k == l):
+        return "E"
+    else:
+        return "G"
 
 
 #   _____      _ _   _       _ _          _   _
@@ -485,6 +540,24 @@ class PhaseIdx(object):
         return phase
 
     @staticmethod
+    def single_exc_no_phase(
+        sdet_i: Spin_determinant, sdet_j: Spin_determinant
+    ) -> Tuple[OrbitalIdx, OrbitalIdx]:
+        """hole, particle of <I|H|J> when I and J differ by exactly one orbital
+           h is occupied only in I
+           p is occupied only in J
+
+        >>> PhaseIdx.single_exc_no_phase((1, 5, 7), (1, 23, 7))
+        (5, 23)
+        >>> PhaseIdx.single_exc_no_phase((1, 2, 9), (1, 9, 18))
+        (2, 18)
+        """
+        (h,) = set(sdet_i) - set(sdet_j)
+        (p,) = set(sdet_j) - set(sdet_i)
+
+        return h, p
+
+    @staticmethod
     def single_exc(
         sdet_i: Spin_determinant, sdet_j: Spin_determinant
     ) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
@@ -497,8 +570,7 @@ class PhaseIdx(object):
         >>> PhaseIdx.single_exc((0, 1, 8), (0, 8, 17))
         (-1, 1, 17)
         """
-        (h,) = set(sdet_i) - set(sdet_j)
-        (p,) = set(sdet_j) - set(sdet_i)
+        h, p = PhaseIdx.single_exc_no_phase(sdet_i, sdet_j)
 
         return PhaseIdx.single_phase(sdet_i, sdet_j, h, p), h, p
 
@@ -519,6 +591,27 @@ class PhaseIdx(object):
         return phase
 
     @staticmethod
+    def double_exc_no_phase(
+        sdet_i: Spin_determinant, sdet_j: Spin_determinant
+    ) -> Tuple[OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
+        """holes, particles of <I|H|J> when I and J differ by exactly two orbitals
+           h1, h2 are occupied only in I
+           p1, p2 are occupied only in J
+        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
+        (3, 4, 12, 13)
+        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
+        (3, 9, 12, 18)
+        """
+
+        # Holes
+        h1, h2 = sorted(set(sdet_i) - set(sdet_j))
+
+        # Particles
+        p1, p2 = sorted(set(sdet_j) - set(sdet_i))
+
+        return h1, h2, p1, p2
+
+    @staticmethod
     def double_exc(
         sdet_i: Spin_determinant, sdet_j: Spin_determinant
     ) -> Tuple[int, OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
@@ -532,11 +625,7 @@ class PhaseIdx(object):
         (-1, 2, 8, 11, 17)
         """
 
-        # Holes
-        h1, h2 = sorted(set(sdet_i) - set(sdet_j))
-
-        # Particles
-        p1, p2 = sorted(set(sdet_j) - set(sdet_i))
+        h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(sdet_i, sdet_j)
 
         return PhaseIdx.double_phase(sdet_i, sdet_j, h1, h2, p1, p2), h1, h2, p1, p2
 
@@ -1182,7 +1271,156 @@ class Timing:
             p.strip_dirs().sort_stats("tottime").print_stats(0.05)
 
 
-class Test_MinimalEquivalence(Timing, unittest.TestCase):
+class Test_Category:
+    def check_pair_idx_A(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "A")
+        i, _, _, _ = idx
+        self.assertEqual((i, i, i, i), idx)
+        self.assertEqual(da, db)
+        self.assertIn(i, da.alpha)
+        self.assertIn(i, da.beta)
+
+    def check_pair_idx_B(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "B")
+        i, j, _, _ = idx
+        self.assertEqual((i, j, i, j), idx)
+        self.assertEqual(da, db)
+        self.assertIn(i, da.alpha + da.beta)
+        self.assertIn(j, da.alpha + da.beta)
+
+    def check_pair_idx_C(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "C")
+        i, j, k, l = idx
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc, ((1, 0), (0, 1)))
+        if exc == (1, 0):
+            (dsa, _), (dsb, _) = da, db
+        elif exc == (0, 1):
+            (_, dsa), (_, dsb) = da, db
+        h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
+        self.assertTrue(j == l or i == k)
+        if j == l:
+            self.assertEqual(sorted((h, p)), sorted((i, k)))
+            self.assertIn(j, da.alpha + da.beta)
+            self.assertIn(j, db.alpha + db.beta)
+        elif i == k:
+            self.assertEqual(sorted((h, p)), sorted((j, l)))
+            self.assertIn(i, da.alpha + da.beta)
+            self.assertIn(i, db.alpha + db.beta)
+
+    def check_pair_idx_D(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "D")
+        i, j, k, l = idx
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc, ((1, 0), (0, 1)))
+        if exc == (1, 0):
+            (dsa, dta), (dsb, dtb) = da, db
+        elif exc == (0, 1):
+            (dta, dsa), (dtb, dsb) = da, db
+        h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
+        self.assertTrue(j == l or i == k)
+        if j == l:
+            self.assertEqual(sorted((h, p)), sorted((i, k)))
+            self.assertIn(j, dta)
+            self.assertIn(j, dtb)
+        elif i == k:
+            self.assertEqual(sorted((h, p)), sorted((j, l)))
+            self.assertIn(i, dta)
+            self.assertIn(i, dtb)
+
+    def check_pair_idx_E(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "E")
+        i, j, k, l = idx
+        self.assertTrue(i == j or j == k or k == l)
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc, ((1, 0), (0, 1), (1, 1)))
+        if exc == (1, 1):
+            (dsa, dta), (dsb, dtb) = da, db
+            if i == j:
+                p, r, s = i, k, l
+            elif j == k:
+                p, r, s = j, i, l
+            elif k == l:
+                p, r, s = k, j, i
+            hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
+            self.assertEqual(
+                sorted((sorted((hs, ps)), sorted((ht, pt)))),
+                sorted((sorted((p, r)), sorted((p, s)))),
+            )
+        else:  # exc in ((1,0),(0,1))
+            if exc == (1, 0):
+                (dsa, _), (dsb, _) = da, db
+            elif exc == (0, 1):
+                (_, dsa), (_, dsb) = da, db
+            h, p = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            if i == j:
+                self.assertEqual(sorted((h, p)), sorted((k, l)))
+                self.assertIn(i, dsa)
+                self.assertIn(i, dsb)
+            elif j == k:
+                self.assertEqual(sorted((h, p)), sorted((i, l)))
+                self.assertIn(j, dsa)
+                self.assertIn(j, dsb)
+            elif k == l:
+                self.assertEqual(sorted((h, p)), sorted((i, j)))
+                self.assertIn(k, dsa)
+                self.assertIn(k, dsb)
+
+    def check_pair_idx_F(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "F")
+        i, _, k, _ = idx
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc, ((0, 0), (1, 1)))
+        if exc == (0, 0):
+            self.assertEqual(da, db)
+            self.assertTrue(
+                ((i in da.alpha) and (k in da.alpha)) or ((i in da.beta) and (k in da.beta))
+            )
+        elif exc == (1, 1):
+            (dsa, dta), (dsb, dtb) = da, db
+            hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
+            self.assertEqual(sorted((hs, ps)), sorted((i, k)))
+            self.assertEqual(sorted((ht, pt)), sorted((i, k)))
+
+    def check_pair_idx_G(self, dadb, idx):
+        da, db = dadb
+        self.assertEqual(integral_category(*idx), "G")
+        i, j, k, l = idx
+        exc = Excitation.exc_degree(da, db)
+        self.assertIn(exc, ((1, 1), (2, 0), (0, 2)))
+        if exc == (1, 1):
+            (dsa, dta), (dsb, dtb) = da, db
+            hs, ps = PhaseIdx.single_exc_no_phase(dsa, dsb)
+            ht, pt = PhaseIdx.single_exc_no_phase(dta, dtb)
+            self.assertEqual(
+                sorted((sorted((hs, ps)), sorted((ht, pt)))),
+                sorted((sorted((i, k)), sorted((j, l)))),
+            )
+        else:
+            if exc == (2, 0):
+                (dsa, _), (dsb, _) = da, db
+            elif exc == (0, 2):
+                (_, dsa), (_, dsb) = da, db
+            h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(dsa, dsb)
+            self.assertIn(
+                sorted((sorted((h1, h2)), sorted((p1, p2)))),
+                (
+                    sorted((sorted((i, j)), sorted((k, l)))),
+                    sorted((sorted((i, l)), sorted((k, j)))),
+                ),
+            )
+
+
+class Test_Minimal(Timing, unittest.TestCase, Test_Category):
+    @staticmethod
     def simplify_indices(l):
         d = defaultdict(int)
         for (a, b), idx, phase in l:
@@ -1190,7 +1428,8 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase):
             d[key] += phase
         return sorted((ab, idx, phase) for (ab, idx), phase in d.items() if phase)
 
-    def test_4electrons_4orbital(self):
+    @property
+    def psi_int(self):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         psi = Excitation(4).gen_all_connected_determinant([Determinant((1, 2), (1, 2))])
@@ -1198,13 +1437,28 @@ class Test_MinimalEquivalence(Timing, unittest.TestCase):
         d_two_e_integral = {}
         for (i, j, k, l) in product(range(4), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1
+        return psi, d_two_e_integral
+
+    def test_equivalance(self):
+        # Does `integral` and `determinant` driven produce the same H
+        psi, d_two_e_integral = self.psi_int
 
         h = Hamiltonian_two_electrons_determinant_driven(d_two_e_integral)
-        determinant_driven_indices = Test_MinimalEquivalence.simplify_indices(h.H_indices(psi, psi))
+        determinant_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
 
         h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
-        integral_driven_indices = Test_MinimalEquivalence.simplify_indices(h.H_indices(psi, psi))
+        integral_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
         self.assertListEqual(determinant_driven_indices, integral_driven_indices)
+
+    def test_category(self):
+        # Does the assumtion of your Ingral category holds
+        psi, d_two_e_integral = self.psi_int
+        h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
+        integral_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
+        for (a, b), idx4, phase in integral_driven_indices:
+            idx = canonical_idx4_reverse(idx4)
+            category = integral_category(*idx)
+            getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), idx)
 
 
 class Test_VariationalPowerplant:

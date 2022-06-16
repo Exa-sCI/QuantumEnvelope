@@ -1,6 +1,6 @@
 name: Python package
 
-on: [pull_request]
+on: [push, pull_request, pull_request_review]
 
 jobs:
   build:
@@ -20,6 +20,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run doctest and unitests
+      - name: Run Doctest and Minimal Tests
+        run: |
+          ./main.py Test_Minimal
+      - name: Run variational determinant-driven tests
+        run: |
+          ./main.py Test1_VariationalPowerplant_Determinant
+      - name: Run variational integral-driven tests
+        run: |
+          ./main.py Test1_VariationalPowerplant_Integral
+      - name: Run full tests
+        if: github.event.review.state == 'approved'
         run: |
           ./main.py

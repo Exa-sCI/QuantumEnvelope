@@ -597,6 +597,7 @@ class PhaseIdx(object):
         """holes, particles of <I|H|J> when I and J differ by exactly two orbitals
            h1, h2 are occupied only in I
            p1, p2 are occupied only in J
+           
         >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
         (3, 4, 12, 13)
         >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))

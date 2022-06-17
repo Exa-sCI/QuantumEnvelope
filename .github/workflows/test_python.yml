@@ -23,6 +23,9 @@ jobs:
       - name: Run Doctest and Minimal Tests
         run: |
           ./main.py Test_Minimal
+      - name: Run compound indexing tests
+        run: |
+          ./main.py Test_Index
       - name: Run variational determinant-driven tests
         run: |
           ./main.py Test1_VariationalPowerplant_Determinant

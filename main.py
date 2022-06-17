@@ -1064,7 +1064,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         spindet_a_occ_i, spindet_b_occ_i = self.get_spindet_a_occ_spindet_b_occ(psi_i)
         spindet_a_occ_j, spindet_b_occ_j = self.get_spindet_a_occ_spindet_b_occ(psi_j)
 
-        for key in self.d_two_e_integral: # dispatch to specific categories
+        for key in self.d_two_e_integral:  # dispatch to specific categories
 
             # TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             for idx in compound_idx4_reverse_all_unique(key):

@@ -1714,10 +1714,16 @@ if __name__ == "__main__":
     import sys
 
     try:
+        sys.argv.remove("--doctest-raise")
+    except ValueError:
+        DOCTEST_RAISE = False
+    else:
+        DOCTEST_RAISE = True
+    try:
         sys.argv.remove("--profiling")
     except ValueError:
         PROFILING = False
     else:
         PROFILING = True
-    doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE, raise_on_error=False)
+    doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE, raise_on_error=DOCTEST_RAISE)
     unittest.main(failfast=True, verbosity=0)

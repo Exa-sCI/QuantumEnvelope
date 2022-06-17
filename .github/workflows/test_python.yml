@@ -22,7 +22,7 @@ jobs:
           pip install -r requirements.txt
       - name: Run Doctest and Minimal Tests
         run: |
-          ./main.py Test_Minimal
+          ./main.py --doctest-raise Test_Minimal
       - name: Run compound indexing tests
         run: |
           ./main.py Test_Index

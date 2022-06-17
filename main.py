@@ -1282,7 +1282,7 @@ class Timing:
 
     def tearDown(self):
         t = time.perf_counter() - self.startTime
-        print(f"ok ({t:.3f}s)")
+        print(f"ok ({t:.3f}s)", flush=True)
         if PROFILING:
             from pstats import Stats
 

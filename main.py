@@ -11,6 +11,7 @@ from functools import partial, cached_property, cache
 from collections import defaultdict
 import numpy as np
 from math import sqrt
+import random
 
 
 # Orbital index (0,1,2,...,n_orb-1)
@@ -98,8 +99,6 @@ def compound_idx2_reverse(ij):
     """
     inverse of compound_idx2
     will always return (i, j) with i <= j
-    >>> all(compound_idx2(*compound_idx2_reverse(A)) == A for A in range(10000))
-    True
     >>> compound_idx2_reverse(0)
     (0, 0)
     >>> compound_idx2_reverse(1)
@@ -117,9 +116,7 @@ def compound_idx2_reverse(ij):
 def compound_idx4_reverse(ijkl):
     """
     inverse of compound_idx4
-    will always return (i, j, k, l) with ik <= jl, i <= k, and j <= l
-    >>> all(compound_idx4(*compound_idx4_reverse(A)) == A for A in range(10000))
-    True
+    will always return (i, j, k, l) with ik <= jl, i <= k, and j <= l (i.e. canonical ordering)
     >>> compound_idx4_reverse(0)
     (0, 0, 0, 0)
     >>> compound_idx4_reverse(1)
@@ -145,10 +142,6 @@ def compound_idx4_reverse_all(ijkl):
     for complex orbitals, they are ordered as:
     v, v, v*, v*, u, u, u*, u*
     where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
-    >>> def check_idx(A):
-    ...     return all(compound_idx4(i,j,k,l)==A for i,j,k,l in compound_idx4_reverse_all(A))
-    >>> all(check_idx(A) for A in range(1000))
-    True
     >>> compound_idx4_reverse_all(0)
     ((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0))
     >>> compound_idx4_reverse_all(1)
@@ -185,12 +178,14 @@ def canonical_idx4(i, j, k, l):
         j <= l
         (k < l) or (k==l and i <= j)
     the last of these is equivalent to (compound_idx2(i,k) <= compound_idx2(j,l))
-    >>> all(\
-            all(\
-                canonical_idx4(*compound_idx4_reverse(A)) == B \
-            for B in (canonical_idx4(i,j,k,l) for (i,j,k,l) in compound_idx4_reverse_all(A)))\
-        for A in range(1000))
-    True
+    >>> canonical_idx4(1, 0, 0, 0)
+    (0, 0, 0, 1)
+    >>> canonical_idx4(4, 2, 3, 1)
+    (1, 3, 2, 4)
+    >>> canonical_idx4(3, 2, 1, 4)
+    (1, 2, 3, 4)
+    >>> canonical_idx4(1, 3, 4, 2)
+    (2, 1, 3, 4)
     """
     i, k = min(i, k), max(i, k)
     ik = compound_idx2(i, k)
@@ -200,15 +195,6 @@ def canonical_idx4(i, j, k, l):
         return i, j, k, l
     else:
         return j, i, l, k
-
-
-@cache
-def canonical_idx4_reverse(ijkl):
-    """
-    >>> all(compound_idx4_reverse(A) == canonical_idx4_reverse(A) for A in range(10000))
-    True
-    """
-    return canonical_idx4(*compound_idx4_reverse(ijkl))
 
 
 #  _____      _                       _   _
@@ -1303,6 +1289,55 @@ class Timing:
             self.pr.disable()
             p = Stats(self.pr)
             p.strip_dirs().sort_stats("tottime").print_stats(0.05)
+
+
+class Test_Index(Timing, unittest.TestCase):
+    def check_idx2_reverse(self, ij):
+        i, j = compound_idx2_reverse(ij)
+        self.assertTrue(i <= j)
+        self.assertEqual(ij, compound_idx2(i, j))
+
+    def check_idx4_reverse(self, ijkl):
+        i, j, k, l = compound_idx4_reverse(ijkl)
+        ik = compound_idx2(i, k)
+        jl = compound_idx2(j, l)
+        self.assertTrue(i <= k)
+        self.assertTrue(j <= l)
+        self.assertTrue(ik <= jl)
+        self.assertEqual(ijkl, compound_idx4(i, j, k, l))
+
+    def check_idx4_reverse_all(self, ijkl):
+        for i, j, k, l in compound_idx4_reverse_all(ijkl):
+            self.assertEqual(compound_idx4(i, j, k, l), ijkl)
+
+    def check_canonical_idx4(self, ijkl):
+        for i, j, k, l in compound_idx4_reverse_all(ijkl):
+            self.assertEqual(
+                canonical_idx4(*compound_idx4_reverse(ijkl)), canonical_idx4(i, j, k, l)
+            )
+
+    def check_compound_idx4_reverse_is_canonical(self, ijkl):
+        self.assertEqual(compound_idx4_reverse(ijkl), canonical_idx4(*compound_idx4_reverse(ijkl)))
+
+    def test_idx2_reverse(self, n=10000, nmax=(1 << 63) - 1):
+        for ij in random.sample(range(nmax), k=n):
+            self.check_idx2_reverse(ij)
+
+    def test_idx4_reverse(self, n=10000, nmax=(1 << 63) - 1):
+        for ijkl in random.sample(range(nmax), k=n):
+            self.check_idx4_reverse(ijkl)
+
+    def test_idx4_reverse_all(self, n=10000, nmax=(1 << 63) - 1):
+        for ijkl in random.sample(range(nmax), k=n):
+            self.check_idx4_reverse_all(ijkl)
+
+    def test_canonical_idx4(self, n=10000, nmax=(1 << 63) - 1):
+        for ijkl in random.sample(range(nmax), k=n):
+            self.check_canonical_idx4(ijkl)
+
+    def test_compound_idx4_reverse_is_canonical(self, n=10000, nmax=(1 << 63) - 1):
+        for ijkl in random.sample(range(nmax), k=n):
+            self.check_compound_idx4_reverse_is_canonical(ijkl)
 
 
 class Test_Category:

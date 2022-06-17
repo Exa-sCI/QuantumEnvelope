@@ -1433,8 +1433,9 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     def psi_int(self):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
-        psi = Excitation(4).gen_all_connected_determinant([Determinant((1, 2), (1, 2))])
-
+        psi = [Determinant((0, 1), (0, 1))]
+        psi += Excitation(4).gen_all_connected_determinant(psi)
+        self.assertEqual(len(psi), 27)
         d_two_e_integral = {}
         for (i, j, k, l) in product(range(4), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1

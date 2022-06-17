@@ -1064,7 +1064,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         spindet_a_occ_i, spindet_b_occ_i = self.get_spindet_a_occ_spindet_b_occ(psi_i)
         spindet_a_occ_j, spindet_b_occ_j = self.get_spindet_a_occ_spindet_b_occ(psi_j)
 
-        for key in self.d_two_e_integral:
+        for key in self.d_two_e_integral: # dispatch to specific categories
 
             # TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
             for idx in compound_idx4_reverse_all_unique(key):
@@ -1433,8 +1433,8 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     def psi_int(self):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
-        psi = Excitation(4).gen_all_connected_determinant([Determinant((1, 2), (1, 2))])
-
+        psi = Excitation(4).gen_all_connected_determinant([Determinant((0, 1), (0, 1))])
+        self.assertEqual(len(psi), 26)
         d_two_e_integral = {}
         for (i, j, k, l) in product(range(4), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1

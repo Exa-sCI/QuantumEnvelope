@@ -96,8 +96,18 @@ def compound_idx4(i, j, k, l):
 @cache
 def compound_idx2_reverse(ij):
     """
+    inverse of compound_idx2
+    will always return (i, j) with i <= j
     >>> all(compound_idx2(*compound_idx2_reverse(A)) == A for A in range(10000))
     True
+    >>> compound_idx2_reverse(0)
+    (0, 0)
+    >>> compound_idx2_reverse(1)
+    (0, 1)
+    >>> compound_idx2_reverse(2)
+    (1, 1)
+    >>> compound_idx2_reverse(3)
+    (0, 2)
     """
     j = int((sqrt(1 + 8 * ij) - 1) / 2)
     i = ij - (j * (j + 1) // 2)
@@ -106,8 +116,20 @@ def compound_idx2_reverse(ij):
 
 def compound_idx4_reverse(ijkl):
     """
+    inverse of compound_idx4
+    will always return (i, j, k, l) with ik <= jl, i <= k, and j <= l
     >>> all(compound_idx4(*compound_idx4_reverse(A)) == A for A in range(10000))
     True
+    >>> compound_idx4_reverse(0)
+    (0, 0, 0, 0)
+    >>> compound_idx4_reverse(1)
+    (0, 0, 0, 1)
+    >>> compound_idx4_reverse(2)
+    (0, 0, 1, 1)
+    >>> compound_idx4_reverse(3)
+    (0, 1, 0, 1)
+    >>> compound_idx4_reverse(37)
+    (0, 2, 1, 3)
     """
     ik, jl = compound_idx2_reverse(ijkl)
     i, k = compound_idx2_reverse(ik)
@@ -119,6 +141,7 @@ def compound_idx4_reverse(ijkl):
 def compound_idx4_reverse_all(ijkl):
     """
     return all 8 permutations that are equivalent for real orbitals
+    always returns 8 4-tuples, even if there are duplicates
     for complex orbitals, they are ordered as:
     v, v, v*, v*, u, u, u*, u*
     where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
@@ -126,6 +149,12 @@ def compound_idx4_reverse_all(ijkl):
     ...     return all(compound_idx4(i,j,k,l)==A for i,j,k,l in compound_idx4_reverse_all(A))
     >>> all(check_idx(A) for A in range(1000))
     True
+    >>> compound_idx4_reverse_all(0)
+    ((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0))
+    >>> compound_idx4_reverse_all(1)
+    ((0, 0, 0, 1), (0, 0, 1, 0), (0, 1, 0, 0), (1, 0, 0, 0), (0, 1, 0, 0), (1, 0, 0, 0), (0, 0, 0, 1), (0, 0, 1, 0))
+    >>> compound_idx4_reverse_all(37)
+    ((0, 2, 1, 3), (2, 0, 3, 1), (1, 3, 0, 2), (3, 1, 2, 0), (0, 3, 1, 2), (3, 0, 2, 1), (1, 2, 0, 3), (2, 1, 3, 0))
     """
     i, j, k, l = compound_idx4_reverse(ijkl)
     return (
@@ -175,6 +204,10 @@ def canonical_idx4(i, j, k, l):
 
 @cache
 def canonical_idx4_reverse(ijkl):
+    """
+    >>> all(compound_idx4_reverse(A) == canonical_idx4_reverse(A) for A in range(10000))
+    True
+    """
     return canonical_idx4(*compound_idx4_reverse(ijkl))
 
 
@@ -1079,7 +1112,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 ):
                     yield (a, b), idx, phase
 
-            idx = canonical_idx4_reverse(key)
+            idx = compound_idx4_reverse(key)
             for (a, b), phase in self.H_pair_phase_from_idx_unique(
                 idx,
                 spindet_a_occ_i,
@@ -1458,7 +1491,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
         integral_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
         for (a, b), idx4, phase in integral_driven_indices:
-            idx = canonical_idx4_reverse(idx4)
+            idx = compound_idx4_reverse(idx4)
             category = integral_category(*idx)
             getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), idx)
 
@@ -1648,5 +1681,5 @@ if __name__ == "__main__":
         PROFILING = False
     else:
         PROFILING = True
-    doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE, raise_on_error=True)
+    doctest.testmod(optionflags=doctest.NORMALIZE_WHITESPACE, raise_on_error=False)
     unittest.main(failfast=True, verbosity=0)

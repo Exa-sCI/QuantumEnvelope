@@ -90,6 +90,16 @@ def compound_idx2(i, j):
 def compound_idx4(i, j, k, l):
     """
     nested calls to compound_idx2
+    >>> compound_idx4(0,0,0,0)
+    0
+    >>> compound_idx4(0,1,0,0)
+    1
+    >>> compound_idx4(1,1,0,0)
+    2
+    >>> compound_idx4(1,0,1,0)
+    3
+    >>> compound_idx4(1,0,1,1)
+    4
     """
     return compound_idx2(compound_idx2(i, k), compound_idx2(j, l))
 

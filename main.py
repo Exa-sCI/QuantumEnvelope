@@ -885,8 +885,11 @@ class Hamiltonian_two_electrons_integral_driven(object):
         Possibilities are i = k < j < l: (1,2,1,3), i < k < j = l: (1,3,2,3), j < i = k < l: (2,1,2,3)
         """
         i, j, k, l = idx
-        (spindet_a_occ_i, spindet_b_occ_i) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
-    
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+
         def do_category_C(i, j, k, l, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb):
             det_indices1 = (spindet_occ_i[i] & spindet_occ_i[j]) - spindet_occ_i[l]
             det_indices2 = (oppspindet_occ_i[i] & spindet_occ_i[j]) - spindet_occ_i[l]
@@ -906,11 +909,19 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     yield (J, I), idx, phase
 
         if i == k:  # <ij|il>,  s ja(b) to la(b) where ia or ib is occupied
-            yield from do_category_C(i, j, k, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb)
-            yield from do_category_C(i, j, k, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb)
+            yield from do_category_C(
+                i, j, k, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from do_category_C(
+                i, j, k, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
         else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b) where ja or jb or is occupied
-            yield from do_category_C(j, i, l, k, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb)
-            yield from do_category_C(j, i, l, k, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb)
+            yield from do_category_C(
+                j, i, l, k, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from do_category_C(
+                j, i, l, k, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
 
     @staticmethod
     def single_Ss(

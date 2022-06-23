@@ -903,12 +903,12 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
                 try:
                     J = psi_j.index(excited_det)
-                    I = psi_i.index(det)
-                    phase = PhaseIdx.single_phase(getattr(det, spin), excited_spindet, j, l)
-                    yield (I, J), idx, phase
-                    yield (J, I), idx, phase
                 except ValueError:
                     pass
+                else:
+                    phase = PhaseIdx.single_phase(getattr(det, spin), excited_spindet, j, l)
+                    yield (a, J), idx, phase
+                    yield (J, a), idx, phase
 
         if i == k:  # <ij|il>,  s ja(b) to la(b) where ia or ib is occupied
             yield from do_category_C(

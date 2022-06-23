@@ -901,12 +901,14 @@ class Hamiltonian_two_electrons_integral_driven(object):
                     excited_det = Determinant(excited_spindet, getattr(det, "beta"))
                 else:
                     excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
-                if excited_det in psi_j:
-                    I = psi_i.index(det)
+                try:
                     J = psi_j.index(excited_det)
+                    I = psi_i.index(det)
                     phase = PhaseIdx.single_phase(getattr(det, spin), excited_spindet, j, l)
                     yield (I, J), idx, phase
                     yield (J, I), idx, phase
+                except ValueError:
+                    pass
 
         if i == k:  # <ij|il>,  s ja(b) to la(b) where ia or ib is occupied
             yield from do_category_C(
@@ -1601,18 +1603,19 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             minimal_integral_categories[cat].append(idx)
         return minimal_integral_categories
 
-    def get_det_driven_integrals(self, category):
-        psi, _ = self.psi_int
+    def get_det_driven_integrals(self):
+        psi, d_two_e_integral = self.psi_int
         indices = Hamiltonian_two_electrons_determinant_driven.H_indices(psi, psi)
-        det_driven_pairs = []
+        det_driven_pairs = defaultdict(list)
         for ab, idx, phase in indices:
             idx = canonical_idx4(*idx)
-            if integral_category(*idx) == category:
-                det_driven_pairs.append((ab, idx, phase))
+            cat = integral_category(*idx)
+            det_driven_pairs[cat].append((ab, idx, phase))
         return det_driven_pairs
 
     def test_category_C(self):
         minimal_integral_categories = self.setUp_categories()
+        det_driven_pairs = self.get_det_driven_integrals()
         psi, _ = self.psi_int
         integral_driven_pairs = []
         for idx in minimal_integral_categories["C"]:
@@ -1620,7 +1623,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
                 Hamiltonian_two_electrons_integral_driven.category_C(idx, psi, psi, 4)
             )
             integral_driven_pairs.extend(integral_driven_idx)
-        det_driven_pairs = self.get_det_driven_integrals("C")
+        det_driven_pairs = det_driven_pairs["C"]
         self.assertListEqual(
             self.simplify_indices(integral_driven_pairs), self.simplify_indices(det_driven_pairs)
         )

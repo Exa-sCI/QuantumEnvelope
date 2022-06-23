@@ -1627,6 +1627,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_categories["C"])
 
+
 class Test_VariationalPowerplant:
     def test_c2_eq_dz_3(self):
         fcidump_path = "c2_eq_hf_dz.fcidump*"

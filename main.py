@@ -1620,7 +1620,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
 
     def test_category_C(self):
         psi, _ = self.psi_int
-        n_ord = 4
+        n_orb = 4
         indices = []
         for idx in self.integral_categories["C"]:
             indices += Hamiltonian_two_electrons_integral_driven.category_C(idx, psi, psi, n_orb)

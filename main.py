@@ -1594,40 +1594,38 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
 
 
 class Test_Integral_Driven_Categories(Test_Minimal):
-    def setUp_categories(self):  # sort integral categories for minimal test case
+    @property
+    def integral_categories(self):  # sort integral categories for minimal test case
         psi, d_two_e_integral = self.psi_int
-        minimal_integral_categories = defaultdict(list)
+        d = defaultdict(list)
         for idx4 in d_two_e_integral:
             idx = compound_idx4_reverse(idx4)
             cat = integral_category(*idx)
-            minimal_integral_categories[cat].append(idx)
-        return minimal_integral_categories
+            d[cat].append(idx)
+        return d
 
-    def get_det_driven_integrals(self):
+    @property
+    def reference_indices_categories(self):
         psi, d_two_e_integral = self.psi_int
         indices = Hamiltonian_two_electrons_determinant_driven.H_indices(psi, psi)
-        det_driven_pairs = defaultdict(list)
+        d = defaultdict(list)
         for ab, idx, phase in indices:
             idx = canonical_idx4(*idx)
             cat = integral_category(*idx)
-            det_driven_pairs[cat].append((ab, idx, phase))
-        return det_driven_pairs
+            d[cat].append((ab, idx, phase))
+
+        for k in d:
+            d[k] = self.simplify_indices(d[k])
+        return d
 
     def test_category_C(self):
-        minimal_integral_categories = self.setUp_categories()
-        det_driven_pairs = self.get_det_driven_integrals()
         psi, _ = self.psi_int
-        integral_driven_pairs = []
-        for idx in minimal_integral_categories["C"]:
-            integral_driven_idx = list(
-                Hamiltonian_two_electrons_integral_driven.category_C(idx, psi, psi, 4)
-            )
-            integral_driven_pairs.extend(integral_driven_idx)
-        det_driven_pairs = det_driven_pairs["C"]
-        self.assertListEqual(
-            self.simplify_indices(integral_driven_pairs), self.simplify_indices(det_driven_pairs)
-        )
-
+        n_ord = 4
+        indices = []
+        for idx in self.integral_categories["C"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_C(idx, psi, psi, n_orb)
+        indices = self.simplify_indices(indices)
+        self.assertListEqual(indices, self.reference_indices_categories["C"])
 
 class Test_VariationalPowerplant:
     def test_c2_eq_dz_3(self):

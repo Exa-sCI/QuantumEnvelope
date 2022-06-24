@@ -1394,9 +1394,7 @@ class Test_Index(Timing, unittest.TestCase):
 
     def test_uncompound_to_idx4_is_canonical(self, n=10000, nmax=(1 << 63) - 1):
         def check_uncompound_to_idx4_is_canonical(ijkl):
-            self.assertEqual(
-                uncompound_to_idx4(ijkl), canonical_idx4(*uncompound_to_idx4(ijkl))
-            )
+            self.assertEqual(uncompound_to_idx4(ijkl), canonical_idx4(*uncompound_to_idx4(ijkl)))
 
         for ijkl in random.sample(range(nmax), k=n):
             check_uncompound_to_idx4_is_canonical(ijkl)
@@ -1588,9 +1586,9 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
         integral_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
         for (a, b), idx, phase in integral_driven_indices:
-            i,j,k,l = uncompound_to_idx4(idx)
-            category = integral_category(i,j,k,l)
-            getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), (i,j,k,l))
+            i, j, k, l = uncompound_to_idx4(idx)
+            category = integral_category(i, j, k, l)
+            getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), (i, j, k, l))
 
 
 class Test_Integral_Driven_Categories(Test_Minimal):
@@ -1604,9 +1602,9 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         psi, d_two_e_integral = self.psi_and_integral
         d = defaultdict(list)
         for idx in d_two_e_integral:
-            i,j,k,l = uncompound_to_idx4(idx)
-            cat = integral_category(i,j,k,l)
-            d[cat].append((i,j,k,l))
+            i, j, k, l = uncompound_to_idx4(idx)
+            cat = integral_category(i, j, k, l)
+            d[cat].append((i, j, k, l))
         return d
 
     @property
@@ -1619,10 +1617,10 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         psi, _ = self.psi_and_integral
         indices = Hamiltonian_two_electrons_determinant_driven.H_indices(psi, psi)
         d = defaultdict(list)
-        for ab, (i,j,k,l), phase in indices:
-            p,q,r,s = canonical_idx4(i,j,k,l)
-            cat = integral_category(p,q,r,s)
-            d[cat].append((ab, (p,q,r,s), phase))
+        for ab, (i, j, k, l), phase in indices:
+            p, q, r, s = canonical_idx4(i, j, k, l)
+            cat = integral_category(p, q, r, s)
+            d[cat].append((ab, (p, q, r, s), phase))
 
         for k in d:
             d[k] = self.simplify_indices(d[k])
@@ -1631,8 +1629,10 @@ class Test_Integral_Driven_Categories(Test_Minimal):
     def test_category_C(self):
         psi, _ = self.psi_and_integral
         indices = []
-        for (i,j,k,l) in self.integral_by_category["C"]:
-            indices += Hamiltonian_two_electrons_integral_driven.category_C((i,j,k,l), psi, psi, N_orb=4)
+        for (i, j, k, l) in self.integral_by_category["C"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_C(
+                (i, j, k, l), psi, psi, N_orb=4
+            )
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["C"])
 

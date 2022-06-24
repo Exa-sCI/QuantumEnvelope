@@ -105,17 +105,17 @@ def compound_idx4(i, j, k, l):
 
 
 @cache
-def compound_idx2_reverse(ij):
+def uncompound_to_idx2(ij):
     """
     inverse of compound_idx2
     returns (i, j) with i <= j
-    >>> compound_idx2_reverse(0)
+    >>> uncompound_to_idx2(0)
     (0, 0)
-    >>> compound_idx2_reverse(1)
+    >>> uncompound_to_idx2(1)
     (0, 1)
-    >>> compound_idx2_reverse(2)
+    >>> uncompound_to_idx2(2)
     (1, 1)
-    >>> compound_idx2_reverse(3)
+    >>> uncompound_to_idx2(3)
     (0, 2)
     """
     j = int((sqrt(1 + 8 * ij) - 1) / 2)
@@ -123,44 +123,44 @@ def compound_idx2_reverse(ij):
     return i, j
 
 
-def compound_idx4_reverse(ijkl):
+def uncompound_to_idx4(ijkl):
     """
     inverse of compound_idx4
     returns (i, j, k, l) with ik <= jl, i <= k, and j <= l (i.e. canonical ordering)
     where ik == compound_idx2(i, k) and jl == compound_idx2(j, l)
-    >>> compound_idx4_reverse(0)
+    >>> uncompound_to_idx4(0)
     (0, 0, 0, 0)
-    >>> compound_idx4_reverse(1)
+    >>> uncompound_to_idx4(1)
     (0, 0, 0, 1)
-    >>> compound_idx4_reverse(2)
+    >>> uncompound_to_idx4(2)
     (0, 0, 1, 1)
-    >>> compound_idx4_reverse(3)
+    >>> uncompound_to_idx4(3)
     (0, 1, 0, 1)
-    >>> compound_idx4_reverse(37)
+    >>> uncompound_to_idx4(37)
     (0, 2, 1, 3)
     """
-    ik, jl = compound_idx2_reverse(ijkl)
-    i, k = compound_idx2_reverse(ik)
-    j, l = compound_idx2_reverse(jl)
+    ik, jl = uncompound_to_idx2(ijkl)
+    i, k = uncompound_to_idx2(ik)
+    j, l = uncompound_to_idx2(jl)
     return i, j, k, l
 
 
 @cache
-def compound_idx4_reverse_all(ijkl):
+def uncompound_to_idx4_all(ijkl):
     """
     return all 8 permutations that are equivalent for real orbitals
     returns 8 4-tuples, even when there are duplicates
     for complex orbitals, they are ordered as:
     v, v, v*, v*, u, u, u*, u*
     where v == <ij|kl>, u == <ij|lk>, and * denotes the complex conjugate
-    >>> compound_idx4_reverse_all(0)
+    >>> uncompound_to_idx4_all(0)
     ((0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0), (0, 0, 0, 0))
-    >>> compound_idx4_reverse_all(1)
+    >>> uncompound_to_idx4_all(1)
     ((0, 0, 0, 1), (0, 0, 1, 0), (0, 1, 0, 0), (1, 0, 0, 0), (0, 1, 0, 0), (1, 0, 0, 0), (0, 0, 0, 1), (0, 0, 1, 0))
-    >>> compound_idx4_reverse_all(37)
+    >>> uncompound_to_idx4_all(37)
     ((0, 2, 1, 3), (2, 0, 3, 1), (1, 3, 0, 2), (3, 1, 2, 0), (0, 3, 1, 2), (3, 0, 2, 1), (1, 2, 0, 3), (2, 1, 3, 0))
     """
-    i, j, k, l = compound_idx4_reverse(ijkl)
+    i, j, k, l = uncompound_to_idx4(ijkl)
     return (
         (i, j, k, l),
         (j, i, l, k),
@@ -174,11 +174,11 @@ def compound_idx4_reverse_all(ijkl):
 
 
 @cache
-def compound_idx4_reverse_all_unique(ijkl):
+def uncompound_to_idx4_all_unique(ijkl):
     """
-    return only the unique 4-tuples from compound_idx4_reverse_all
+    return only the unique 4-tuples from uncompound_to_idx4_all
     """
-    return tuple(set(compound_idx4_reverse_all(ijkl)))
+    return tuple(set(uncompound_to_idx4_all(ijkl)))
 
 
 def canonical_idx4(i, j, k, l):
@@ -1146,7 +1146,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         for key in self.d_two_e_integral:
 
             # TODO: fix H_pair_phase_from_idx so we can loop over only the canonical ijkl
-            for idx in compound_idx4_reverse_all_unique(key):
+            for idx in uncompound_to_idx4_all_unique(key):
                 for (a, b), phase in self.H_pair_phase_from_idx(
                     idx,
                     spindet_a_occ_i,
@@ -1158,7 +1158,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 ):
                     yield (a, b), idx, phase
 
-            idx = compound_idx4_reverse(key)
+            idx = uncompound_to_idx4(key)
             for (a, b), phase in self.H_pair_phase_from_idx_unique(
                 idx,
                 spindet_a_occ_i,
@@ -1354,7 +1354,7 @@ class Timing:
 class Test_Index(Timing, unittest.TestCase):
     def test_idx2_reverse(self, n=10000, nmax=(1 << 63) - 1):
         def check_idx2_reverse(ij):
-            i, j = compound_idx2_reverse(ij)
+            i, j = uncompound_to_idx2(ij)
             self.assertTrue(i <= j)
             self.assertEqual(ij, compound_idx2(i, j))
 
@@ -1363,7 +1363,7 @@ class Test_Index(Timing, unittest.TestCase):
 
     def test_idx4_reverse(self, n=10000, nmax=(1 << 63) - 1):
         def check_idx4_reverse(ijkl):
-            i, j, k, l = compound_idx4_reverse(ijkl)
+            i, j, k, l = uncompound_to_idx4(ijkl)
             ik = compound_idx2(i, k)
             jl = compound_idx2(j, l)
             self.assertTrue(i <= k)
@@ -1376,7 +1376,7 @@ class Test_Index(Timing, unittest.TestCase):
 
     def test_idx4_reverse_all(self, n=10000, nmax=(1 << 63) - 1):
         def check_idx4_reverse_all(ijkl):
-            for i, j, k, l in compound_idx4_reverse_all(ijkl):
+            for i, j, k, l in uncompound_to_idx4_all(ijkl):
                 self.assertEqual(compound_idx4(i, j, k, l), ijkl)
 
         for ijkl in random.sample(range(nmax), k=n):
@@ -1384,22 +1384,22 @@ class Test_Index(Timing, unittest.TestCase):
 
     def test_canonical_idx4(self, n=10000, nmax=(1 << 63) - 1):
         def check_canonical_idx4(ijkl):
-            for i, j, k, l in compound_idx4_reverse_all(ijkl):
+            for i, j, k, l in uncompound_to_idx4_all(ijkl):
                 self.assertEqual(
-                    canonical_idx4(*compound_idx4_reverse(ijkl)), canonical_idx4(i, j, k, l)
+                    canonical_idx4(*uncompound_to_idx4(ijkl)), canonical_idx4(i, j, k, l)
                 )
 
         for ijkl in random.sample(range(nmax), k=n):
             check_canonical_idx4(ijkl)
 
-    def test_compound_idx4_reverse_is_canonical(self, n=10000, nmax=(1 << 63) - 1):
-        def check_compound_idx4_reverse_is_canonical(ijkl):
+    def test_uncompound_to_idx4_is_canonical(self, n=10000, nmax=(1 << 63) - 1):
+        def check_uncompound_to_idx4_is_canonical(ijkl):
             self.assertEqual(
-                compound_idx4_reverse(ijkl), canonical_idx4(*compound_idx4_reverse(ijkl))
+                uncompound_to_idx4(ijkl), canonical_idx4(*uncompound_to_idx4(ijkl))
             )
 
         for ijkl in random.sample(range(nmax), k=n):
-            check_compound_idx4_reverse_is_canonical(ijkl)
+            check_uncompound_to_idx4_is_canonical(ijkl)
 
 
 class Test_Category:
@@ -1560,7 +1560,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         return sorted((ab, idx, phase) for (ab, idx), phase in d.items() if phase)
 
     @property
-    def psi_int(self):
+    def psi_and_integral(self):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         psi = [Determinant((0, 1), (0, 1))]
@@ -1573,7 +1573,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
 
     def test_equivalance(self):
         # Does `integral` and `determinant` driven produce the same H
-        psi, d_two_e_integral = self.psi_int
+        psi, d_two_e_integral = self.psi_and_integral
 
         h = Hamiltonian_two_electrons_determinant_driven(d_two_e_integral)
         determinant_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
@@ -1584,48 +1584,57 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
 
     def test_category(self):
         # Does the assumtion of your Ingral category holds
-        psi, d_two_e_integral = self.psi_int
+        psi, d_two_e_integral = self.psi_and_integral
         h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
         integral_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
-        for (a, b), idx4, phase in integral_driven_indices:
-            idx = compound_idx4_reverse(idx4)
-            category = integral_category(*idx)
-            getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), idx)
+        for (a, b), idx, phase in integral_driven_indices:
+            i,j,k,l = uncompound_to_idx4(idx)
+            category = integral_category(i,j,k,l)
+            getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), (i,j,k,l))
 
 
 class Test_Integral_Driven_Categories(Test_Minimal):
     @property
-    def integral_categories(self):  # sort integral categories for minimal test case
-        psi, d_two_e_integral = self.psi_int
+    def integral_by_category(self):
+        # Bin each integral (with the 'idx4' representation) by integrals category
+        """
+        >>> Test_Integral_Driven_Categories().integral_by_category['A']
+        [(0, 0, 0, 0), (1, 1, 1, 1), (2, 2, 2, 2), (3, 3, 3, 3)]
+        """
+        psi, d_two_e_integral = self.psi_and_integral
         d = defaultdict(list)
-        for idx4 in d_two_e_integral:
-            idx = compound_idx4_reverse(idx4)
-            cat = integral_category(*idx)
-            d[cat].append(idx)
+        for idx in d_two_e_integral:
+            i,j,k,l = uncompound_to_idx4(idx)
+            cat = integral_category(i,j,k,l)
+            d[cat].append((i,j,k,l))
         return d
 
     @property
-    def reference_indices_categories(self):
-        psi, d_two_e_integral = self.psi_int
+    def reference_indices_by_category(self):
+        # Bin the indices (ab, idx4, phase) of the reference determinant implemetation by integrals category
+        """
+        >>> len(Test_Integral_Driven_Categories().reference_indices_by_category['C'])
+        264
+        """
+        psi, _ = self.psi_and_integral
         indices = Hamiltonian_two_electrons_determinant_driven.H_indices(psi, psi)
         d = defaultdict(list)
-        for ab, idx, phase in indices:
-            idx = canonical_idx4(*idx)
-            cat = integral_category(*idx)
-            d[cat].append((ab, idx, phase))
+        for ab, (i,j,k,l), phase in indices:
+            p,q,r,s = canonical_idx4(i,j,k,l)
+            cat = integral_category(p,q,r,s)
+            d[cat].append((ab, (p,q,r,s), phase))
 
         for k in d:
             d[k] = self.simplify_indices(d[k])
         return d
 
     def test_category_C(self):
-        psi, _ = self.psi_int
-        n_orb = 4
+        psi, _ = self.psi_and_integral
         indices = []
-        for idx in self.integral_categories["C"]:
-            indices += Hamiltonian_two_electrons_integral_driven.category_C(idx, psi, psi, n_orb)
+        for (i,j,k,l) in self.integral_by_category["C"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_C((i,j,k,l), psi, psi, N_orb=4)
         indices = self.simplify_indices(indices)
-        self.assertListEqual(indices, self.reference_indices_categories["C"])
+        self.assertListEqual(indices, self.reference_indices_by_category["C"])
 
 
 class Test_VariationalPowerplant:

@@ -1394,7 +1394,9 @@ class Test_Index(Timing, unittest.TestCase):
 
     def test_compound_idx4_reverse_is_canonical(self, n=10000, nmax=(1 << 63) - 1):
         def check_compound_idx4_reverse_is_canonical(ijkl):
-            self.assertEqual(compound_idx4_reverse(ijkl), canonical_idx4(*compound_idx4_reverse(ijkl)))
+            self.assertEqual(
+                compound_idx4_reverse(ijkl), canonical_idx4(*compound_idx4_reverse(ijkl))
+            )
 
         for ijkl in random.sample(range(nmax), k=n):
             check_compound_idx4_reverse_is_canonical(ijkl)

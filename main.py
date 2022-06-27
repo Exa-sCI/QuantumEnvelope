@@ -1560,7 +1560,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         return sorted((ab, idx, phase) for (ab, idx), phase in d.items() if phase)
 
     @property
-    def psi_int(self):
+    def psi_and_integral(self):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         psi = [Determinant((0, 1), (0, 1))]
@@ -1573,7 +1573,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
 
     def test_equivalance(self):
         # Does `integral` and `determinant` driven produce the same H
-        psi, d_two_e_integral = self.psi_int
+        psi, d_two_e_integral = self.psi_and_integral
 
         h = Hamiltonian_two_electrons_determinant_driven(d_two_e_integral)
         determinant_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
@@ -1584,49 +1584,59 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
 
     def test_category(self):
         # Does the assumtion of your Ingral category holds
-        psi, d_two_e_integral = self.psi_int
+        psi, d_two_e_integral = self.psi_and_integral
         h = Hamiltonian_two_electrons_integral_driven(d_two_e_integral)
         integral_driven_indices = self.simplify_indices(h.H_indices(psi, psi))
-        for (a, b), idx4, phase in integral_driven_indices:
-            idx = compound_idx4_reverse(idx4)
-            category = integral_category(*idx)
-            getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), idx)
+        for (a, b), idx, phase in integral_driven_indices:
+            i, j, k, l = compound_idx4_reverse(idx)
+            category = integral_category(i, j, k, l)
+            getattr(self, f"check_pair_idx_{category}")((psi[a], psi[b]), (i, j, k, l))
 
 
 class Test_Integral_Driven_Categories(Test_Minimal):
-    def setUp_categories(self):  # sort integral categories for minimal test case
-        psi, d_two_e_integral = self.psi_int
-        minimal_integral_categories = defaultdict(list)
-        for idx4 in d_two_e_integral:
-            idx = compound_idx4_reverse(idx4)
-            cat = integral_category(*idx)
-            minimal_integral_categories[cat].append(idx)
-        return minimal_integral_categories
+    @property
+    def integral_by_category(self):
+        # Bin each integral (with the 'idx4' representation) by integrals category
+        """
+        >>> Test_Integral_Driven_Categories().integral_by_category['A']
+        [(0, 0, 0, 0), (1, 1, 1, 1), (2, 2, 2, 2), (3, 3, 3, 3)]
+        """
+        psi, d_two_e_integral = self.psi_and_integral
+        d = defaultdict(list)
+        for idx in d_two_e_integral:
+            i, j, k, l = compound_idx4_reverse(idx)
+            cat = integral_category(i, j, k, l)
+            d[cat].append((i, j, k, l))
+        return d
 
-    def get_det_driven_integrals(self):
-        psi, d_two_e_integral = self.psi_int
+    @property
+    def reference_indices_by_category(self):
+        # Bin the indices (ab, idx4, phase) of the reference determinant implemetation by integrals category
+        """
+        >>> len(Test_Integral_Driven_Categories().reference_indices_by_category['C'])
+        264
+        """
+        psi, _ = self.psi_and_integral
         indices = Hamiltonian_two_electrons_determinant_driven.H_indices(psi, psi)
-        det_driven_pairs = defaultdict(list)
-        for ab, idx, phase in indices:
-            idx = canonical_idx4(*idx)
-            cat = integral_category(*idx)
-            det_driven_pairs[cat].append((ab, idx, phase))
-        return det_driven_pairs
+        d = defaultdict(list)
+        for ab, (i, j, k, l), phase in indices:
+            p, q, r, s = canonical_idx4(i, j, k, l)
+            cat = integral_category(p, q, r, s)
+            d[cat].append((ab, (p, q, r, s), phase))
+
+        for k in d:
+            d[k] = self.simplify_indices(d[k])
+        return d
 
     def test_category_C(self):
-        minimal_integral_categories = self.setUp_categories()
-        det_driven_pairs = self.get_det_driven_integrals()
-        psi, _ = self.psi_int
-        integral_driven_pairs = []
-        for idx in minimal_integral_categories["C"]:
-            integral_driven_idx = list(
-                Hamiltonian_two_electrons_integral_driven.category_C(idx, psi, psi, 4)
+        psi, _ = self.psi_and_integral
+        indices = []
+        for (i, j, k, l) in self.integral_by_category["C"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_C(
+                (i, j, k, l), psi, psi, N_orb=4
             )
-            integral_driven_pairs.extend(integral_driven_idx)
-        det_driven_pairs = det_driven_pairs["C"]
-        self.assertListEqual(
-            self.simplify_indices(integral_driven_pairs), self.simplify_indices(det_driven_pairs)
-        )
+        indices = self.simplify_indices(indices)
+        self.assertListEqual(indices, self.reference_indices_by_category["C"])
 
 
 class Test_VariationalPowerplant:

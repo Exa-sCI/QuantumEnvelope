@@ -613,11 +613,11 @@ class PhaseIdx(object):
         )
         # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
         # Look like to be always true in our tests
-        if (min(h2, p2) < max(h1, p1)) != (h2 < p1 or p2 < h1):
-            phase = -phase
-            raise NotImplementedError(
-                f"double_exc QP conditional was trigered! Please repport to the developpers {sdet_i}, {sdet_j}"
-            )
+        #        if (min(h2, p2) < max(h1, p1)) != (h2 < p1 or p2 < h1):
+        #            phase = -phase
+        #            raise NotImplementedError(
+        #                f"double_exc QP conditional was trigered! Please repport to the developpers {sdet_i}, {sdet_j}"
+        #            )
         return phase
 
     @staticmethod
@@ -877,26 +877,156 @@ class Hamiltonian_two_electrons_integral_driven(object):
             yield (i, j, i, j), 1
 
     @staticmethod
-    def category_C(idx, psi_i, psi_j, N_orb):
+    def get_dets_occ_in_orbitals(
+        spindet_occ: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ: Dict[OrbitalIdx, Set[int]],
+        d_orbitals: Dict[str, Set[OrbitalIdx]],
+        which_orbitals,
+    ):
         """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category C, yield all dependent determinant pairs (I,J)
-        Possibilities are i = k < j < l: (1,2,1,3), i < k < j = l: (1,3,2,3), j < i = k < l: (2,1,2,3)
+        Get indices of determinants that are occupied in the orbitals d_orbitals.
+        Input which_orbitals = "all" or "any" indicates if we want dets occupied in all of the indices, or just any of the indices
         """
-        i, j, k, l = idx
-        (
-            spindet_a_occ_i,
-            spindet_b_occ_i,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        orbitals_occupied = set()
+        for spintype, indices in d_orbitals.items():
+            if spintype == "same":
+                for o in indices:
+                    if len(orbitals_occupied) == 0:
+                        orbitals_occupied = spindet_occ[o]
+                    else:
+                        if which_orbitals == "all":
+                            orbitals_occupied = orbitals_occupied & spindet_occ[o]
+                        else:
+                            orbitals_occupied = orbitals_occupied | spindet_occ[o]
+            if spintype == "opposite":
+                for o in indices:
+                    if len(orbitals_occupied) == 0:
+                        orbitals_occupied = oppspindet_occ[o]
+                    else:
+                        if which_orbitals == "all":
+                            orbitals_occupied = orbitals_occupied & oppspindet_occ[o]
+                        else:
+                            orbitals_occupied = orbitals_occupied | oppspindet_occ[o]
+        return orbitals_occupied
 
-        def do_category_C(i, j, k, l, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb):
-            det_indices1 = (spindet_occ_i[i] & spindet_occ_i[j]) - spindet_occ_i[l]
-            det_indices2 = (oppspindet_occ_i[i] & spindet_occ_i[j]) - spindet_occ_i[l]
-            # Keep indices separate to include doubly counted determinants
-            for a in chain(det_indices1, det_indices2):
+    @staticmethod
+    def get_dets_via_orbital_occupancy(
+        spindet_occ: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ: Dict[OrbitalIdx, Set[int]],
+        d_occupied: Dict[str, Set[OrbitalIdx]],
+        d_unoccupied: Dict[str, Set[OrbitalIdx]],
+    ):
+        """
+        get_dets_via_occupency({"same":{i,j}}, {"same":{l}})
+        get_dets_via_occupency({"same":{j}, "opposite"{i}"}, {"same":{l}))
+        """
+
+        return Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+            spindet_occ, oppspindet_occ, d_occupied, "all"
+        ) - Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+            spindet_occ, oppspindet_occ, d_unoccupied, "any"
+        )
+
+    @staticmethod
+    def do_diagonal(i, j, k, l, psi_i, spindet_occ_i, oppspindet_occ_i, N_orb):
+        # contribution from integrals to diagonal elements
+        if i != j:  # category B
+            phase = 1
+            # Get indices of determinants occupied in ia and ja, jb and jb, ia and jb, and ib and ja
+            det_indices = chain(
+                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                    spindet_occ_i, oppspindet_occ_i, {"same": {i}, "opposite": {j}}, "all"
+                ),
+                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                    spindet_occ_i, oppspindet_occ_i, {"same": {i, j}}, "all"
+                ),
+                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                    oppspindet_occ_i, spindet_occ_i, {"same": {i}, "opposite": {j}}, "all"
+                ),
+                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                    oppspindet_occ_i, spindet_occ_i, {"same": {i, j}}, "all"
+                ),
+            )
+        elif i != k:  # category F
+            phase = (
+                -1
+            )  # should have negative phase, since <11|22> = <12|21> -> <12|12> with negative factor
+            # Get indices of determinants occupied in ia, ja and jb, jb
+            det_indices = chain(
+                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                    spindet_occ_i, oppspindet_occ_i, {"same": {i, k}}, "all"
+                ),
+                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                    oppspindet_occ_i, spindet_occ_i, {"same": {i, k}}, "all"
+                ),
+            )
+        else:  # i == j == l == k, category A
+            phase = 1
+            # Get indices of determinants occupied in ia and ib
+            det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                spindet_occ_i, oppspindet_occ_i, {"same": {i}, "opposite": {j}}, "all"
+            )
+
+        for a in det_indices:
+            yield (a, a), (i, j, k, l), phase
+
+    @staticmethod
+    def do_single(i, j, k, l, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb):
+        # single excitation from h to p, occ is index of orbital occupied
+        if j == l:  # categoy C integrals
+            phasemod, occ, h, p = 1, j, i, k
+            det_indices = chain(
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_i, oppspindet_occ_i, {"same": {occ, h}}, {"same": {p}}
+                ),
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_i, oppspindet_occ_i, {"same": {h}, "opposite": {occ}}, {"same": {p}}
+                ),
+            )
+        elif i == k:  # category D integrals
+            phasemod, occ, h, p = 1, i, j, l
+            det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                spindet_occ_i, oppspindet_occ_i, {"same": {h}, "opposite": {occ}}, {"same": {p}}
+            )
+        elif i == j:  # category E integrals
+            phasemod, occ, h, p = -1, i, k, l
+            det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                spindet_occ_i, oppspindet_occ_i, {"same": {occ, h}}, {"same": {p}}
+            )
+
+        for a in det_indices:
+            det = psi_i[a]
+            excited_spindet = Excitation(N_orb).apply_excitation(getattr(det, spin), [[h], [p]])
+            if spin == "alpha":
+                excited_det = Determinant(excited_spindet, getattr(det, "beta"))
+            else:
+                excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
+            try:
+                J = psi_j.index(excited_det)
+            except ValueError:
+                pass
+            else:
+                phase = phasemod * PhaseIdx.single_phase(getattr(det, spin), excited_spindet, h, p)
+                yield (a, J), (i, j, k, l), phase
+                yield (J, a), (i, j, k, l), phase
+
+    @staticmethod
+    def do_double(i, j, k, l, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb):
+        # double excitation from i to k and j to l
+        def do_double_samespin(
+            i, j, k, l, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
+        ):
+            # double excitation from i to j and k to l, electrons are of the same spin
+            det_indices_AA = (
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_i, oppspindet_occ_i, {"same": {i, j}}, {"same": {k, l}}
+                )
+            )
+            for a in det_indices_AA:
                 det = psi_i[a]
-                excited_spindet = Excitation(N_orb).apply_excitation(getattr(det, spin), [[j], [l]])
+                excited_spindet = Excitation(N_orb).apply_excitation(
+                    getattr(det, spin), [[i, j], [k, l]]
+                )
                 if spin == "alpha":
                     excited_det = Determinant(excited_spindet, getattr(det, "beta"))
                 else:
@@ -906,24 +1036,272 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 except ValueError:
                     pass
                 else:
-                    phase = PhaseIdx.single_phase(getattr(det, spin), excited_spindet, j, l)
-                    yield (a, J), idx, phase
-                    yield (J, a), idx, phase
+                    phasemod = 1
+                    if j < i:
+                        phasemod *= -1
+                    if l < k:
+                        phasemod *= -1
+                    phase = phasemod * PhaseIdx.double_phase(
+                        getattr(det, spin), excited_spindet, i, j, k, l
+                    )
+                    yield (a, J), (i, j, k, l), phase
+                    yield (J, a), (i, j, k, l), phase
 
-        if i == k:  # <ij|il>,  s ja(b) to la(b) where ia or ib is occupied
-            yield from do_category_C(
-                i, j, k, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+        def do_double_oppspin(
+            i, j, k, l, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
+        ):
+            # double excitation from i to j and k to l, electrons are of opposite spin spin
+            det_indices_AB = (
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ_i,
+                    oppspindet_occ_i,
+                    {"same": {i}, "opposite": {j}},
+                    {"same": {k}, "opposite": {l}},
+                )
             )
-            yield from do_category_C(
-                i, j, k, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            for a in det_indices_AB:  # look through doubles involving exciations of opposite spin
+                det = psi_i[a]
+                excited_spindet_A = Excitation(N_orb).apply_excitation(
+                    getattr(det, spin), [[i], [k]]
+                )
+                phaseA = PhaseIdx.single_phase(getattr(det, spin), excited_spindet_A, i, k)
+                if spin == "alpha":
+                    excited_spindet_B = Excitation(N_orb).apply_excitation(
+                        getattr(det, "beta"), [[j], [l]]
+                    )
+                    phaseB = PhaseIdx.single_phase(getattr(det, "beta"), excited_spindet_B, j, l)
+                    excited_det = Determinant(excited_spindet_A, excited_spindet_B)
+                else:
+                    excited_spindet_B = Excitation(N_orb).apply_excitation(
+                        getattr(det, "alpha"), [[j], [l]]
+                    )
+                    phaseB = PhaseIdx.single_phase(getattr(det, "alpha"), excited_spindet_B, j, l)
+                    excited_det = Determinant(excited_spindet_B, excited_spindet_A)
+                try:
+                    J = psi_j.index(excited_det)
+                except ValueError:
+                    pass
+                else:
+                    yield (a, J), (i, j, k, l), phaseA * phaseB
+                    yield (J, a), (i, j, k, l), phaseA * phaseB
+
+        if i != j and k != l and j != k:
+            yield from do_double_samespin(
+                i, j, k, l, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
+            )
+            yield from do_double_samespin(
+                i, l, k, j, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
+            )
+        yield from do_double_oppspin(
+            i, j, k, l, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
+        )
+        yield from do_double_oppspin(
+            i, l, k, j, psi_i, psi_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
+        )
+
+    @staticmethod
+    def category_A(idx, psi_i, psi_j, N_orb):
+        """
+        psi_i psi_j: Psi_det, lists of determinants
+        idx: i,j,k,l, index of integral <ij|kl>
+        For an integral i,j,k,l of category A, yield all dependent determinant pairs (I,J) and associated phase
+        Possibilities are i = j = k = 1: (1,1,1,1). This category will contribute to diagonal elements of the Hamiltonian matrix, only
+        """
+        i, j, k, l = idx
+        assert integral_category(i, j, k, l) == "A"
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+
+        yield from Hamiltonian_two_electrons_integral_driven.do_diagonal(
+            i, j, k, l, psi_i, spindet_a_occ_i, spindet_b_occ_i, N_orb
+        )
+
+    @staticmethod
+    def category_B(idx, psi_i, psi_j, N_orb):
+        """
+        psi_i psi_j: Psi_det, lists of determinants
+        idx: i,j,k,l, index of integral <ij|kl>
+        For an integral i,j,k,l of category B, yield all dependent determinant pairs (I,J) and associated phase
+        Possibilities are i = k < j = l: (1,2,1,2). This category will contribute to diagonal elements of the Hamiltonian matrix, only
+        """
+        i, j, k, l = idx
+        assert integral_category(i, j, k, l) == "B"
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+
+        yield from Hamiltonian_two_electrons_integral_driven.do_diagonal(
+            i, j, k, l, psi_i, spindet_a_occ_i, spindet_b_occ_i, N_orb
+        )
+
+    @staticmethod
+    def category_C(idx, psi_i, psi_j, N_orb):
+        """
+        psi_i psi_j: Psi_det, lists of determinants
+        idx: i,j,k,l, index of integral <ij|kl>
+        For an integral i,j,k,l of category C, yield all dependent determinant pairs (I,J) and associated phase
+        Possibilities are i = k < j < l: (1,2,1,3), i < k < j = l: (1,3,2,3), j < i = k < l: (2,1,2,3)
+        """
+        i, j, k, l = idx
+        assert integral_category(i, j, k, l) == "C"
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+
+        if i == k:  # <ij|il>, ja(b) to la(b) where ia or ib is occupied
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                j, i, l, i, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                j, i, l, i, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
             )
         else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b) where ja or jb or is occupied
-            yield from do_category_C(
-                j, i, l, k, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                i, j, k, j, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
             )
-            yield from do_category_C(
-                j, i, l, k, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                i, j, k, j, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
             )
+
+    @staticmethod
+    def category_D(idx, psi_i, psi_j, N_orb):
+        """
+        psi_i psi_j: Psi_det, lists of determinants
+        idx: i,j,k,l, index of integral <ij|kl>
+        For an integral i,j,k,l of category D, yield all dependent determinant pairs (I,J) and associated phase
+        Possibilities are i=j=k<l (1,1,1,2), i<j=k=l (1,2,2,2)
+        """
+        i, j, k, l = idx
+        assert integral_category(i, j, k, l) == "D"
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+
+        if i == j:  # <ii|il>, ia(b) to la(b) while ib(a) is occupied
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                i, i, i, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                i, i, i, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+        else:  # i < j == k == l, <ij|jj> = <jj|ij> = <jj|ji>, ja(b) to ia(b) where jb(a) is occupied
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                j, j, j, i, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                j, j, j, i, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+
+    @staticmethod
+    def category_E(idx, psi_i, psi_j, N_orb):
+        """
+        psi_i psi_j: Psi_det, lists of determinants
+        idx: i,j,k,l, index of integral <ij|kl>
+        For an integral i,j,k,l of category E, yield all dependent determinant pairs (I,J) and associated phase
+        Possibilities are i=j<k<l (1,1,2,3), i<j=k<l (1,2,2,3), i<j<k=l (1,2,3,3)
+        """
+        i, j, k, l = idx
+        assert integral_category(i, j, k, l) == "E"
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+
+        if i == j:  # <ii|kl> = <ii|lk> = <ik|li> -> - <ik|il>
+            # singles, ka(b) to la(b) where ia(b) is occupied
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                i, i, k, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                i, i, k, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+            # doubles, ia(b) to ka(b) and ib(a) to lb(a)
+            yield from Hamiltonian_two_electrons_integral_driven.do_double(
+                i, i, k, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_double(
+                i, i, k, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+        elif j == k:  # <ij|jl> = - <ij|lj>
+            # singles, ia(b) to la(b) where ja(b) is occupied
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                j, j, i, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                j, j, i, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+            # doubles, ia(b) to ja(b) and jb(a) to lb(a)
+            yield from Hamiltonian_two_electrons_integral_driven.do_double(
+                i, j, j, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_double(
+                i, j, j, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+        else:  # k == l, <ij|kk> = <ji|kk> = <jk|ki> -> -<jk|ik>
+            # singles, ja(b) to ia(b) where ka(b) is occupied
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                k, k, i, j, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_single(
+                k, k, i, j, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+            # doubles, ia(b) to ka(b) and jb(a) to kb(a)
+            yield from Hamiltonian_two_electrons_integral_driven.do_double(
+                i, j, k, k, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_double(
+                i, j, k, k, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+
+    @staticmethod
+    def category_F(idx, psi_i, psi_j, N_orb):
+        """
+        psi_i psi_j: Psi_det, lists of determinants
+        idx: i,j,k,l, index of integral <ij|kl>
+        For an integral i,j,k,l of category F, yield all dependent determinant pairs (I,J) and associated phase
+        Possibilities are i=j<k=l (1,1,2,2). Contributes to diagonal elements and doubles
+        """
+        i, j, k, l = idx
+        assert integral_category(i, j, k, l) == "F"
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+
+        yield from Hamiltonian_two_electrons_integral_driven.do_diagonal(
+            i, j, k, l, psi_i, spindet_a_occ_i, spindet_b_occ_i, N_orb
+        )
+        # Only call for a single spin variable. Each excitation involves ia, ib to ka, kb. Flipping the spin just double counts it
+        yield from Hamiltonian_two_electrons_integral_driven.do_double(
+            i, i, k, k, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+        )
+
+    @staticmethod
+    def category_G(idx, psi_i, psi_j, N_orb):
+        """
+        psi_i psi_j: Psi_det, lists of determinants
+        idx: i,j,k,l, index of integral <ij|kl>
+        For an integral i,j,k,l of category G, yield all dependent determinant pairs (I,J) and associated phase
+        Possibilities are i<j<k<l (1,2,3,4), i<k<j<l (1,3,2,4), j<i<k<l (2,1,3,4)
+        """
+        i, j, k, l = idx
+        assert integral_category(i, j, k, l) == "G"
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+
+        yield from Hamiltonian_two_electrons_integral_driven.do_double(
+            i, j, k, l, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+        )
+        yield from Hamiltonian_two_electrons_integral_driven.do_double(
+            i, j, k, l, psi_i, psi_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+        )
 
     @staticmethod
     def single_Ss(
@@ -1628,6 +2006,26 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             d[k] = self.simplify_indices(d[k])
         return d
 
+    def test_category_A(self):
+        psi, _ = self.psi_and_integral
+        indices = []
+        for (i, j, k, l) in self.integral_by_category["A"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_A(
+                (i, j, k, l), psi, psi, N_orb=4
+            )
+        indices = self.simplify_indices(indices)
+        self.assertListEqual(indices, self.reference_indices_by_category["A"])
+
+    def test_category_B(self):
+        psi, _ = self.psi_and_integral
+        indices = []
+        for (i, j, k, l) in self.integral_by_category["B"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_B(
+                (i, j, k, l), psi, psi, N_orb=4
+            )
+        indices = self.simplify_indices(indices)
+        self.assertListEqual(indices, self.reference_indices_by_category["B"])
+
     def test_category_C(self):
         psi, _ = self.psi_and_integral
         indices = []
@@ -1637,6 +2035,46 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             )
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["C"])
+
+    def test_category_D(self):
+        psi, _ = self.psi_and_integral
+        indices = []
+        for (i, j, k, l) in self.integral_by_category["D"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_D(
+                (i, j, k, l), psi, psi, N_orb=4
+            )
+        indices = self.simplify_indices(indices)
+        self.assertListEqual(indices, self.reference_indices_by_category["D"])
+
+    def test_category_E(self):
+        psi, _ = self.psi_and_integral
+        indices = []
+        for (i, j, k, l) in self.integral_by_category["E"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_E(
+                (i, j, k, l), psi, psi, N_orb=4
+            )
+        indices = self.simplify_indices(indices)
+        self.assertListEqual(indices, self.reference_indices_by_category["E"])
+
+    def test_category_F(self):
+        psi, _ = self.psi_and_integral
+        indices = []
+        for (i, j, k, l) in self.integral_by_category["F"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_F(
+                (i, j, k, l), psi, psi, N_orb=4
+            )
+        indices = self.simplify_indices(indices)
+        self.assertListEqual(indices, self.reference_indices_by_category["F"])
+
+    def test_category_G(self):
+        psi, _ = self.psi_and_integral
+        indices = []
+        for (i, j, k, l) in self.integral_by_category["G"]:
+            indices += Hamiltonian_two_electrons_integral_driven.category_G(
+                (i, j, k, l), psi, psi, N_orb=4
+            )
+        indices = self.simplify_indices(indices)
+        self.assertListEqual(indices, self.reference_indices_by_category["G"])
 
 
 class Test_VariationalPowerplant:

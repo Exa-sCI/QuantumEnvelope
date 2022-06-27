@@ -1016,7 +1016,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
             # double excitation from i to j and k to l, electrons are of the same spin
             det_indices_AA = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-                    spindet_occ_i, oppspindet_occ_i, {"same": {i, j}}, {"same": {k, l}}
+                    spindet_occ_i, {}, {"same": {i, j}}, {"same": {k, l}}
                 )
             )
             for a in det_indices_AA:

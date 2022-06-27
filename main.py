@@ -611,13 +611,10 @@ class PhaseIdx(object):
         phase = PhaseIdx.single_phase(sdet_i, sdet_j, h1, p1) * PhaseIdx.single_phase(
             sdet_j, sdet_i, p2, h2
         )
-        # https://github.com/QuantumPackage/qp2/blob/master/src/determinants/slater_rules.irp.f:299
-        # Look like to be always true in our tests
-        #        if (min(h2, p2) < max(h1, p1)) != (h2 < p1 or p2 < h1):
-        #            phase = -phase
-        #            raise NotImplementedError(
-        #                f"double_exc QP conditional was trigered! Please repport to the developpers {sdet_i}, {sdet_j}"
-        #            )
+        if h2 < h1:
+            phase *= -1
+        if p2 < p1:
+            phase *= -1
         return phase
 
     @staticmethod
@@ -1036,14 +1033,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 except ValueError:
                     pass
                 else:
-                    phasemod = 1
-                    if j < i:
-                        phasemod *= -1
-                    if l < k:
-                        phasemod *= -1
-                    phase = phasemod * PhaseIdx.double_phase(
-                        getattr(det, spin), excited_spindet, i, j, k, l
-                    )
+                    phase = PhaseIdx.double_phase(getattr(det, spin), excited_spindet, i, j, k, l)
                     yield (a, J), (i, j, k, l), phase
                     yield (J, a), (i, j, k, l), phase
 
@@ -1154,7 +1144,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
             spindet_b_occ_i,
         ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
 
-        if i == k:  # <ij|il>, ja(b) to la(b) where ia or ib is occupied
+        if i == k:  # <ij|il> = <ji|li>, ja(b) to la(b) where ia or ib is occupied
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
                 j, i, l, i, psi_i, psi_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
             )

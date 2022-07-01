@@ -1455,6 +1455,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
             i, k, k, i, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
         )
+        # Only call for a single spin variable. Each excitation involves ia, ib to ka, kb. Flipping the spin just double counts it
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
             k, k, i, i, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
         )

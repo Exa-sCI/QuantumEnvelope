@@ -6,7 +6,7 @@ from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewTyp
 from dataclasses import dataclass
 
 # Yes, I like itertools
-from itertools import chain, product, combinations, takewhile
+from itertools import chain, product, combinations, takewhile, permutations
 from functools import partial, cached_property, cache
 from collections import defaultdict
 import numpy as np
@@ -87,6 +87,7 @@ def compound_idx2(i, j):
     return (q * (q + 1)) // 2 + p
 
 
+@cache
 def compound_idx4(i, j, k, l):
     """
     nested calls to compound_idx2
@@ -922,10 +923,16 @@ class Hamiltonian_two_electrons_integral_driven(object):
         )
 
     @staticmethod
-    def do_diagonal(det_indices, idx, phase):
+    def do_diagonal(det_indices, psi_i, det_to_index_j, idx, phase):
         # contribution from integrals to diagonal elements
         for a in det_indices:
-            yield (a, a), idx, phase
+            # Handle PT2 case when psi_i != psi_j. In this case, psi_i[a] won't be in the external space and so error will be thrown
+            try:
+                J = det_to_index_j[psi_i[a]]
+            except KeyError:
+                pass
+            else:
+                yield (a, a), idx, phase
 
     @staticmethod
     def do_single(det_indices_i, phasemod, occ, h, p, idx, psi_i, det_to_index_j, spin, N_orb):
@@ -948,9 +955,12 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
     @staticmethod
     def do_double_samespin(
-        i, j, k, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
+        hp1, hp2, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
     ):
+        # hp1 = i, j or j, i, hp2 = k, l or l, k, particle-hole pairs
         # double excitation from i to j and k to l, electrons are of the same spin
+        i, k = hp1
+        j, l = hp2
         det_indices_AA = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
             spindet_occ_i, {}, {"same": {i, j}}, {"same": {k, l}}
         )
@@ -973,9 +983,12 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
     @staticmethod
     def do_double_oppspin(
-        i, j, k, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
+        hp1, hp2, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, N_orb
     ):
+        # hp1 = i, j or j, i, hp2 = k, l or l, k, particle-hole pairs
         # double excitation from i to j and k to l, electrons are of opposite spin spin
+        i, k = hp1
+        j, l = hp2
         det_indices_AB = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
             spindet_occ_i,
             oppspindet_occ_i,
@@ -1006,7 +1019,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 yield (a, J), (i, j, k, l), phaseA * phaseB
 
     @staticmethod
-    def category_A(idx, spindet_a_occ_i, spindet_b_occ_i):
+    def category_A(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i):
         """
         psi_i psi_j: Psi_det, lists of determinants
         idx: i,j,k,l, index of integral <ij|kl>
@@ -1016,7 +1029,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "A"
 
-        def do_diagonal_A(i, j, k, l, spindet_occ_i, oppspindet_occ_i):
+        def do_diagonal_A(i, j, k, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i):
             phase = 1
             # Get indices of determinants occupied in ia and ib
             det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
@@ -1025,13 +1038,15 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
             # phase is always 1
             yield from Hamiltonian_two_electrons_integral_driven.do_diagonal(
-                det_indices, (i, j, k, l), 1
+                det_indices, psi_i, det_to_index_j, (i, j, k, l), 1
             )
 
-        yield from do_diagonal_A(i, j, k, l, spindet_a_occ_i, spindet_b_occ_i)
+        yield from do_diagonal_A(
+            i, j, k, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
+        )
 
     @staticmethod
-    def category_B(idx, spindet_a_occ_i, spindet_b_occ_i):
+    def category_B(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i):
         """
         psi_i psi_j: Psi_det, lists of determinants
         idx: i,j,k,l, index of integral <ij|kl>
@@ -1041,7 +1056,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "B"
 
-        def do_diagonal_B(i, j, k, l, spindet_occ_i, oppspindet_occ_i):
+        def do_diagonal_B(i, j, k, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i):
             # Get indices of determinants occupied in ia and ja, jb and jb, ia and jb, and ib and ja
             det_indices = chain(
                 Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
@@ -1060,10 +1075,12 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
             # phase is always 1
             yield from Hamiltonian_two_electrons_integral_driven.do_diagonal(
-                det_indices, (i, j, k, l), 1
+                det_indices, psi_i, det_to_index_j, (i, j, k, l), 1
             )
 
-        yield from do_diagonal_B(i, j, k, l, spindet_a_occ_i, spindet_b_occ_i)
+        yield from do_diagonal_B(
+            i, j, k, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
+        )
 
     @staticmethod
     def category_C(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, N_orb):
@@ -1280,37 +1297,13 @@ class Hamiltonian_two_electrons_integral_driven(object):
             )
 
         # doubles, ia(b) to ka(b) and jb(a) to lb(a)
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, j, k, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, l, k, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, j, i, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, l, i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, j, k, l, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, l, k, j, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, j, i, l, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, l, i, j, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
+        for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
+            yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
+                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
+                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
 
         if i == j:  # <ii|kl> = <ii|lk> = <ik|li> -> - <ik|il>
             # singles, ka(b) to la(b) where ia(b) is occupied
@@ -1391,42 +1384,8 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 N_orb,
             )
 
-    # Seperate category, since these diagonal elements will not contribute in PT2 selection
     @staticmethod
-    def category_F_diagonal(
-        idx,
-        spindet_a_occ_i,
-        spindet_b_occ_i,
-    ):
-        """
-        psi_i psi_j: Psi_det, lists of determinants
-        idx: i,j,k,l, index of integral <ij|kl>
-        For an integral i,j,k,l of category F, yield all dependent determinant pairs (I,J) and associated phase
-        Possibilities are i=j<k=l (1,1,2,2). Contributes to diagonal elements and doubles
-        """
-        i, j, k, l = idx
-        assert integral_category(i, j, k, l) == "F"
-
-        def do_diagonal_F(i, j, k, l, spindet_occ_i, oppspindet_occ_i):
-            # should have negative phase, since <11|22> = <12|21> -> <12|12> with negative factor
-            # Get indices of determinants occupied in ia, ja and jb, jb
-            det_indices = chain(
-                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
-                    spindet_occ_i, oppspindet_occ_i, {"same": {i, k}}, "all"
-                ),
-                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
-                    oppspindet_occ_i, spindet_occ_i, {"same": {i, k}}, "all"
-                ),
-            )
-            # phase is always -1
-            yield from Hamiltonian_two_electrons_integral_driven.do_diagonal(
-                det_indices, (i, j, k, l), -1
-            )
-
-        yield from do_diagonal_F(i, j, k, l, spindet_a_occ_i, spindet_b_occ_i)
-
-    @staticmethod
-    def category_F_double(
+    def category_F(
         idx,
         psi_i,
         det_to_index_j,
@@ -1443,21 +1402,41 @@ class Hamiltonian_two_electrons_integral_driven(object):
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "F"
 
+        def do_diagonal_F(i, j, k, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i):
+            # should have negative phase, since <11|22> = <12|21> -> <12|12> with negative factor
+            # Get indices of determinants occupied in ia, ja and jb, jb
+            det_indices = chain(
+                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                    spindet_occ_i, oppspindet_occ_i, {"same": {i, k}}, "all"
+                ),
+                Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
+                    oppspindet_occ_i, spindet_occ_i, {"same": {i, k}}, "all"
+                ),
+            )
+            # phase is always -1
+            yield from Hamiltonian_two_electrons_integral_driven.do_diagonal(
+                det_indices, psi_i, det_to_index_j, (i, j, k, l), -1
+            )
+
+        yield from do_diagonal_F(
+            i, j, k, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
+        )
+
         # Only call for a single spin variable. Each excitation involves ia, ib to ka, kb. Flipping the spin just double counts it
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, i, k, k, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            [i, k], [i, k], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
         )
         # Need to do this twice, ia -> ka, kb -> ib, and ka -> ia, ib -> kb
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, k, k, i, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            [i, k], [k, i], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
         )
         # Need to do this twice, ia -> ka, kb -> ib, and ka -> ia, ib -> kb
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, k, k, i, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            [i, k], [k, i], psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
         )
         # Only call for a single spin variable. Each excitation involves ia, ib to ka, kb. Flipping the spin just double counts it
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, k, i, i, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            [k, i], [k, i], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
         )
 
     @staticmethod
@@ -1471,57 +1450,22 @@ class Hamiltonian_two_electrons_integral_driven(object):
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "G"
 
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-            i, j, k, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-            i, l, k, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-            k, j, i, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-            k, l, i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-            i, j, k, l, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-            i, l, k, j, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-            k, j, i, l, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-            k, l, i, j, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, j, k, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, l, k, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, j, i, l, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, l, i, j, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
-        )
-
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, j, k, l, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            i, l, k, j, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, j, i, l, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
-        yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            k, l, i, j, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
-        )
+        # doubles, hp1 and hp2 are particle-hole pairs of each excitations
+        for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
+            yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
+                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
+                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
+        # doubles, hp1 and hp2 are particle-hole pairs of each excitations
+        for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
+            yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
+                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", N_orb
+            )
+            yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
+                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", N_orb
+            )
 
     @staticmethod
     def get_spindet_a_occ_spindet_b_occ(
@@ -1565,20 +1509,14 @@ class Hamiltonian_two_electrons_integral_driven(object):
         spindet_a_occ_i, spindet_b_occ_i = self.get_spindet_a_occ_spindet_b_occ(psi_i)
         det_to_index_j = {det: i for i, det in enumerate(psi_j)}
 
-        if psi_i == psi_j:
-            for (i, j, k, l) in self.integral_by_category["A"]:
-                yield from Hamiltonian_two_electrons_integral_driven.category_A(
-                    (i, j, k, l), spindet_a_occ_i, spindet_b_occ_i
-                )
-            for (i, j, k, l) in self.integral_by_category["B"]:
-                yield from Hamiltonian_two_electrons_integral_driven.category_B(
-                    (i, j, k, l), spindet_a_occ_i, spindet_b_occ_i
-                )
-            for (i, j, k, l) in self.integral_by_category["F"]:
-                yield from Hamiltonian_two_electrons_integral_driven.category_F_diagonal(
-                    (i, j, k, l), spindet_a_occ_i, spindet_b_occ_i
-                )
-
+        for (i, j, k, l) in self.integral_by_category["A"]:
+            yield from Hamiltonian_two_electrons_integral_driven.category_A(
+                (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
+            )
+        for (i, j, k, l) in self.integral_by_category["B"]:
+            yield from Hamiltonian_two_electrons_integral_driven.category_B(
+                (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
+            )
         for (i, j, k, l) in self.integral_by_category["C"]:
             yield from Hamiltonian_two_electrons_integral_driven.category_C(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
@@ -1592,7 +1530,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         for (i, j, k, l) in self.integral_by_category["F"]:
-            yield from Hamiltonian_two_electrons_integral_driven.category_F_double(
+            yield from Hamiltonian_two_electrons_integral_driven.category_F(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         for (i, j, k, l) in self.integral_by_category["G"]:
@@ -1603,7 +1541,9 @@ class Hamiltonian_two_electrons_integral_driven(object):
     def H(self, psi_i, psi_j) -> List[List[Energy]]:
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_i), len(psi_j)))
-        for (a, b), (i, j, k, l), phase in self.H_indices(psi_i, psi_j):
+        for (a, b), (i, j, k, l), phase in self.H_indices(
+            psi_i, psi_j
+        ):  # Instead, have the integral value saved, and yield det pairs + phase
             h[a, b] += phase * self.H_ijkl_orbital(i, j, k, l)
         return h
 
@@ -2101,36 +2041,67 @@ class Test_Integral_Driven_Categories(Test_Minimal):
     def test_category_A(self):
         psi, _ = self.psi_and_integral
         indices = []
+        det_to_index = {det: i for i, det in enumerate(psi)}
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["A"]:
             indices += Hamiltonian_two_electrons_integral_driven.category_A(
-                (i, j, k, l), spindet_a_occ_i, spindet_b_occ_i
+                (i, j, k, l), psi, det_to_index, spindet_a_occ_i, spindet_b_occ_i
             )
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["A"])
 
+    def test_category_A_PT2(self):
+        psi_i, psi_j, _ = self.psi_and_integral_PT2
+        det_to_index_j = {det: i for i, det in enumerate(psi_j)}
+        indices_PT2 = []
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        for (i, j, k, l) in self.integral_by_category["A"]:
+            indices_PT2 += Hamiltonian_two_electrons_integral_driven.category_A(
+                (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
+            )
+        indices_PT2 = self.simplify_indices(indices_PT2)
+        self.assertListEqual(indices_PT2, [])
+
     def test_category_B(self):
         psi, _ = self.psi_and_integral
         indices = []
+        det_to_index = {det: i for i, det in enumerate(psi)}
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
         ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["B"]:
             indices += Hamiltonian_two_electrons_integral_driven.category_B(
-                (i, j, k, l), spindet_a_occ_i, spindet_b_occ_i
+                (i, j, k, l), psi, det_to_index, spindet_a_occ_i, spindet_b_occ_i
             )
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["B"])
+
+    def test_category_B_PT2(self):
+        psi_i, psi_j, _ = self.psi_and_integral_PT2
+        det_to_index_j = {det: i for i, det in enumerate(psi_j)}
+        indices_PT2 = []
+        (
+            spindet_a_occ_i,
+            spindet_b_occ_i,
+        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        for (i, j, k, l) in self.integral_by_category["B"]:
+            indices_PT2 += Hamiltonian_two_electrons_integral_driven.category_B(
+                (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
+            )
+        indices_PT2 = self.simplify_indices(indices_PT2)
+        self.assertListEqual(indices_PT2, [])
 
     def test_category_C(self):
         psi, _ = self.psi_and_integral
         det_to_index = {det: i for i, det in enumerate(psi)}
         indices = []
-        indices_PT2 = []
         (
             spindet_a_occ,
             spindet_b_occ,
@@ -2166,7 +2137,6 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         psi, _ = self.psi_and_integral
         det_to_index = {det: i for i, det in enumerate(psi)}
         indices = []
-        indices_PT2 = []
         (
             spindet_a_occ,
             spindet_b_occ,
@@ -2202,7 +2172,6 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         psi, _ = self.psi_and_integral
         det_to_index = {det: i for i, det in enumerate(psi)}
         indices = []
-        indices_PT2 = []
         (
             spindet_a_occ,
             spindet_b_occ,
@@ -2238,19 +2207,14 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         psi, _ = self.psi_and_integral
         det_to_index = {det: i for i, det in enumerate(psi)}
         indices = []
-        indices_PT2 = []
         (
             spindet_a_occ,
             spindet_b_occ,
         ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["F"]:
-            indices += Hamiltonian_two_electrons_integral_driven.category_F_diagonal(
-                (i, j, k, l), spindet_a_occ, spindet_b_occ
-            )
-            indices += Hamiltonian_two_electrons_integral_driven.category_F_double(
+            indices += Hamiltonian_two_electrons_integral_driven.category_F(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, N_orb=4
             )
-
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["F"])
 
@@ -2263,7 +2227,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_b_occ_i,
         ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
         for (i, j, k, l) in self.integral_by_category["F"]:
-            indices_PT2 += Hamiltonian_two_electrons_integral_driven.category_F_double(
+            indices_PT2 += Hamiltonian_two_electrons_integral_driven.category_F(
                 (i, j, k, l),
                 psi_i,
                 det_to_index_j,
@@ -2278,7 +2242,6 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         psi, _ = self.psi_and_integral
         det_to_index = {det: i for i, det in enumerate(psi)}
         indices = []
-        indices_PT2 = []
         (
             spindet_a_occ,
             spindet_b_occ,

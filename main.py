@@ -1595,6 +1595,46 @@ class Hamiltonian(object):
 # |_) _        _  ._ |_) |  _. ._ _|_
 # |  (_) \/\/ (/_ |  |   | (_| | | |_
 #
+def davidson(A, eig=1, tol=1e-7):
+    assert A.shape[0] == A.shape[1]
+    n = A.shape[0]
+    if n == 1:
+        return np.array([A[0][0]]), np.array([[1]])
+
+    k = 1  # min(n,8)    # number of initial guess vectors
+    V = np.zeros((n, n))  # array of zeros to hold guess vec
+    I = np.eye(n)  # identity matrix same dimen as A
+
+    t = np.eye(n, k)  # set of k unit vectors as guess
+    for j in range(0, k):
+        V[:, j] = t[:, j] / np.linalg.norm(t[:, j])
+    theta_old = 1
+
+    for m in range(k, n, k):
+        V[:, :m], R = np.linalg.qr(V[:, :m])
+        T = (V[:, :m].T) @ (A @ V[:, :m])
+
+        THETA, S = np.linalg.eig(T)
+        idx = THETA.argsort()
+        theta = THETA[idx]
+        s = S[:, idx]
+
+        for j in range(0, k):
+            w = (A - theta[j] * I) @ (V[:, :m] @ s[:, j])
+            q = w / (theta[j] - A[j, j] + np.finfo(np.float32).eps)
+            V[:, (m + j)] = q
+
+        eigen_vector = ((V[:, :m] @ s) @ (V[:, :m].T))[:, :eig]
+        norm = np.linalg.norm(theta[:eig] - theta_old)
+        if norm < tol:
+            break
+        theta_old = theta[:eig]
+    else:
+        raise NotImplementedError("Not converged")
+
+    return theta[:eig], eigen_vector[:, :eig]
+
+
 @dataclass
 class Powerplant(object):
     """
@@ -1613,7 +1653,7 @@ class Powerplant(object):
     def E_and_psi_coef(self) -> Tuple[Energy, Psi_coef]:
         # Return lower eigenvalue (aka the new E) and lower evegenvector (aka the new psi_coef)
         psi_H_psi = self.lewis.H(self.psi_det)
-        energies, coeffs = np.linalg.eigh(psi_H_psi)
+        energies, coeffs = davidson(psi_H_psi)
         return energies[0], coeffs[:, 0]
 
     def psi_external_pt2(self, psi_coef: Psi_coef, n_orb) -> Tuple[Psi_det, List[Energy]]:

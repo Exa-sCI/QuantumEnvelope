@@ -1634,6 +1634,7 @@ def davidson(A, eig=1, tol=1e-7):
 
     return theta[:eig], eigen_vector[:, :eig]
 
+
 @dataclass
 class Powerplant(object):
     """

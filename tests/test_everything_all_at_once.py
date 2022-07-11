@@ -4,8 +4,10 @@ import unittest
 import time
 import sys
 import os
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 from qe.drivers import *
+
 
 class Timing:
     def setUp(self):
@@ -745,8 +747,7 @@ class TestSelection(unittest.TestCase):
         self.assertAlmostEqual(E_ref, E, places=6)
 
 
-
-if __name__ == '__main__':
+if __name__ == "__main__":
     try:
         sys.argv.remove("--profiling")
     except ValueError:

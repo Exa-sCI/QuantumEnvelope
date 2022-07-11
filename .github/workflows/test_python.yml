@@ -20,19 +20,22 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Run Doctest and Minimal Tests
+      - name: Run Doctest
         run: |
-          ./main.py --doctest-raise Test_Minimal
+          python -m doctest -o NORMALIZE_WHITESPACE -v qe/drivers.py
+      - name: Run Minimal Tests
+        run: |
+          ./tests/test_everything_all_at_once.py Test_Minimal
       - name: Run compound indexing tests
         run: |
-          ./main.py Test_Index
+          ./tests/test_everything_all_at_once.py Test_Index
       - name: Run variational determinant-driven tests
         run: |
-          ./main.py Test1_VariationalPowerplant_Determinant
+          ./tests/test_everything_all_at_once.py Test1_VariationalPowerplant_Determinant
       - name: Run variational integral-driven tests
         run: |
-          ./main.py Test1_VariationalPowerplant_Integral
+          ./tests/test_everything_all_at_once.py Test1_VariationalPowerplant_Integral
       - name: Run full tests
         if: github.event.review.state == 'approved'
         run: |
-          ./main.py
+          ./tests/test_everything_all_at_once.py

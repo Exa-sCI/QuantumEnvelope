@@ -2476,4 +2476,3 @@ class Davidson_manager(object):
                 )
 
         return L_k, Y_k
-

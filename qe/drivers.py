@@ -2128,7 +2128,7 @@ class Hamiltonian_manager(object):
         if self.size == 1:  # One process running, use entire wavefunction
             self.psi_i = psi_j
         else:  # Else, dispatch chunks of the wavefunction to all processes
-            self.psi_i = dispatch_psi(psi_j)
+            self.psi_i = dispatch_psi(comm, psi_j)
         self.psi_j = psi_j
         # Local problem dimension (size of internal wavefunction or no. of local determinants)
         self.local_size = len(self.psi_i)

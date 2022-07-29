@@ -1684,44 +1684,112 @@ class Hamiltonian(object):
 # |_) _        _  ._ |_) |  _. ._ _|_
 # |  (_) \/\/ (/_ |  |   | (_| | | |_
 #
-def davidson(A, eig=1, tol=1e-7):
-    assert A.shape[0] == A.shape[1]
-    n = A.shape[0]
-    if n == 1:
-        return np.array([A[0][0]]), np.array([[1]])
 
-    k = 1  # min(n,8)    # number of initial guess vectors
-    V = np.zeros((n, n))  # array of zeros to hold guess vec
-    I = np.eye(n)  # identity matrix same dimen as A
 
-    t = np.eye(n, k)  # set of k unit vectors as guess
-    for j in range(0, k):
-        V[:, j] = t[:, j] / np.linalg.norm(t[:, j])
-    theta_old = 1
+def davidson(H, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000):
+    """Davidson's method.
+    Finds the n_eig smallest eigenvalues of a symmetric Hamiltonian.
 
-    for m in range(k, n, k):
-        V[:, :m], R = np.linalg.qr(V[:, :m])
-        T = (V[:, :m].T) @ (A @ V[:, :m])
+    :param H: self.full_size \times self.full_size symmetric Hamiltonian
+    :param H_i: self.local_size \times self.full_size `short and fat' locally distributed H
+    :param n_guess: number of initial guess vectors per desired eigenvalue
+    :param n_eig: number of eigenvalues to find
+    :param eps: convergence tolerance
+    :param max_iter: max no. of iterations for Davidson to run
+    :param q: memory footprint tuning, q is maximally allowed subspace dimension
 
-        THETA, S = np.linalg.eig(T)
-        idx = THETA.argsort()
-        theta = THETA[idx]
-        s = S[:, idx]
+    :return a list of `n_eig` eigenvalues/associated eigenvectors, as numpy vector/array resp.
+    """
+    n = H.shape[0]  # Get problem dimension
+    if n == 1:  # If Hamiltonian is one-dimensional
+        return np.array([H[0][0]]), np.array([[1]])
+    # Establish working vars: trial subspace (V_k) and action of H on V_k (W_k = H * V_k)
+    V_k = np.zeros((n, 0), dtype="float")
+    W_k = np.zeros((n, 0), dtype="float")
+    D = np.diag(H)  # Save diagonal part of H for later use
+    # Set initial guess vectors and subspace dimension
+    dim_S = min(n_eig * n_guess, n)
+    V_guess = np.eye(n, dim_S)
+    V_k = np.c_[V_k, V_guess]
 
-        for j in range(0, k):
-            w = (A - theta[j] * I) @ (V[:, :m] @ s[:, j])
-            q = w / (theta[j] - A[j, j] + np.finfo(np.float32).eps)
-            V[:, (m + j)] = q
+    n_newvecs = dim_S  # No. of vectors added is initial subspace dimension
+    converged = False
+    restart = 0
+    for k in range(1, max_iter):
+        # Get new trial vectors and compute new columns of W_k
+        V_new = np.array(V_k[:, -n_newvecs:], dtype="float")
+        W_new = np.dot(H, V_new)
+        W_k = np.c_[W_k, W_new]
+        # Rayleigh-Ritz; Update projected Hamiltonian
+        if (k == 1) or (
+            restart == 1
+        ):  # If first iterate (or following a restart), need to compute full S_k explicitly
+            S_k = np.dot(V_k.T, W_k)
+            restart = 0
+        else:  # Else, append new rows & columns
+            S_new_c = np.dot(V_k[:, :-n_newvecs].T, W_new)
+            S_k = np.c_[S_k, S_new_c]
+            S_new_r = np.c_[np.dot(V_new.T, W_k[:, :-n_newvecs]), np.dot(V_new.T, W_new)]
+            S_k = np.r_[S_k, S_new_r]
+        # Diagonalize S_k and keep n_eig smallest estimates
+        L_k, Y_k = np.linalg.eigh(S_k)
+        L_k = L_k[:n_eig]
+        Y_k = Y_k[:, :n_eig]
 
-        eigen_vector = ((V[:, :m] @ s) @ (V[:, :m].T))[:, :eig]
-        norm = np.linalg.norm(theta[:eig] - theta_old)
-        if norm < tol:
+        n_newvecs = 0  # Initialize counter; no. of new vectors added to trial subspace
+        X_k = np.dot(V_k, Y_k)  # Pre-compute Ritz vectors (V_k updated each iteration)
+        converged = True  # Reset
+        for j in range(n_eig):
+            # Grab jth eigenpair, each rank computes local portion of jth residual vector
+            l_j, y_j = L_k[j], Y_k[:, j]
+            r_j = np.dot(W_k, y_j) - l_j * X_k[:, j]
+            res = np.linalg.norm(r_j)
+            if res > eps:  # If ||r_j|| > eps, jth eigenpair hasn't converged
+                converged = False
+                # Precondition next trial vector
+                M_j = np.diag(
+                    np.clip(np.reciprocal(D - l_j), a_min=-1e5, a_max=1e5)
+                )  # Build diagonal preconditioner
+                t_j = np.dot(M_j, r_j)
+                # Orthogonalize new trial vector against previous basis vectors using Modified Gram-Schmidt (MG)S
+                t_j = t_j / np.linalg.norm(t_j)
+                for i in range(V_k.shape[1]):  # Iterate through k basis vectors
+                    c_i = np.copy(
+                        np.inner(V_k[:, i], t_j)
+                    )  # Each process computes partial inner-product
+                    t_j -= c_i * V_k[:, i]  # Remove component of t_j in V_k
+
+                norm_tj = np.linalg.norm(t_j)
+                if norm_tj > 1e-4:  # If new vector is `small`, ignore. Avoids ill-conditioning
+                    V_k = np.c_[V_k, t_j / norm_tj]  # Append new vector to trial subspace
+                    n_newvecs += 1
+
+        if converged == True:
             break
-        theta_old = theta[:eig]
-    else:
-        raise NotImplementedError("Not converged")
 
-    return theta[:eig], eigen_vector[:, :eig]
+        dim_S += n_newvecs  # Update dimension of trial subspace
+
+        if q <= dim_S:  # Collapose trial basis
+            V_new = np.c_[X_k[:, :n_eig], V_k[:, -n_newvecs:]]
+            # Take leading n_eig Ritz vectors as new guess vectors
+            dim_S = V_new.shape[1]  # New subspace dimension
+            n_newvecs = dim_S
+            W_k = np.zeros((self.local_size, 0), dtype="float")
+            V_k = np.linalg.qr(V_new)  # Brute-force a full QR
+            restart = 1  # Indicate restart # TODO: Cleaner way to do this?
+        elif n_newvecs == 0:
+            V_new = X_k[:, :n_eig]
+            # Take leading n_eig Ritz vectors as new guess vectors
+            dim_S = V_new.shape[1]  # New subspace dimension
+            n_newvecs = dim_S
+            W_k = np.zeros((self.local_size, 0), dtype="float")
+            V_k = np.linalg.qr(V_new)  # Brute-force a full QR
+            restart = 1  # Indicate restart
+
+    else:
+        print(f"Max number of iterations reached. Returning {n_eig} lowest eigenvalue estimates")
+
+    return L_k, X_k
 
 
 @dataclass
@@ -2450,6 +2518,7 @@ class Davidson_manager(object):
                 if self.rank == 0:
                     print("All eigenvalues converged, exiting iteration")
                 break
+                # TODO: Gather Ritz vectors and output X_k instead of Y_k
 
             dim_S += n_newvecs  # Update dimension of trial subspace
 

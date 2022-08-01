@@ -1471,9 +1471,9 @@ class Hamiltonian_two_electrons_integral_driven(object):
 
     def H_indices(self, psi_i, psi_j) -> Iterator[Two_electron_integral_index_phase]:
         # Returns H_indices, and idx of associated integral
-        spindet_a_occ_i = H_indices_generator(psi_i, psi_j).spindet_a_occ_int
-        spindet_b_occ_i = H_indices_generator(psi_i, psi_j).spindet_b_occ_int
-        det_to_index_j = H_indices_generator(psi_i, psi_j).det_to_index_ext
+        generator = H_indices_generator(psi_i, psi_j)
+        spindet_a_occ_i, spindet_b_occ_i = generator.spindet_occ_int
+        det_to_index_j = generator.det_to_index_ext
         for idx4, integral_values in self.d_two_e_integral.items():
             idx = compound_idx4_reverse(idx4)
             for (
@@ -1513,9 +1513,9 @@ class Hamiltonian_two_electrons_integral_driven(object):
             )
 
     def H(self, psi_i, psi_j) -> List[List[Energy]]:
-        spindet_a_occ_i = H_indices_generator(psi_i, psi_j).spindet_a_occ_int
-        spindet_b_occ_i = H_indices_generator(psi_i, psi_j).spindet_b_occ_int
-        det_to_index_j = H_indices_generator(psi_i, psi_j).det_to_index_ext
+        generator = H_indices_generator(psi_i, psi_j)
+        spindet_a_occ_i, spindet_b_occ_i = generator.spindet_occ_int
+        det_to_index_j = generator.det_to_index_ext
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_i), len(psi_j)))
         for idx4, integral_values in self.d_two_e_integral.items():
@@ -1572,41 +1572,12 @@ class H_indices_generator(object):
     @cached_property
     def det_to_index_ext(self):
         # Create and cache dictionary mapping connected determinants \in psi_j to associated indices.
-        try:
-            self._det_to_index
-        except AttributeError:
-            self._det_to_index = {det: i for i, det in enumerate(self.psi_j)}
-            return self._det_to_index
-        else:
-            return self._det_to_index
+        return {det: i for i, det in enumerate(self.psi_j)}
 
     @cached_property
-    def spindet_a_occ_int(self):
-        # Create and cache dictionary mapping spin-orbital indices (alpha) to det indices
-        try:
-            self._spindet_a_occ
-        except AttributeError:
-            (
-                self._spindet_a_occ,
-                _,
-            ) = self.get_spindet_a_occ_spindet_b_occ(self.psi_i)
-            return self._spindet_a_occ
-        else:
-            return self._spindet_a_occ
-
-    @cached_property
-    def spindet_b_occ_int(self):
-        # Create and cache dictionary mapping spin-orbital indices (beta) to det indices
-        try:
-            self._spindet_b_occ
-        except AttributeError:
-            (
-                _,
-                self._spindet_b_occ,
-            ) = self.get_spindet_a_occ_spindet_b_occ(self.psi_i)
-            return self._spindet_b_occ
-        else:
-            return self._spindet_b_occ
+    def spindet_occ_int(self):
+        # Create and cache dictionaries mapping spin-orbital indices (alpha) to det indices
+        return self.get_spindet_a_occ_spindet_b_occ(self.psi_i)
 
 
 #   _   _                 _ _ _              _
@@ -1713,8 +1684,7 @@ def davidson(H, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000):
     V_k = np.c_[V_k, V_guess]
 
     n_newvecs = dim_S  # No. of vectors added is initial subspace dimension
-    converged = False
-    restart = 0
+    restart = False
     for k in range(1, max_iter):
         # Get new trial vectors and compute new columns of W_k
         V_new = np.array(V_k[:, -n_newvecs:], dtype="float")
@@ -1722,10 +1692,10 @@ def davidson(H, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000):
         W_k = np.c_[W_k, W_new]
         # Rayleigh-Ritz; Update projected Hamiltonian
         if (k == 1) or (
-            restart == 1
+            restart
         ):  # If first iterate (or following a restart), need to compute full S_k explicitly
             S_k = np.dot(V_k.T, W_k)
-            restart = 0
+            restart = False
         else:  # Else, append new rows & columns
             S_new_c = np.dot(V_k[:, :-n_newvecs].T, W_new)
             S_k = np.c_[S_k, S_new_c]
@@ -1764,7 +1734,7 @@ def davidson(H, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000):
                     V_k = np.c_[V_k, t_j / norm_tj]  # Append new vector to trial subspace
                     n_newvecs += 1
 
-        if converged == True:
+        if converged:
             break
 
         dim_S += n_newvecs  # Update dimension of trial subspace
@@ -1776,7 +1746,7 @@ def davidson(H, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000):
             n_newvecs = dim_S
             W_k = np.zeros((self.local_size, 0), dtype="float")
             V_k = np.linalg.qr(V_new)  # Brute-force a full QR
-            restart = 1  # Indicate restart # TODO: Cleaner way to do this?
+            restart = True  # Indicate restart # TODO: Cleaner way to do this?
         elif n_newvecs == 0:
             V_new = X_k[:, :n_eig]
             # Take leading n_eig Ritz vectors as new guess vectors
@@ -1784,10 +1754,10 @@ def davidson(H, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000):
             n_newvecs = dim_S
             W_k = np.zeros((self.local_size, 0), dtype="float")
             V_k = np.linalg.qr(V_new)  # Brute-force a full QR
-            restart = 1  # Indicate restart
+            restart = True  # Indicate restart
 
     else:
-        print(f"Max number of iterations reached. Returning {n_eig} lowest eigenvalue estimates")
+        raise NotImplementedError(f"Not converged. Returning {n_eig} lowest eigenvalue estimates")
 
     return L_k, X_k
 
@@ -1884,37 +1854,35 @@ def dispatch_psi(comm, psi_i):
     :param psi_i: Psi_det, list of determinants"""
 
     rank = comm.Get_rank()  # Rank of current process
-    size = comm.Get_size()  # No. of processes currently running
+    world_size = comm.Get_size()  # No. of processes currently running
+    MPI_master_rank = 0  # Denote master rank
 
     if rank == 0:
         indices = np.arange(len(psi_i), dtype="i")
-        number_of_dets, res = divmod(len(psi_i), size)
-        # Number of determinants sent to each worker; First `res` processes sent one extra
+        number_of_dets, res = divmod(len(psi_i), world_size)
+        # Number of determinants sent to each rank; First `res` processes sent one extra
         sendcounts = np.array(
-            [number_of_dets + 1 if i < res else number_of_dets for i in range(size)]
+            [number_of_dets + 1 if i < res else number_of_dets for i in range(world_size)],
+            dtype="i",
         )
         displacement = np.array(
-            [sum(sendcounts[:i]) for i in range(size)]
-        )  # Entry i of displacement vector is the index of the first determinant process i receives
+            [sum(sendcounts[:i]) for i in range(world_size)], dtype="i"
+        )  # Index of first determinant rank i receives
     else:
         indices = None  # Worker processes send nothing
-        sendcounts = np.zeros(size, dtype="i")  # Preallocate space for count on workers
+        sendcounts = np.zeros(world_size, dtype="i")  # Preallocate space for count on workers
         displacement = None
 
-    sendcounts = comm.bcast(
-        sendcounts, root=0
+    comm.Bcast(
+        sendcounts, root=MPI_master_rank
     )  # Broadcast count to each process, which will need this to preallocate appropriate space
     local_indices = np.zeros(
         sendcounts[rank], dtype="i"
     )  # Preallocate space for process to receive count[rank] determinants
-    comm.Scatterv([indices, sendcounts, displacement, MPI.INT], local_indices, root=0)
+    comm.Scatterv([indices, sendcounts, displacement, MPI.INT], local_indices, root=MPI_master_rank)
 
     # Create new list of local determinants on each node
-    psi_local = []
-    for I in local_indices:
-        psi_local.append(psi_i[I])
-
-    return psi_local
+    return [psi_i[i] for i in local_indices]
 
 
 @dataclass
@@ -1934,28 +1902,24 @@ class Hamiltonian_one_electron_manager(object):
         psi_j: Psi_det,
         d_one_e_integral: One_electron_integral,
         E0: Energy,
-        comm: MPI.COMM_WORLD = None,
+        comm=MPI.COMM_WORLD,
     ):
         self.d_one_e_integral = d_one_e_integral
         self.E0 = E0
-        if comm is None:  # Non-MPI jobs
-            self.comm = None
+        self.comm = comm
+        self.world_size = self.comm.Get_size()  # No. of processes running
+        self.rank = self.comm.Get_rank()  # Rank of current process
+        self.MPI_master_rank = 0  # Master rank
+        # Dispatch wavefunction and save psi_local, dictionary of 2e integrals with local instance of class
+        if self.world_size == 1:  # One process running, use entire wavefunction
+            self.psi_i = psi_j
+        else:  # Else, dispatch chunks of the wavefunction to all processes
             self.psi_i = psi_i
-            self.psi_j = psi_j
-        else:  # For MPI jobs
-            self.comm = comm
-            self.size = self.comm.Get_size()  # No. of processes running
-            self.rank = self.comm.Get_rank()  # Rank of current process
-            # Dispatch wavefunction and save psi_local, dictionary of 2e integrals with local instance of class
-            if self.size == 1:  # One process running, use entire wavefunction
-                self.psi_i = psi_j
-            else:  # Else, dispatch chunks of the wavefunction to all processes
-                self.psi_i = psi_i
-            self.psi_j = psi_j
-            # Local problem dimension (size of internal wavefunction or no. of local determinants)
-            self.local_size = len(self.psi_i)
-            # Full problem dimension (no. of connected determinants or size of full internal wavefunction)
-            self.full_size = len(self.psi_j)
+        self.psi_j = psi_j
+        # Local problem dimension (size of internal wavefunction or no. of local determinants)
+        self.local_size = len(self.psi_i)
+        # Full problem dimension (no. of connected determinants or size of full internal wavefunction)
+        self.full_size = len(self.psi_j)
 
     @cached_property
     def Hamiltonian_one_electron_driver(self):
@@ -1972,22 +1936,21 @@ class Hamiltonian_one_electron_manager(object):
 
     @cached_property
     def H_full(self):
-        if self.comm is None:
-            return self.H
-        else:
-            """Build full one-electron Hamiltonian H = [H_1; ...; H_N]."""
-            H_i = self.H  # Each process builds local Hamiltonian
-            recvcounts = None
-            recvcounts = np.array(
-                self.comm.gather(self.local_size * self.full_size, root=0)
-            )  # No. of elements received by each process
+        """Build full one-electron Hamiltonian H = [H_1; ...; H_N]."""
+        H_i = self.H  # Each process builds local Hamiltonian
+        sendcounts = np.array(self.local_size * self.full_size, dtype="i")
+        recvcounts = None
+        if self.rank == 0:
+            recvcounts = np.zeros(self.world_size, dtype="i")
+        self.comm.Gather(
+            sendcounts, recvcounts, root=self.MPI_master_rank
+        )  # No. of elements received by each process
+        H_full = np.zeros((self.full_size, self.full_size), dtype="float")
+        # Master process gathers and sends full two-electron Hamiltonian
+        self.comm.Gatherv(H_i, (H_full, recvcounts), root=self.MPI_master_rank)
+        self.comm.Bcast(np.array(H_full, dtype="float"), root=self.MPI_master_rank)
 
-            H_full = np.zeros((self.full_size, self.full_size), dtype="float")
-            # Master process gathers and sends full two-electron Hamiltonian
-            self.comm.Gatherv(H_i, (H_full, recvcounts), root=0)
-            self.comm.Bcast(np.array(H_full, dtype="float"), root=0)  # TODO: changed from bcast
-
-            return H_full
+        return H_full
 
     def D_i(self):
         """
@@ -2014,29 +1977,23 @@ class Hamiltonian_one_electron_manager(object):
         try:
             k = V_k.shape[1]
         except IndexError:  # Handle case when V is a vector
+            V_k = V_k.reshape(len(V_k), 1)
             k = 1
-
         W_ik = np.zeros(
             (self.local_size, k), dtype="float"
         )  # Pre-allocate space for local brick of matrix-matrix product
         # One-electron part
         for I, det_I in enumerate(self.psi_i):
             for J, det_J in enumerate(self.psi_j):
-                try:
-                    W_ik[I, :] += (
-                        self.Hamiltonian_one_electron_driver.H_ij(det_I, det_J) * V_k[J, :]
-                    )  # Update row I of W_ik
-                except IndexError:  # If V_k is a single vector.
-                    W_ik[I] += (
-                        self.Hamiltonian_one_electron_driver.H_ij(det_I, det_J) * V_k[J]
-                    )  # Update row I of W_ik
+                W_ik[I, :] += (
+                    self.Hamiltonian_one_electron_driver.H_ij(det_I, det_J) * V_k[J, :]
+                )  # Update row I of W_ik
 
         return W_ik
 
     def explicit_1e_matrix_product(self, V_k):
-        H = self.H
 
-        return np.dot(H, V_k)
+        return np.dot(self.H, V_k)
 
 
 @dataclass
@@ -2054,32 +2011,27 @@ class Hamiltonian_two_electrons_integral_driven_manager(object):
         psi_i: Psi_det,
         psi_j: Psi_det,
         d_two_e_integral: Two_electron_integral,
-        comm: MPI.COMM_WORLD = None,
+        comm=MPI.COMM_WORLD,
     ):
         self.d_two_e_integral = d_two_e_integral
-        if comm is None:  # Non-MPI jobs
-            self.comm = None
+        self.comm = comm
+        self.world_size = self.comm.Get_size()  # No. of processes running
+        self.rank = self.comm.Get_rank()  # Rank of current process
+        self.MPI_master_rank = 0  # Master rank
+        # Dispatch wavefunction and save psi_local, dictionary of 2e integrals with local instance of class
+        if self.world_size == 1:  # One process running, use entire wavefunction
+            self.psi_i = psi_j
+        else:  # Else, dispatch chunks of the wavefunction to all processes
             self.psi_i = psi_i
-            self.psi_j = psi_j
-        else:  # For MPI jobs
-            self.comm = comm
-            self.size = self.comm.Get_size()  # No. of processes running
-            self.rank = self.comm.Get_rank()  # Rank of current process
-            # Dispatch wavefunction and save psi_local, dictionary of 2e integrals with local instance of class
-            if self.size == 1:  # One process running, use entire wavefunction
-                self.psi_i = psi_j
-            else:  # Else, dispatch chunks of the wavefunction to all processes
-                self.psi_i = psi_i
-            self.psi_j = psi_j
-            # Local problem dimension (size of internal wavefunction or no. of local determinants)
-            self.local_size = len(self.psi_i)
-            # Full problem dimension (no. of connected determinants or size of full internal wavefunction)
-            self.full_size = len(self.psi_j)
-            # Generate utilities
-            generator = H_indices_generator(self.psi_i, self.psi_j)
-            self.spindet_a_occ_i = generator.spindet_a_occ_int
-            self.spindet_b_occ_i = generator.spindet_b_occ_int
-            self.det_to_index_j = generator.det_to_index_ext
+        self.psi_j = psi_j
+        # Local problem dimension (size of internal wavefunction or no. of local determinants)
+        self.local_size = len(self.psi_i)
+        # Full problem dimension (no. of connected determinants or size of full internal wavefunction)
+        self.full_size = len(self.psi_j)
+        # Generate utilities
+        generator = H_indices_generator(self.psi_i, self.psi_j)
+        self.spindet_a_occ_i, self.spindet_b_occ_i = generator.spindet_occ_int
+        self.det_to_index_j = generator.det_to_index_ext
 
     @cached_property
     def Hamiltonian_two_electrons_driver(self):
@@ -2097,21 +2049,20 @@ class Hamiltonian_two_electrons_integral_driven_manager(object):
     @cached_property
     def H_full(self):
         """Build full two-electron Hamiltonian H = [H_1; ...; H_N]."""
-        if self.comm is None:
-            return self.H
-        else:
-            H_i = self.H  # Each process builds local Hamiltonian
-            recvcounts = None
-            recvcounts = np.array(
-                self.comm.gather(self.local_size * self.full_size, root=0)
-            )  # No. of elements received by each process
+        H_i = self.H  # Each process builds local Hamiltonian
+        sendcounts = np.array(self.local_size * self.full_size, dtype="i")
+        recvcounts = None
+        if self.rank == 0:
+            recvcounts = np.zeros(self.world_size, dtype="i")
+        self.comm.Gather(
+            sendcounts, recvcounts, root=self.MPI_master_rank
+        )  # No. of elements received by each process
+        H_full = np.zeros((self.full_size, self.full_size), dtype="float")
+        # Master process gathers and sends full two-electron Hamiltonian
+        self.comm.Gatherv(H_i, (H_full, recvcounts), root=self.MPI_master_rank)
+        self.comm.Bcast(np.array(H_full, dtype="float"), root=self.MPI_master_rank)
 
-            H_full = np.zeros((self.full_size, self.full_size), dtype="float")
-            # Master process gathers and sends full two-electron Hamiltonian
-            self.comm.Gatherv(H_i, (H_full, recvcounts), root=0)
-            self.comm.Bcast(np.array(H_full, dtype="float"), root=0)  # TODO: changed from bcast
-
-            return H_full
+        return H_full
 
     def D_i(self):
         """
@@ -2139,8 +2090,8 @@ class Hamiltonian_two_electrons_integral_driven_manager(object):
         try:
             k = V_k.shape[1]
         except IndexError:  # Handle case when V is a vector
+            V_k = V_k.reshape(len(V_k), 1)
             k = 1
-
         W_ik = np.zeros(
             (self.local_size, k), dtype="float"
         )  # Pre-allocate space for local brick of matrix-matrix product
@@ -2157,17 +2108,13 @@ class Hamiltonian_two_electrons_integral_driven_manager(object):
                 self.spindet_a_occ_i,
                 self.spindet_b_occ_i,
             ):
-                try:  # TODO: Any way to optimize this?
-                    W_ik[I, :] += phase * integral_values * V_k[J, :]  # Update row I of W_ik
-                except IndexError:  # If V_k is a single vector.
-                    W_ik[I] += phase * integral_values * V_k[J]  # Update row I of W_ik
+                W_ik[I, :] += phase * integral_values * V_k[J, :]  # Update row I of W_ik
 
         return W_ik
 
     def explicit_2e_matrix_product(self, V_k):
-        H = self.H
 
-        return np.dot(H, V_k)
+        return np.dot(self.H, V_k)
 
 
 @dataclass
@@ -2190,10 +2137,10 @@ class Hamiltonian_manager(object):
         self.d_two_e_integral = d_two_e_integral
         self.E0 = E0
         self.comm = comm
-        self.size = self.comm.Get_size()  # No. of processes running
+        self.world_size = self.comm.Get_size()  # No. of processes running
         self.rank = self.comm.Get_rank()  # Rank of current process
         # Dispatch wavefunction and save psi_local, dictionary of 2e integrals with local instance of class
-        if self.size == 1:  # One process running, use entire wavefunction
+        if self.world_size == 1:  # One process running, use entire wavefunction
             self.psi_i = psi_j
         else:  # Else, dispatch chunks of the wavefunction to all processes
             self.psi_i = dispatch_psi(comm, psi_j)
@@ -2294,17 +2241,19 @@ class Davidson_manager(object):
         d_one_e_integral: One_electron_integral,
         d_two_e_integral: Two_electron_integral,
         E0: Energy,
+        problem_size,
     ):
 
         self.comm = comm
         self.world_size = self.comm.Get_size()  # No. of processes running
         self.rank = self.comm.Get_rank()  # Rank of current process
+        self.MPI_master_rank = 0  # Master rank
         # Create instance of Hamiltonian_Manger class(). Dispatches wavefunction to worker processes
         self.Hamiltonian_manager = Hamiltonian_manager(
             psi_full, d_one_e_integral, d_two_e_integral, E0, comm
         )
         # For easier reference, full problem size
-        self.full_size = len(psi_full)
+        self.full_size = problem_size
         # Set local problem size
         floor = self.full_size // self.world_size
         ceiling = floor + 1
@@ -2392,7 +2341,14 @@ class Davidson_manager(object):
         )  # Build diagonal preconditioner
         return np.dot(M_k, r_ik)
 
-    def distributed_davidson(self, H_i, n_eig, n_guess, eps, max_iter, q, driven_by="explicit"):
+    def print_master(self, str):
+        """Master rank prints inputted str"""
+        if self.rank == 0:
+            print(str)
+
+    def distributed_davidson(
+        self, H_i, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000, driven_by="explicit"
+    ):
         """Davidson's method implemented in parallel. The Hamiltonian
         matrix is distrubted row-wise across MPI rank.
         Finds the n_eig smallest eigenvalues of a symmetric Hamiltonian.
@@ -2422,8 +2378,7 @@ class Davidson_manager(object):
         D_i = self.Hamiltonian_manager.D_i()
 
         n_newvecs = dim_S  # No. of vectors added is initial subspace dimension
-        converged = False
-        restart = 0
+        restart = False
         for k in range(1, max_iter):
             if self.rank == 0:
                 print(
@@ -2453,7 +2408,7 @@ class Davidson_manager(object):
             # TODO: Don't need to reduce full matrix at each step. Just new columns/rows
             # Compute rank computes partial update to the projected Hamiltonian S_k
             if (k == 1) or (
-                restart == 1
+                restart
             ):  # If first iterate (or following a restart), need to compute full S_k explicitly
                 S_ik = np.dot(V_ik.T, W_ik)
                 restart = 0
@@ -2475,8 +2430,8 @@ class Davidson_manager(object):
                 L_k = np.zeros(n_eig, dtype="float")
                 Y_k = np.zeros((dim_S, n_eig), dtype="float")
             # Broadcast smallest n_eig estimates to all ranks to compute residuals
-            self.comm.Bcast([L_k, MPI.DOUBLE], root=0)
-            self.comm.Bcast([Y_k, MPI.DOUBLE], root=0)
+            self.comm.Bcast([L_k, MPI.DOUBLE], root=self.MPI_master_rank)
+            self.comm.Bcast([Y_k, MPI.DOUBLE], root=self.MPI_master_rank)
 
             n_newvecs = 0  # Initialize counter; no. of new vectors added to trial subspace
             X_ik = np.dot(V_ik, Y_k)  # Pre-compute Ritz vectors (V_ik updated each iteration)
@@ -2514,11 +2469,10 @@ class Davidson_manager(object):
                     if self.rank == 0:
                         print(f"Eigenvalue {j}: {l_j}, converged, no new trial vector added")
 
-            if converged == True:
+            if converged:
                 if self.rank == 0:
                     print("All eigenvalues converged, exiting iteration")
                 break
-                # TODO: Gather Ritz vectors and output X_k instead of Y_k
 
             dim_S += n_newvecs  # Update dimension of trial subspace
 
@@ -2528,7 +2482,7 @@ class Davidson_manager(object):
                 dim_S, n_newvecs, V_ik, W_ik = self.parallel_restart(
                     dim_S, n_eig, n_newvecs, X_ik, V_ik, W_ik
                 )
-                restart = 1  # Indicate restart # TODO: Cleaner way to do this?
+                restart = True  # Indicate restart
 
             elif n_newvecs == 0:
                 if self.rank == 0:
@@ -2536,12 +2490,17 @@ class Davidson_manager(object):
                 dim_S, n_newvecs, V_ik, W_ik = self.parallel_restart(
                     dim_S, n_eig, n_newvecs, X_ik, V_ik, W_ik
                 )
-                restart = 1  # Indicate restart
+                restart = True  # Indicate restart
 
         else:
-            if self.rank == 0:
-                print(
-                    f"Max number of iterations reached. Returning {n_eig} lowest eigenvalue estimates"
-                )
+            raise NotImplementedError(f"Davidson not converged")
 
-        return L_k, Y_k
+        m = X_ik.shape[1]  # Same across all ranks
+        X_k = np.zeros((n, m), dtype="float")
+        # Gather Ritz vectors on all ranks
+        self.comm.Allgatherv(
+            [X_ik, MPI.DOUBLE],
+            [X_k, m * np.array(self.distribution), m * np.array(self.offsets), MPI.DOUBLE],
+        )
+
+        return L_k, X_k

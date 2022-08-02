@@ -1657,111 +1657,6 @@ class Hamiltonian(object):
 #
 
 
-def davidson(H, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000):
-    """Davidson's method.
-    Finds the n_eig smallest eigenvalues of a symmetric Hamiltonian.
-
-    :param H: self.full_size \times self.full_size symmetric Hamiltonian
-    :param H_i: self.local_size \times self.full_size `short and fat' locally distributed H
-    :param n_guess: number of initial guess vectors per desired eigenvalue
-    :param n_eig: number of eigenvalues to find
-    :param eps: convergence tolerance
-    :param max_iter: max no. of iterations for Davidson to run
-    :param q: memory footprint tuning, q is maximally allowed subspace dimension
-
-    :return a list of `n_eig` eigenvalues/associated eigenvectors, as numpy vector/array resp.
-    """
-    n = H.shape[0]  # Get problem dimension
-    if n == 1:  # If Hamiltonian is one-dimensional
-        return np.array([H[0][0]]), np.array([[1]])
-    # Establish working vars: trial subspace (V_k) and action of H on V_k (W_k = H * V_k)
-    V_k = np.zeros((n, 0), dtype="float")
-    W_k = np.zeros((n, 0), dtype="float")
-    D = np.diag(H)  # Save diagonal part of H for later use
-    # Set initial guess vectors and subspace dimension
-    dim_S = min(n_eig * n_guess, n)
-    V_guess = np.eye(n, dim_S)
-    V_k = np.c_[V_k, V_guess]
-
-    n_newvecs = dim_S  # No. of vectors added is initial subspace dimension
-    restart = False
-    for k in range(1, max_iter):
-        # Get new trial vectors and compute new columns of W_k
-        V_new = np.array(V_k[:, -n_newvecs:], dtype="float")
-        W_new = np.dot(H, V_new)
-        W_k = np.c_[W_k, W_new]
-        # Rayleigh-Ritz; Update projected Hamiltonian
-        if (k == 1) or (
-            restart
-        ):  # If first iterate (or following a restart), need to compute full S_k explicitly
-            S_k = np.dot(V_k.T, W_k)
-            restart = False
-        else:  # Else, append new rows & columns
-            S_new_c = np.dot(V_k[:, :-n_newvecs].T, W_new)
-            S_k = np.c_[S_k, S_new_c]
-            S_new_r = np.c_[np.dot(V_new.T, W_k[:, :-n_newvecs]), np.dot(V_new.T, W_new)]
-            S_k = np.r_[S_k, S_new_r]
-        # Diagonalize S_k and keep n_eig smallest estimates
-        L_k, Y_k = np.linalg.eigh(S_k)
-        L_k = L_k[:n_eig]
-        Y_k = Y_k[:, :n_eig]
-
-        n_newvecs = 0  # Initialize counter; no. of new vectors added to trial subspace
-        X_k = np.dot(V_k, Y_k)  # Pre-compute Ritz vectors (V_k updated each iteration)
-        converged = True  # Reset
-        for j in range(n_eig):
-            # Grab jth eigenpair, each rank computes local portion of jth residual vector
-            l_j, y_j = L_k[j], Y_k[:, j]
-            r_j = np.dot(W_k, y_j) - l_j * X_k[:, j]
-            res = np.linalg.norm(r_j)
-            if res > eps:  # If ||r_j|| > eps, jth eigenpair hasn't converged
-                converged = False
-                # Precondition next trial vector
-                M_j = np.diag(
-                    np.clip(np.reciprocal(D - l_j), a_min=-1e5, a_max=1e5)
-                )  # Build diagonal preconditioner
-                t_j = np.dot(M_j, r_j)
-                # Orthogonalize new trial vector against previous basis vectors using Modified Gram-Schmidt (MG)S
-                t_j = t_j / np.linalg.norm(t_j)
-                for i in range(V_k.shape[1]):  # Iterate through k basis vectors
-                    c_i = np.copy(
-                        np.inner(V_k[:, i], t_j)
-                    )  # Each process computes partial inner-product
-                    t_j -= c_i * V_k[:, i]  # Remove component of t_j in V_k
-
-                norm_tj = np.linalg.norm(t_j)
-                if norm_tj > 1e-4:  # If new vector is `small`, ignore. Avoids ill-conditioning
-                    V_k = np.c_[V_k, t_j / norm_tj]  # Append new vector to trial subspace
-                    n_newvecs += 1
-
-        if converged:
-            break
-
-        dim_S += n_newvecs  # Update dimension of trial subspace
-
-        if q <= dim_S:  # Collapose trial basis
-            V_new = np.c_[X_k[:, :n_eig], V_k[:, -n_newvecs:]]
-            # Take leading n_eig Ritz vectors as new guess vectors
-            dim_S = V_new.shape[1]  # New subspace dimension
-            n_newvecs = dim_S
-            W_k = np.zeros((self.local_size, 0), dtype="float")
-            V_k = np.linalg.qr(V_new)  # Brute-force a full QR
-            restart = True  # Indicate restart # TODO: Cleaner way to do this?
-        elif n_newvecs == 0:
-            V_new = X_k[:, :n_eig]
-            # Take leading n_eig Ritz vectors as new guess vectors
-            dim_S = V_new.shape[1]  # New subspace dimension
-            n_newvecs = dim_S
-            W_k = np.zeros((self.local_size, 0), dtype="float")
-            V_k = np.linalg.qr(V_new)  # Brute-force a full QR
-            restart = True  # Indicate restart
-
-    else:
-        raise NotImplementedError(f"Not converged. Returning {n_eig} lowest eigenvalue estimates")
-
-    return L_k, X_k
-
-
 @dataclass
 class Powerplant(object):
     """
@@ -1780,8 +1675,9 @@ class Powerplant(object):
     def E_and_psi_coef(self) -> Tuple[Energy, Psi_coef]:
         # Return lower eigenvalue (aka the new E) and lower evegenvector (aka the new psi_coef)
         psi_H_psi = self.lewis.H(self.psi_det)
+        DM = Davidson_manager(MPI.COMM_WORLD, len(self.psi_det))
         try:
-            energies, coeffs = davidson(psi_H_psi)
+            energies, coeffs = DM.distributed_davidson(psi_H_psi)
         except NotImplementedError:
             print("Davidson Failed, fallback to numpy eigh")
             energies, coeffs = np.linalg.eigh(psi_H_psi)
@@ -1911,10 +1807,7 @@ class Hamiltonian_one_electron_manager(object):
         self.rank = self.comm.Get_rank()  # Rank of current process
         self.MPI_master_rank = 0  # Master rank
         # Dispatch wavefunction and save psi_local, dictionary of 2e integrals with local instance of class
-        if self.world_size == 1:  # One process running, use entire wavefunction
-            self.psi_i = psi_j
-        else:  # Else, dispatch chunks of the wavefunction to all processes
-            self.psi_i = psi_i
+        self.psi_i = psi_i
         self.psi_j = psi_j
         # Local problem dimension (size of internal wavefunction or no. of local determinants)
         self.local_size = len(self.psi_i)
@@ -1974,11 +1867,10 @@ class Hamiltonian_one_electron_manager(object):
 
         :return W_ik: locally computed chunk of matrix-matrix product (self.local_size \times k), as a numpy array
         """
-        try:
-            k = V_k.shape[1]
-        except IndexError:  # Handle case when V is a vector
+        if V_k.ndim == 1:  # Handle case when V is a vector
             V_k = V_k.reshape(len(V_k), 1)
-            k = 1
+            k = V_k.shape[1]
+        k = V_k.shape[1]
         W_ik = np.zeros(
             (self.local_size, k), dtype="float"
         )  # Pre-allocate space for local brick of matrix-matrix product
@@ -2019,10 +1911,7 @@ class Hamiltonian_two_electrons_integral_driven_manager(object):
         self.rank = self.comm.Get_rank()  # Rank of current process
         self.MPI_master_rank = 0  # Master rank
         # Dispatch wavefunction and save psi_local, dictionary of 2e integrals with local instance of class
-        if self.world_size == 1:  # One process running, use entire wavefunction
-            self.psi_i = psi_j
-        else:  # Else, dispatch chunks of the wavefunction to all processes
-            self.psi_i = psi_i
+        self.psi_i = psi_i
         self.psi_j = psi_j
         # Local problem dimension (size of internal wavefunction or no. of local determinants)
         self.local_size = len(self.psi_i)
@@ -2087,11 +1976,10 @@ class Hamiltonian_two_electrons_integral_driven_manager(object):
 
         :return W_ik: locally computed chunk of matrix-matrix product (self.local_size \times k), as a numpy array
         """
-        try:
-            k = V_k.shape[1]
-        except IndexError:  # Handle case when V is a vector
+        if V_k.ndim == 1:  # Handle case when V is a vector
             V_k = V_k.reshape(len(V_k), 1)
-            k = 1
+            k = V_k.shape[1]
+        k = V_k.shape[1]
         W_ik = np.zeros(
             (self.local_size, k), dtype="float"
         )  # Pre-allocate space for local brick of matrix-matrix product
@@ -2140,10 +2028,7 @@ class Hamiltonian_manager(object):
         self.world_size = self.comm.Get_size()  # No. of processes running
         self.rank = self.comm.Get_rank()  # Rank of current process
         # Dispatch wavefunction and save psi_local, dictionary of 2e integrals with local instance of class
-        if self.world_size == 1:  # One process running, use entire wavefunction
-            self.psi_i = psi_j
-        else:  # Else, dispatch chunks of the wavefunction to all processes
-            self.psi_i = dispatch_psi(comm, psi_j)
+        self.psi_i = dispatch_psi(comm, psi_j)
         self.psi_j = psi_j
         # Local problem dimension (size of internal wavefunction or no. of local determinants)
         self.local_size = len(self.psi_i)
@@ -2229,18 +2114,18 @@ class Davidson_manager(object):
     :param psi_full: Current trial wave-function, list of determinants. Problem size is n = len(psi_full)
     """
 
-    d_one_e_integral: One_electron_integral
-    d_two_e_integral: Two_electron_integral
-    psi_full: Psi_det
-    E0: Energy
+    #    d_one_e_integral: One_electron_integral
+    #    d_two_e_integral: Two_electron_integral
+    #    psi_full: Psi_det
+    #    E0: Energy
 
     def __init__(
         self,
         comm,
-        psi_full: Psi_det,
-        d_one_e_integral: One_electron_integral,
-        d_two_e_integral: Two_electron_integral,
-        E0: Energy,
+        #        psi_full: Psi_det,
+        #        d_one_e_integral: One_electron_integral,
+        #        d_two_e_integral: Two_electron_integral,
+        #        E0: Energy,
         problem_size,
     ):
 
@@ -2249,9 +2134,9 @@ class Davidson_manager(object):
         self.rank = self.comm.Get_rank()  # Rank of current process
         self.MPI_master_rank = 0  # Master rank
         # Create instance of Hamiltonian_Manger class(). Dispatches wavefunction to worker processes
-        self.Hamiltonian_manager = Hamiltonian_manager(
-            psi_full, d_one_e_integral, d_two_e_integral, E0, comm
-        )
+        #        self.Hamiltonian_manager = Hamiltonian_manager(
+        #            psi_full, d_one_e_integral, d_two_e_integral, E0, comm
+        #        )
         # For easier reference, full problem size
         self.full_size = problem_size
         # Set local problem size
@@ -2269,10 +2154,11 @@ class Davidson_manager(object):
         del self.offsets[-1]
         # TODO: Just change one of these. I'm redoing some work in this and dispatch_psi
         # Throw error if allocation of work is not consistent
-        assert self.local_size == self.Hamiltonian_manager.local_size
+
+    #        assert self.local_size == self.Hamiltonian_manager.local_size
 
     def parallel_restart(self, dim_S, n_eig, n_newvecs, X_ik, V_ik, W_ik):
-        """Perform an implicit restart; resize the trial subspace V_k
+        """Restart Davidson's iteration; resize the trial subspace V_k
         and its associated data structures. Prevent a significant
         blow-up of column dimension.
 
@@ -2327,6 +2213,18 @@ class Davidson_manager(object):
         norm_tk = np.linalg.norm(t_k)
         return t_ik / norm_tk, norm_tk  # Return new orthonormalized vector
 
+    def D_i(self, H_i):
+        """Extract local portion of diagonal Hamiltonian
+
+        :return D_i: diagonal portion of local Hamiltonian, as a numpy vector"""
+
+        return np.diag(
+            H_i[
+                :,
+                self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank]),
+            ]
+        )
+
     def preconditioning(self, D_i, lambda_k, r_ik):
         """Preconditon next guess vector
 
@@ -2341,13 +2239,14 @@ class Davidson_manager(object):
         )  # Build diagonal preconditioner
         return np.dot(M_k, r_ik)
 
-    def print_master(self, str):
+    def print_master(self, str_):
         """Master rank prints inputted str"""
         if self.rank == 0:
-            print(str)
+            str_ = f"{str_}"
+            print(str_)
 
     def distributed_davidson(
-        self, H_i, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=1000, driven_by="explicit"
+        self, H_i, n_eig=1, n_guess=1, eps=1e-7, max_iter=1000, q=100, driven_by="explicit"
     ):
         """Davidson's method implemented in parallel. The Hamiltonian
         matrix is distrubted row-wise across MPI rank.
@@ -2375,10 +2274,10 @@ class Davidson_manager(object):
         ]
         V_ik = np.c_[V_ik, V_guess]
         # Build `diagonal` of local Hamiltonian
-        D_i = self.Hamiltonian_manager.D_i()
+        D_i = self.D_i(H_i)
 
         n_newvecs = dim_S  # No. of vectors added is initial subspace dimension
-        restart = False
+        restart = True
         for k in range(1, max_iter):
             if self.rank == 0:
                 print(
@@ -2398,8 +2297,10 @@ class Davidson_manager(object):
             )
             # Compute new columns of W_ik, W_inew = H_i * V_new
             if driven_by == "explicit":
-                W_inew = self.Hamiltonian_manager.explicit_matrix_product(V_new)
-            elif driven_by == "implicit":
+                W_inew = np.dot(H_i, V_new)
+            elif (
+                driven_by == "implicit"
+            ):  # TODO: Update, figure out pass way to handle needing the dictionaries for this
                 W_inew = self.Hamiltonian_manager.implicit_matrix_product(V_new)
             else:
                 raise NotImplementedError
@@ -2407,11 +2308,11 @@ class Davidson_manager(object):
 
             # TODO: Don't need to reduce full matrix at each step. Just new columns/rows
             # Compute rank computes partial update to the projected Hamiltonian S_k
-            if (k == 1) or (
+            if (
                 restart
             ):  # If first iterate (or following a restart), need to compute full S_k explicitly
                 S_ik = np.dot(V_ik.T, W_ik)
-                restart = 0
+                restart = False
             else:  # Else, append new rows & columns
                 S_inew_c = np.dot(V_ik[:, :-n_newvecs].T, W_inew)
                 S_ik = np.c_[S_ik, S_inew_c]
@@ -2435,44 +2336,51 @@ class Davidson_manager(object):
 
             n_newvecs = 0  # Initialize counter; no. of new vectors added to trial subspace
             X_ik = np.dot(V_ik, Y_k)  # Pre-compute Ritz vectors (V_ik updated each iteration)
-            converged = True  # Reset
-            for j in range(n_eig):  # TODO: Remove converged eigenpairs
-                # Grab jth eigenpair, each rank computes local portion of jth residual vector
-                l_j, y_j = L_k[j], Y_k[:, j]
-                r_ij = np.dot(W_ik, y_j) - l_j * X_ik[:, j]
-                r_j = np.zeros(n, dtype="float")
-                # Gather residual on each rank and compute its norm
-                self.comm.Allgatherv(
-                    [r_ij, MPI.DOUBLE], [r_j, self.distribution, self.offsets, MPI.DOUBLE]
-                )
-                res = np.linalg.norm(r_j)
-                if self.rank == 0:
-                    print(f"||r_k||: {res}")
-                if res > eps:  # If ||r_j|| > eps, jth eigenpair hasn't converged
-                    converged = False
-                    if self.rank == 0:
-                        print(f"Eigenvalue {j}: not converged, preconditioning next trial vector")
-                    # Precondition next trial vector
-                    t_ik = self.preconditioning(D_i, l_j, r_ij)
-                    # Orthogonalize new trial vector against previous basis vectors via parallel-MGS
-                    t_k = np.zeros(self.full_size, dtype="float")
-                    self.comm.Allgatherv(
-                        [np.array(t_ik, dtype="float"), MPI.DOUBLE],
-                        [t_k, self.distribution, self.offsets, MPI.DOUBLE],
-                    )
-                    t_ik = t_ik / np.linalg.norm(t_k)
-                    t_ik, norm_tk = self.mgs(V_ik, t_ik)
-                    if norm_tk > 1e-4:  # If new vector is `small`, ignore. Avoids ill-conditioning
-                        V_ik = np.c_[V_ik, t_ik]  # Append new vector to trial subspace
-                        n_newvecs += 1
+            # Each rank computes local portion of residuals simultaneously
+            R_i = np.array(np.dot(W_ik, Y_k) - np.dot(X_ik, np.diag(L_k)), dtype="float")
+            R = np.zeros((n, n_eig), dtype="float")  # Pre-allocate space for residuals
+            self.comm.Allgatherv(
+                [R_i, MPI.DOUBLE],
+                [
+                    R,
+                    n_eig * np.array(self.distribution),
+                    n_eig * np.array(self.offsets),
+                    MPI.DOUBLE,
+                ],
+            )  # Gather full residuals on each rank to compute norm
+            # Track converged eigenpairs; True if R[:, j] < eps -> jth pair has converged
+            converged, working_indices = [], []
+            for j in range(n_eig):
+                res = np.linalg.norm(R[:, j])
+                converged.append(res < eps)
+                if not (
+                    res < eps
+                ):  # If jth eigenpair not converged, add to list of working indices
+                    working_indices.append(j)
                 else:
                     if self.rank == 0:
-                        print(f"Eigenvalue {j}: {l_j}, converged, no new trial vector added")
+                        print(f"Eigenvalue {j}: {L_k[j]} converged, no new trial vector added")
 
-            if converged:
+            if all(converged):  # Convergence check
                 if self.rank == 0:
                     print("All eigenvalues converged, exiting iteration")
                 break
+            for j in working_indices:  # Iterate through non-converged eigenpairs
+                if self.rank == 0:
+                    print(f"Eigenvalue {j}: not converged, preconditioning next trial vector")
+                # Precondition next trial vector
+                t_ik = self.preconditioning(D_i, L_k[j], R_i[:, j])
+                # Orthogonalize new trial vector against previous basis vectors via parallel-MGS
+                t_k = np.zeros(self.full_size, dtype="float")
+                self.comm.Allgatherv(
+                    [np.array(t_ik, dtype="float"), MPI.DOUBLE],
+                    [t_k, self.distribution, self.offsets, MPI.DOUBLE],
+                )
+                t_ik = t_ik / np.linalg.norm(t_k)
+                t_ik, norm_tk = self.mgs(V_ik, t_ik)
+                if norm_tk > 1e-4:  # If new vector is `small`, ignore. Avoids ill-conditioning
+                    V_ik = np.c_[V_ik, t_ik]  # Append new vector to trial subspace
+                    n_newvecs += 1
 
             dim_S += n_newvecs  # Update dimension of trial subspace
 

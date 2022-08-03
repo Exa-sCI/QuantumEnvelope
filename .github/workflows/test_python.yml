@@ -18,8 +18,9 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Install dependencies
         run: |
+          sudo apt-get -y install openmpi-bin
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          python -m pip install -r requirements.txt
       - name: Run Doctest
         run: |
           python -m doctest -o NORMALIZE_WHITESPACE -v qe/drivers.py

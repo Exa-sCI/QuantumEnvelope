@@ -630,7 +630,13 @@ def load_and_compute(fcidump_path, wf_path, driven_by):
     psi_coef, psi_det = load_wf(f"data/{wf_path}")
     # Computation of the Energy of the input wave function (variational energy)
     lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0, driven_by)
-    return Powerplant(lewis, psi_det).E(psi_coef)
+    DM = Davidson_manager(
+        len(psi_det),
+        Hamiltonian_generator(
+            MPI.COMM_WORLD, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det, driven_by
+        ),
+    )
+    return Powerplant(lewis, psi_det, DM).E(psi_coef)
 
 
 class Test1_VariationalPowerplant_Determinant(
@@ -681,8 +687,14 @@ def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
     # Load wave function
     psi_coef, psi_det = load_wf(f"data/{wf_path}")
     # Computation of the Energy of the input wave function (variational energy)
+    DM = Davidson_manager(
+        len(psi_det),
+        Hamiltonian_generator(
+            MPI.COMM_WORLD, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det, driven_by
+        ),
+    )
     lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0, driven_by)
-    return Powerplant(lewis, psi_det).E_pt2(psi_coef, n_ord)
+    return Powerplant(lewis, psi_det, DM).E_pt2(psi_coef, n_ord)
 
 
 class Test_VariationalPT2_Determinant(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
@@ -714,7 +726,15 @@ class TestSelection(unittest.TestCase):
         wf_path = "f2_631g.1det.wf"
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-        E_var = Powerplant(lewis, psi_det).E(psi_coef)
+        comm = MPI.COMM_WORLD
+        E0 = lewis.E0
+        d_one_e_integral = lewis.d_one_e_integral
+        d_two_e_integral = lewis.d_two_e_integral
+        DM = Davidson_manager(
+            len(psi_det),
+            Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
+        )
+        E_var = Powerplant(lewis, psi_det, DM).E(psi_coef)
 
         E_selection, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 0)
 
@@ -728,6 +748,14 @@ class TestSelection(unittest.TestCase):
         # Selection 10 determinant and check if the result make sence
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        comm = MPI.COMM_WORLD
+        E0 = lewis.E0
+        d_one_e_integral = lewis.d_one_e_integral
+        d_two_e_integral = lewis.d_two_e_integral
+        DM = Davidson_manager(
+            len(psi_det),
+            Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
+        )
         E, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 10)
 
         self.assertAlmostEqual(E_ref, E, places=6)
@@ -741,6 +769,14 @@ class TestSelection(unittest.TestCase):
         E_ref = -198.73029308564543
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+        comm = MPI.COMM_WORLD
+        E0 = lewis.E0
+        d_one_e_integral = lewis.d_one_e_integral
+        d_two_e_integral = lewis.d_two_e_integral
+        DM = Davidson_manager(
+            len(psi_det),
+            Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
+        )
         _, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
         E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
 

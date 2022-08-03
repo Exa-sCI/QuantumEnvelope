@@ -2159,7 +2159,7 @@ class Powerplant(object):
     """
 
     # Instance of Hamiltonian generator class
-    lewis: Hamiltonian_generator
+    lewis: Hamiltonian
     psi_det: Psi_det
     DM: Davidson_manager
 

@@ -630,10 +630,12 @@ def load_and_compute(fcidump_path, wf_path, driven_by):
     psi_coef, psi_det = load_wf(f"data/{wf_path}")
     # Computation of the Energy of the input wave function (variational energy)
     lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0, driven_by)
+    comm = MPI.COMM_WORLD
     DM = Davidson_manager(
+        comm,
         len(psi_det),
         Hamiltonian_generator(
-            MPI.COMM_WORLD, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det, driven_by
+            comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det, driven_by
         ),
     )
     return Powerplant(lewis, psi_det, DM).E(psi_coef)
@@ -687,10 +689,12 @@ def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
     # Load wave function
     psi_coef, psi_det = load_wf(f"data/{wf_path}")
     # Computation of the Energy of the input wave function (variational energy)
+    comm = MPI.COMM_WORLD
     DM = Davidson_manager(
+        comm,
         len(psi_det),
         Hamiltonian_generator(
-            MPI.COMM_WORLD, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det, driven_by
+            comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det, driven_by
         ),
     )
     lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0, driven_by)
@@ -731,6 +735,7 @@ class TestSelection(unittest.TestCase):
         d_one_e_integral = lewis.d_one_e_integral
         d_two_e_integral = lewis.d_two_e_integral
         DM = Davidson_manager(
+            comm,
             len(psi_det),
             Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
         )
@@ -753,6 +758,7 @@ class TestSelection(unittest.TestCase):
         d_one_e_integral = lewis.d_one_e_integral
         d_two_e_integral = lewis.d_two_e_integral
         DM = Davidson_manager(
+            comm,
             len(psi_det),
             Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
         )
@@ -774,6 +780,7 @@ class TestSelection(unittest.TestCase):
         d_one_e_integral = lewis.d_one_e_integral
         d_two_e_integral = lewis.d_two_e_integral
         DM = Davidson_manager(
+            comm,
             len(psi_det),
             Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
         )

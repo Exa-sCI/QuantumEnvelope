@@ -1881,9 +1881,9 @@ class Davidson_manager(object):
     the local portion Hamiltonian on the fly.
     """
 
-    def __init__(self, problem_size, H_i_generator: Hamiltonian_generator):
+    def __init__(self, comm, problem_size, H_i_generator: Hamiltonian_generator):
         # Grab communicator from Hamiltonian_generator class
-        self.comm = H_i_generator.comm
+        self.comm = comm
         self.world_size = self.comm.Get_size()  # No. of processes running
         self.rank = self.comm.Get_rank()  # Rank of current process
         self.MPI_master_rank = 0  # Master rank
@@ -1896,13 +1896,8 @@ class Davidson_manager(object):
         ceiling = floor + 1
         self.distribution = [ceiling] * remainder + [floor] * (self.world_size - remainder)
         self.local_size = self.distribution[self.rank]  # Size of local chunk of Hamiltonian
-        #        self.print_master(
-        #            f"Distribution of work: {self.distribution}, Local problem size: {self.local_size}"
-        #        )
         # Compute offsets (start of the local section) for all nodes
         self.offsets = [0] + list(accumulate(self.distribution[:-1]))
-        # Throw error if allocation of work is not consistent
-        assert problem_size == H_i_generator.full_size
 
     def parallel_iteration_restart(self, dim_S, n_eig, n_newvecs, X_ik, V_ik, W_ik):
         """Restart Davidson's iteration; resize the trial subspace V_k
@@ -2061,7 +2056,7 @@ class Davidson_manager(object):
             S_k = np.zeros((dim_S, dim_S), dtype="float")
             self.comm.Allreduce([S_ik, MPI.DOUBLE], [S_k, MPI.DOUBLE])
             # All ranks diagonalize S_k (dim_S kept small, so inexpensive)
-            L_k, Y_k = np.linalg.eigh(S_k)
+            L_k, Y_k = np.linalg.eigh(S_k)  # TODO: Some check that this is symmetric?
             L_k, Y_k = L_k[:n_eig], Y_k[:, :n_eig]
 
             n_newvecs = 0  # Initialize counter; no. of new vectors added to trial subspace
@@ -2158,12 +2153,12 @@ class Powerplant(object):
     E denote the variational energy
     """
 
-    # Instance of Hamiltonian generator class
     lewis: Hamiltonian
     psi_det: Psi_det
     DM: Davidson_manager
 
     def E(self, psi_coef: Psi_coef) -> Energy:
+        # Variatonal energy
         # Vector * Vector.T * Matrix
         return np.einsum("i,j,ij ->", psi_coef, psi_coef, self.lewis.H(self.psi_det))
 
@@ -2214,11 +2209,12 @@ def selection_step(
     # In the main code:
     # -> Go to 1., stop when E_pt2 < Threshold || N < Threshold
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
-
+    comm = MPI.COMM_WORLD
     DM = Davidson_manager(
+        comm,
         len(psi_det),
         Hamiltonian_generator(
-            MPI.COMM_WORLD,
+            comm,
             lewis.E0,
             lewis.d_one_e_integral,
             lewis.d_two_e_integral,
@@ -2238,6 +2234,7 @@ def selection_step(
     # 3.
     # New instance of Davidson manager class for the extended wavefunction
     DM_new = Davidson_manager(
+        comm,
         len(psi_det_extented),
         Hamiltonian_generator(
             MPI.COMM_WORLD,
@@ -2261,7 +2258,8 @@ def selection_step(
 
 
 def dispatch_psi(comm, psi_i):
-    """Function to partition and dispatch pieces of trial wavefunction psi_i to worker processes
+    """Function to partition and dispatch pieces of trial wavefunction psi_i to worker processes.
+    Used at initialization and each CIPSI iteration.
 
     :param comm: mpi4py.MPI.COMM_WORLD communicator object
     :param psi_i: Psi_det, list of determinants"""

@@ -1814,13 +1814,6 @@ class Hamiltonian_generator(object):
 
         return H_full
 
-    def H_i_external(self, psi_external: Psi_det):
-        # Compute matrix elements of len(psi_local) \times len(psi_external `Hamiltonian'.
-        # Used for computing the PT2 contribution.
-        H_i_1e = self.Hamiltonian_1e_driver.H(self.psi_local, psi_external)
-        H_i_2e = self.Hamiltonian_2e_driver.H(self.psi_local, psi_external)
-        return H_i_1e + H_i_2e
-
     @cached_property
     def H_i_1e_matrix_elements(self):
         """Generate elements of H_i_1e (local row-wise portion of one-electron Hamiltonian).
@@ -2229,7 +2222,7 @@ class Powerplant_manager(object):
             [E_i, MPI.DOUBLE], [E_i, MPI.DOUBLE]
         )  # Default op=SUM, reduce contributions
         # All ranks return varitonal energy
-
+        # TODO: Fix this if there's a more efficient way to convert to a float
         return E_i.item()
 
     @cached_property
@@ -2244,7 +2237,6 @@ class Powerplant_manager(object):
         #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
 
         # Compute len(psi_local) \times len(psi_external) `Hamiltonian'
-        H_i_external = self.H_i_generator.H_i_external(self.psi_external)
         c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
         # Coeffs. of local determinants
         c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
@@ -2272,7 +2264,7 @@ class Powerplant_manager(object):
             1.0,
             self.E(psi_coef)
             - np.array([self.H_i_generator.H_ii(det) for det in self.psi_external]),
-        )  # TODO: Every node should do this?
+        )  # TODO: Every node should do this? Can also optimize this a bit if we save the Hamiltonian elements from above.
 
         return np.einsum(
             "i,i,i -> i", nominator, nominator, denominator
@@ -2282,61 +2274,6 @@ class Powerplant_manager(object):
         # The sum of the pt2 contribution of each external determinant
         psi_external_energy = self.psi_external_pt2(psi_coef)
 
-        return sum(psi_external_energy)
-
-
-#  _                  _
-# |_) _        _  ._ |_) |  _. ._ _|_
-# |  (_) \/\/ (/_ |  |   | (_| | | |_
-#
-
-
-@dataclass
-class Powerplant(object):
-    """
-    Compute all the Energy and associated value from a psi_det.
-    E denote the variational energy
-    """
-
-    lewis: Hamiltonian
-    psi_det: Psi_det
-    DM: Davidson_manager
-
-    def E(self, psi_coef: Psi_coef) -> Energy:
-        # Variatonal energy
-        # Vector * Vector.T * Matrix
-        return np.einsum("i,j,ij ->", psi_coef, psi_coef, self.lewis.H(self.psi_det, self.psi_det))
-
-    @property
-    def E_and_psi_coef(self) -> Tuple[Energy, Psi_coef]:
-        # Return lower eigenvalue (aka the new E) and lower evegenvector (aka the new psi_coef)
-        try:
-            energies, coeffs = self.DM.distributed_davidson()
-        except NotImplementedError:
-            print("Davidson Failed, fallback to numpy eigh")
-            energies, coeffs = np.linalg.eigh(psi_H_psi)
-
-        return energies[0], coeffs[:, 0]
-
-    def psi_external_pt2(self, psi_coef: Psi_coef, n_orb) -> Tuple[Psi_det, List[Energy]]:
-        # Compute the pt2 contrution of all the external (aka connected) determinant.
-        #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
-        psi_external = Excitation(n_orb).gen_all_connected_determinant(self.psi_det)
-
-        nomitator = np.einsum(
-            "i,ij -> j", psi_coef, self.lewis.H(self.psi_det, psi_external)
-        )  # vector * Matrix -> vector
-        denominator = np.divide(
-            1.0, self.E(psi_coef) - np.array([self.lewis.H_ii(d) for d in psi_external])
-        )
-
-        return psi_external, np.einsum(
-            "i,i,i -> i", nomitator, nomitator, denominator
-        )  # vector * vector * vector -> scalar
-
-    def E_pt2(self, psi_coef: Psi_coef, n_orb) -> Energy:
-        # The sum of the pt2 contribution of each external determinant
-        _, psi_external_energy = self.psi_external_pt2(psi_coef, n_orb)
         return sum(psi_external_energy)
 
 

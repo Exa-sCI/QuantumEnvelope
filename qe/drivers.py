@@ -1529,7 +1529,7 @@ class H_indices_generator(object):
         psi_i: Psi_det,
     ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
         """
-        >>> Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
+        >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
         (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
          defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
         >>> H_indices_generator.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]

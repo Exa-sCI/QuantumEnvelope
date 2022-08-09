@@ -1437,28 +1437,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", exci
             )
 
-    @staticmethod
-    def get_spindet_a_occ_spindet_b_occ(
-        psi_i: Psi_det,
-    ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
-        """
-        maybe use dict with spin as key instead of tuple?
-        >>> Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
-        (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
-         defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
-        >>> Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,),beta=(0,))])[0][1]
-        set()
-        """
-        # Can generate det_to_indices hash in here
-        def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
-            ds = defaultdict(set)
-            for i, det in enumerate(psi_i):
-                for o in getattr(det, spin):
-                    ds[o].add(i)
-            return ds
-
-        return tuple(get_dets_occ(psi_i, spin) for spin in ["alpha", "beta"])
-
     @cached_property
     def N_orb(self):
         key = max(self.d_two_e_integral)
@@ -1551,7 +1529,6 @@ class H_indices_generator(object):
         psi_i: Psi_det,
     ) -> Tuple[Dict[OrbitalIdx, Set[int]], Dict[OrbitalIdx, Set[int]]]:
         """
-        maybe use dict with spin as key instead of tuple?
         >>> Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ([Determinant(alpha=(0,1),beta=(1,2)),Determinant(alpha=(1,3),beta=(4,5))])
         (defaultdict(<class 'set'>, {0: {0}, 1: {0, 1}, 3: {1}}),
          defaultdict(<class 'set'>, {1: {0}, 2: {0}, 4: {1}, 5: {1}}))
@@ -2242,13 +2219,14 @@ class Powerplant_manager(object):
         c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
         # Pre-allocate space for PT2 contributions
         E_pt2_conts = np.zeros(len(self.psi_external), dtype="float")
+        # Two-electron matrix elements
         for (I, J), idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_indices(
             self.psi_local, self.psi_external
         ):
             E_pt2_conts[J] += (
                 c_i[I] * phase * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
             )
-        # One-electron integrals
+        # One-electron matrix elements
         for I, det_I in enumerate(self.psi_local):
             for J, det_J in enumerate(self.psi_external):
                 E_pt2_conts[J] += c_i[I] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(

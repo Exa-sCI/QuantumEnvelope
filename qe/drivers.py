@@ -2260,7 +2260,7 @@ class Powerplant_manager(object):
 # __) (/_ | (/_ (_  |_ | (_) | |
 #
 def selection_step(
-    lewis: Hamiltonian, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n
+    comm, lewis: Hamiltonian_generator, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n
 ) -> Tuple[Energy, Psi_coef, Psi_det]:
     # 1. Generate a list of all the external determinant and their pt2 contribution
     # 2. Take the n  determinants who have the biggest contribution and add it the wave function psi
@@ -2269,21 +2269,17 @@ def selection_step(
     # In the main code:
     # -> Go to 1., stop when E_pt2 < Threshold || N < Threshold
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
-    comm = MPI.COMM_WORLD
-    HG = Hamiltonian_generator(
-        comm, lewis.E0, lewis.d_one_e_integral, lewis.d_two_e_integral, psi_det
-    )
     # 1.
-    psi_external_energy = Powerplant_manager(comm, HG).psi_external_pt2(psi_coef)
+    psi_external_energy = Powerplant_manager(comm, lewis).psi_external_pt2(psi_coef)
 
     # 2.
     idx = np.argpartition(psi_external_energy, n)[:n]
-    psi_external_det = Powerplant_manager(comm, HG).psi_external
+    psi_external_det = Powerplant_manager(comm, lewis).psi_external
     psi_det_extented = psi_det + [psi_external_det[i] for i in idx]
 
     # 3.
     # New instance of Davidson manager class for the extended wavefunction
-    HG_new = Hamiltonian_generator(
+    lewis_new = Hamiltonian_generator(
         comm,
         lewis.E0,
         lewis.d_one_e_integral,
@@ -2291,7 +2287,7 @@ def selection_step(
         psi_det_extented,
     )
 
-    return (*Powerplant_manager(comm, HG_new).E_and_psi_coef, psi_det_extented)
+    return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)
 
 
 #  ___  _________ _____

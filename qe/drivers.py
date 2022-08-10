@@ -1934,8 +1934,11 @@ class Davidson_manager(object):
         :return orthonormalized vector t_ik
         """
         for j in range(V_ik.shape[1]):  # Iterate through k basis vectors
-            c_j = np.copy(np.inner(V_ik[:, j], t_ik))  # Each process computes partial inner-product
-            self.comm.Allreduce([c_j, MPI.DOUBLE], [c_j, MPI.DOUBLE])  # Default op=SUM
+            c_ij = np.copy(
+                np.inner(V_ik[:, j], t_ik)
+            )  # Each process computes partial inner-product
+            c_j = 0  # Pre-allocate
+            self.comm.Allreduce([c_ij, MPI.DOUBLE], [c_j, MPI.DOUBLE])  # Default op=SUM
             t_ik = t_ik - c_j * V_ik[:, j]  # Remove component of t_ik in V_ik
         t_k = np.zeros(
             self.full_problem_size, dtype="float"
@@ -2195,12 +2198,13 @@ class Powerplant_manager(object):
         # Get coeffs. of local determinants
         c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
         E_i = np.copy(np.dot(c_i.T, H_i_psi_det))
+        E = 0  # Pre-allocate
         self.comm.Allreduce(
-            [E_i, MPI.DOUBLE], [E_i, MPI.DOUBLE]
+            [E_i, MPI.DOUBLE], [E, MPI.DOUBLE]
         )  # Default op=SUM, reduce contributions
         # All ranks return varitonal energy
         # TODO: Fix this if there's a more efficient way to convert to a float
-        return E_i.item()
+        return E.item()
 
     @cached_property
     def psi_external(self):
@@ -2242,7 +2246,7 @@ class Powerplant_manager(object):
             1.0,
             self.E(psi_coef)
             - np.array([self.H_i_generator.H_ii(det) for det in self.psi_external]),
-        )  # TODO: Every node should do this? Can also optimize this a bit if we save the Hamiltonian elements from above.
+        )  # TODO: Okay, I checked. This part is the bottleneck. (Also why performance doesn't improve with increasing the rank)
 
         return np.einsum(
             "i,i,i -> i", nominator, nominator, denominator
@@ -2285,7 +2289,7 @@ def selection_step(
         lewis.d_one_e_integral,
         lewis.d_two_e_integral,
         psi_det_extented,
-    )
+    )  # Can optimize to only do this once
 
     return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)
 

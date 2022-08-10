@@ -1937,7 +1937,7 @@ class Davidson_manager(object):
             c_ij = np.copy(
                 np.inner(V_ik[:, j], t_ik)
             )  # Each process computes partial inner-product
-            c_j = 0  # Pre-allocate
+            c_j = np.zeros(1, dtype="float")  # Pre-allocate
             self.comm.Allreduce([c_ij, MPI.DOUBLE], [c_j, MPI.DOUBLE])  # Default op=SUM
             t_ik = t_ik - c_j * V_ik[:, j]  # Remove component of t_ik in V_ik
         t_k = np.zeros(
@@ -2198,7 +2198,7 @@ class Powerplant_manager(object):
         # Get coeffs. of local determinants
         c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
         E_i = np.copy(np.dot(c_i.T, H_i_psi_det))
-        E = 0  # Pre-allocate
+        E = np.zeros(1, dtype="float")  # Pre-allocate
         self.comm.Allreduce(
             [E_i, MPI.DOUBLE], [E, MPI.DOUBLE]
         )  # Default op=SUM, reduce contributions

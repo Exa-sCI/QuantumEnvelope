@@ -2071,6 +2071,7 @@ class Davidson_manager(object):
             converged, working_indices = [], []
             for j in range(n_eig):
                 res = np.linalg.norm(R[:, j])
+                self.print_master(f"||r_j||: {res}")
                 converged.append(res < conv_tol)
                 # If jth eigenpair not converged, add to list of working indices
                 if not (res < conv_tol):

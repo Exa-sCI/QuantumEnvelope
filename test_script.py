@@ -15,7 +15,7 @@ rank = comm.Get_rank()
 # Load test files
 # Carbon dimer, C2
 fcidump_path = "data/c2_eq_hf_dz.fcidump.gz"
-wf_path = "data/c2_eq_hf_dz_1.1det.wf.gz"
+wf_path = "data/c2_eq_hf_dz_11.6321det.wf.gz"
 driven_by = "integral"
 
 # Load integrals
@@ -32,13 +32,27 @@ lewis = Hamiltonian_generator(
     comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by=driven_by
 )
 
+# Let's time Davidson's
+if rank == 0:
+    print(f"No. of ranks: {size}")
+    print(f"{rank}: Diagonalizing H and computing ground state energy")
+    t1 = MPI.Wtime()
+E, psi_coef = Powerplant_manager(comm, lewis).E_and_psi_coef
+
+if rank == 0:
+    t2 = MPI.Wtime()
+    print(f"{rank}: E0 = {E}, Time took locally:", t2 - t1)
+sys.exit()
 # How long does it take to build H
 
-print(f"{rank}: Building the local Hamiltonian in //")
-t1 = MPI.Wtime()
+if rank == 0:
+    print(f"No. of ranks: {size}")
+    print(f"{rank}: Building the local Hamiltonian in //")
+    t1 = MPI.Wtime()
 Hamiltonian_i = lewis.H_i
-t2 = MPI.Wtime()
-print(f"{rank}: Time took locally", t2 - t1)
+if rank == 0:
+    t2 = MPI.Wtime()
+    print(f"{rank}: Time took locally", t2 - t1)
 
 sys.exit()
 

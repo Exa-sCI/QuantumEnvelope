@@ -929,12 +929,13 @@ class Hamiltonian_two_electrons_integral_driven(object):
         # contribution from integrals to diagonal elements
         for a in det_indices:
             # Handle PT2 case when psi_i != psi_j. In this case, psi_i[a] won't be in the external space and so error will be thrown
-            try:
-                J = det_to_index_j[psi_i[a]]
-            except KeyError:
-                pass
+            if psi_i[a] in det_to_index_j:
+                yield (
+                    a,
+                    det_to_index_j[psi_i[a]],
+                ), phase  # Yield (a, J) v. (a, a) for MPI implementation
             else:
-                yield (a, J), phase  # Yield (a, J) v. (a, a) for MPI implementation
+                pass
 
     @staticmethod
     def do_single(det_indices_i, phasemod, occ, h, p, psi_i, det_to_index_j, spin, exci):
@@ -947,13 +948,11 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 excited_det = Determinant(excited_spindet, getattr(det, "beta"))
             else:
                 excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
-            try:  # Check if excited det is in external space
-                J = det_to_index_j[excited_det]
-            except KeyError:
-                pass
-            else:
+            if excited_det in det_to_index_j:  # Check if excited det is in external space
                 phase = phasemod * PhaseIdx.single_phase(getattr(det, spin), excited_spindet, h, p)
-                yield (a, J), phase
+                yield (a, det_to_index_j[excited_det]), phase
+            else:
+                pass
 
     @staticmethod
     def do_double_samespin(
@@ -973,13 +972,11 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 excited_det = Determinant(excited_spindet, getattr(det, "beta"))
             else:
                 excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
-            try:  # Check if excited det is in external space
-                J = det_to_index_j[excited_det]
-            except KeyError:
-                pass
-            else:
+            if excited_det in det_to_index_j:  # Check if excited det is in external space
                 phase = PhaseIdx.double_phase(getattr(det, spin), excited_spindet, i, j, k, l)
-                yield (a, J), phase
+                yield (a, det_to_index_j[excited_det]), phase
+            else:
+                pass
 
     @staticmethod
     def do_double_oppspin(
@@ -1007,12 +1004,10 @@ class Hamiltonian_two_electrons_integral_driven(object):
                 excited_spindet_B = exci.apply_excitation(getattr(det, "alpha"), [[j], [l]])
                 phaseB = PhaseIdx.single_phase(getattr(det, "alpha"), excited_spindet_B, j, l)
                 excited_det = Determinant(excited_spindet_B, excited_spindet_A)
-            try:  # Check if excited det is in external space
-                J = det_to_index_j[excited_det]
-            except KeyError:
-                pass
+            if excited_det in det_to_index_j:  # Check if excited det is in external space
+                yield (a, det_to_index_j[excited_det]), phaseA * phaseB
             else:
-                yield (a, J), phaseA * phaseB
+                pass
 
     @staticmethod
     def category_A(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i):

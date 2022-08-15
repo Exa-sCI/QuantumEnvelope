@@ -1791,7 +1791,6 @@ class Hamiltonian_generator(object):
         """Generate elements of H_i_1e (local row-wise portion of one-electron Hamiltonian).
         Elements are gathered `on-the-fly' at first iteration, and then cached in a dict to be re-used later.
         """
-        # TODO: Remove decorator, add parameter to give option to cache
         H_i_1e_matrix_elements = defaultdict(int)
         for I, det_I in enumerate(self.psi_local):
             for J, det_J in enumerate(self.psi_internal):
@@ -1805,7 +1804,6 @@ class Hamiltonian_generator(object):
         Elements are gathered `on-the-fly' at first iteration, and then cached in a dict to be re-used later.
         Works for integral-driven or determinant-driven implementation.
         """
-        # TODO: Remove decorator, add parameter to give option to cache
         H_i_2e_matrix_elements = defaultdict(int)
         for (I, J), idx, phase in self.Hamiltonian_2e_driver.H_indices(
             self.psi_local, self.psi_internal
@@ -1817,7 +1815,7 @@ class Hamiltonian_generator(object):
         # Cache and return non-zero matrix elements
         return {det_pairs: elts for det_pairs, elts in H_i_2e_matrix_elements.items() if elts != 0}
 
-    def H_i_implicit_matrix_product(self, V):
+    def H_i_implicit_matrix_product(self, V, driven_by="cache"):
         """Function to implicitly compute matrix-matrix product W_i = H_i * V.
         At first call, matrix elements of H_i are built `on-the-fly'. Matrix elements are cached
         for later use, and iterated through to compute H_i * V implicitly.
@@ -1841,9 +1839,32 @@ class Hamiltonian_generator(object):
                 W_i[I, :] += matrix_elt * V[J, :]  # Update row I of W_i
             return W_i
 
-        return H_i_implicit_matrix_product_step(
-            self, V, self.H_i_1e_matrix_elements
-        ) + H_i_implicit_matrix_product_step(self, V, self.H_i_2e_matrix_elements)
+        # On first call, these will do the same things regardless of the `driven_by' option
+        # If option to cache, compute elements and store in a sparse representation, then multiply
+        if driven_by == "cache":
+            return H_i_implicit_matrix_product_step(
+                self, V, self.H_i_1e_matrix_elements
+            ) + H_i_implicit_matrix_product_step(self, V, self.H_i_2e_matrix_elements)
+
+        elif driven_by == "on the fly":  # Compute elements on the fly
+            if V.ndim == 1:  # Handle case when V is a vector
+                V = V.reshape(len(V), 1)
+            k = V.shape[1]  # Column dimension
+            # Pre-allocate space for local brick of matrix-matrix product
+            W_i = np.zeros((self.local_size, k), dtype="float")
+            # Two-electron matrix elements
+            for (I, J), idx, phase in self.Hamiltonian_2e_driver.H_indices(
+                self.psi_local, self.psi_internal
+            ):
+                W_i[I, :] += phase * self.Hamiltonian_2e_driver.H_ijkl_orbital(*idx) * V[J, :]
+            # One-electron matrix elements
+            for I, det_I in enumerate(self.psi_local):
+                for J, det_J in enumerate(self.psi_internal):
+                    W_i[I, :] += self.Hamiltonian_1e_driver.H_ij(det_I, det_J) * V[J, :]
+            return W_i
+
+        else:
+            raise NotImplementedError
 
 
 #  ______            _     _
@@ -2029,7 +2050,8 @@ class Davidson_manager(object):
                 ],
             )
             # Compute new columns of W_ik, W_inew = H_i * V_new
-            W_inew = self.H_i_generator.H_i_implicit_matrix_product(V_new)
+            # TODO: Some maximal allowed dimension before we switch to on the fly?
+            W_inew = self.H_i_generator.H_i_implicit_matrix_product(V_new)  # Default is to cache
             W_ik = np.c_[W_ik, W_inew]
 
             # Each rank computes partial update to the projected Hamiltonian S_k
@@ -2235,7 +2257,6 @@ class Powerplant_manager(object):
         #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
 
         # Compute len(psi_local) \times len(psi_external) `Hamiltonian'
-        t1 = MPI.Wtime()  # Start
         c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
         # Coeffs. of local determinants
         c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
@@ -2272,9 +2293,6 @@ class Powerplant_manager(object):
             [denominator, self.external_distribution, self.external_offsets, MPI.DOUBLE],
         )
 
-        t2 = MPI.Wtime()
-        if self.rank == 0:
-            print("Elapsed time:", t2 - t1)
         return np.einsum(
             "i,i,i -> i", nominator, nominator, denominator
         )  # vector * vector * vector -> scalar
@@ -2319,51 +2337,3 @@ def selection_step(
     )  # Can optimize to only do this once
 
     return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)
-
-
-#  ___  _________ _____
-#  |  \/  || ___ \_   _|
-#  | .  . || |_/ / | |
-#  | |\/| ||  __/  | |
-#  | |  | || |    _| |_
-#  \_|  |_/\_|    \___/
-#
-
-
-def dispatch_psi(comm, psi_i):
-    """Function to partition and dispatch pieces of trial wavefunction psi_i to worker processes.
-    Used at initialization and each CIPSI iteration.
-
-    :param comm: mpi4py.MPI.COMM_WORLD communicator object
-    :param psi_i: Psi_det, list of determinants"""
-
-    rank = comm.Get_rank()  # Rank of current process
-    world_size = comm.Get_size()  # No. of processes currently running
-    MPI_master_rank = 0  # Denote master rank
-
-    if rank == 0:
-        indices = np.arange(len(psi_i), dtype="i")
-        number_of_dets, res = divmod(len(psi_i), world_size)
-        # Number of determinants sent to each rank; First `res` processes sent one extra
-        sendcounts = np.array(
-            [number_of_dets + 1 if i < res else number_of_dets for i in range(world_size)],
-            dtype="i",
-        )
-        displacement = np.array(
-            [sum(sendcounts[:i]) for i in range(world_size)], dtype="i"
-        )  # Index of first determinant rank i receives
-    else:
-        indices = None  # Worker processes send nothing
-        sendcounts = np.zeros(world_size, dtype="i")  # Preallocate space for count on workers
-        displacement = None
-
-    comm.Bcast(
-        sendcounts, root=MPI_master_rank
-    )  # Broadcast count to each process, which will need this to preallocate appropriate space
-    local_indices = np.zeros(
-        sendcounts[rank], dtype="i"
-    )  # Preallocate space for process to receive count[rank] determinants
-    comm.Scatterv([indices, sendcounts, displacement, MPI.INT], local_indices, root=MPI_master_rank)
-
-    # Create new list of local determinants on each node
-    return [psi_i[i] for i in local_indices]

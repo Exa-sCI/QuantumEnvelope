@@ -2008,7 +2008,7 @@ class Davidson_manager(object):
             assert (n, m) == V_iguess.shape
         V_ik = np.c_[V_ik, V_iguess]
         # Build `diagonal` of local Hamiltonian
-        D_i = self.H_i_generator.D_i
+        D_i = self.H_i_generator.D_i  # TODO: Tridiagonal pre-conditioner? Shows better convergence
 
         n_newvecs = dim_S  # No. of vectors added is initial subspace dimension
         restart = True
@@ -2209,11 +2209,33 @@ class Powerplant_manager(object):
             self.H_i_generator.psi_internal
         )
 
+    @cached_property
+    def psi_external_local(self):
+        # While we're assuming we can store the external determinants (bad assumption)
+        # Let's distribute them, to make some of the computations better
+
+        external_size = len(self.psi_external)  # Size of external space
+        # Distribute connected determinants
+        floor, remainder = divmod(external_size, self.world_size)
+        ceiling = floor + 1
+        self.external_distribution = [ceiling] * remainder + [floor] * (self.world_size - remainder)
+        # Local problem size (no. of local external determinants)
+        local_external_size = self.external_distribution[self.rank]
+        # Compute offsets (start of the local section) for all nodes
+        self.external_offsets = [0] + list(accumulate(self.external_distribution[:-1]))
+        # Distribute external dets
+        return self.psi_external[
+            self.external_offsets[self.rank] : (
+                self.external_offsets[self.rank] + self.external_distribution[self.rank]
+            )
+        ]
+
     def psi_external_pt2(self, psi_coef: Psi_coef) -> Tuple[Psi_det, List[Energy]]:
         # Compute the pt2 contrution of all the external (aka connected) determinant.
         #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
 
         # Compute len(psi_local) \times len(psi_external) `Hamiltonian'
+        t1 = MPI.Wtime()  # Start
         c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
         # Coeffs. of local determinants
         c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
@@ -2238,12 +2260,21 @@ class Powerplant_manager(object):
             [E_pt2_conts, MPI.DOUBLE], [E_pt2, MPI.DOUBLE]
         )  # Default op=SUM, reduce contributions
         nominator = E_pt2
-        denominator = np.divide(
+        # Distribute this computation and Gather
+        denominator_conts = np.divide(
             1.0,
             self.E(psi_coef)
-            - np.array([self.H_i_generator.H_ii(det) for det in self.psi_external]),
-        )  # TODO: Okay, I checked. This part is the bottleneck. (Also why performance doesn't improve with increasing the rank)
+            - np.array([self.H_i_generator.H_ii(det) for det in self.psi_external_local]),
+        )
+        denominator = np.zeros(len(self.psi_external), dtype="float")
+        self.comm.Allgatherv(
+            [denominator_conts, MPI.DOUBLE],
+            [denominator, self.external_distribution, self.external_offsets, MPI.DOUBLE],
+        )
 
+        t2 = MPI.Wtime()
+        if self.rank == 0:
+            print("Elapsed time:", t2 - t1)
         return np.einsum(
             "i,i,i -> i", nominator, nominator, denominator
         )  # vector * vector * vector -> scalar

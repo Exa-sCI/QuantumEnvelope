@@ -354,7 +354,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ,
             spindet_b_occ,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["A"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_A(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
@@ -370,7 +370,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         for (i, j, k, l) in self.integral_by_category["A"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_A(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
@@ -386,7 +386,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ,
             spindet_b_occ,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["B"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_B(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
@@ -402,7 +402,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         for (i, j, k, l) in self.integral_by_category["B"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_B(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i
@@ -418,7 +418,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ,
             spindet_b_occ,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["C"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_C(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
@@ -434,7 +434,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         for (i, j, k, l) in self.integral_by_category["C"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_C(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
@@ -450,7 +450,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ,
             spindet_b_occ,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["D"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_D(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
@@ -466,7 +466,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         for (i, j, k, l) in self.integral_by_category["D"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_D(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
@@ -482,7 +482,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ,
             spindet_b_occ,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["E"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_E(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
@@ -498,7 +498,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         for (i, j, k, l) in self.integral_by_category["E"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_E(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
@@ -514,7 +514,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ,
             spindet_b_occ,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["F"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_F(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
@@ -530,7 +530,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         for (i, j, k, l) in self.integral_by_category["F"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_F(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
@@ -546,7 +546,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ,
             spindet_b_occ,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for (i, j, k, l) in self.integral_by_category["G"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_G(
                 (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
@@ -562,7 +562,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         (
             spindet_a_occ_i,
             spindet_b_occ_i,
-        ) = Hamiltonian_two_electrons_integral_driven.get_spindet_a_occ_spindet_b_occ(psi_i)
+        ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         for (i, j, k, l) in self.integral_by_category["G"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_G(
                 (i, j, k, l), psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, Excitation(4)
@@ -629,16 +629,10 @@ def load_and_compute(fcidump_path, wf_path, driven_by):
     # Load wave function
     psi_coef, psi_det = load_wf(f"data/{wf_path}")
     # Computation of the Energy of the input wave function (variational energy)
-    lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0, driven_by)
     comm = MPI.COMM_WORLD
-    DM = Davidson_manager(
-        comm,
-        len(psi_det),
-        Hamiltonian_generator(
-            comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det, driven_by
-        ),
-    )
-    return Powerplant(lewis, psi_det, DM).E(psi_coef)
+    lewis = Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by)
+
+    return Powerplant_manager(comm, lewis).E(psi_coef)
 
 
 class Test1_VariationalPowerplant_Determinant(
@@ -690,15 +684,9 @@ def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
     psi_coef, psi_det = load_wf(f"data/{wf_path}")
     # Computation of the Energy of the input wave function (variational energy)
     comm = MPI.COMM_WORLD
-    DM = Davidson_manager(
-        comm,
-        len(psi_det),
-        Hamiltonian_generator(
-            comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det, driven_by
-        ),
-    )
-    lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0, driven_by)
-    return Powerplant(lewis, psi_det, DM).E_pt2(psi_coef, n_ord)
+    lewis = Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by)
+
+    return Powerplant_manager(comm, lewis).E_pt2(psi_coef)
 
 
 class Test_VariationalPT2_Determinant(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
@@ -721,7 +709,7 @@ class TestSelection(unittest.TestCase):
             n_ord,
             psi_coef,
             psi_det,
-            Hamiltonian(d_one_e_integral, d_two_e_integral, E0),
+            Hamiltonian_generator(MPI.COMM_WORLD, E0, d_one_e_integral, d_two_e_integral, psi_det),
         )
 
     def test_f2_631g_1p0det(self):
@@ -730,18 +718,9 @@ class TestSelection(unittest.TestCase):
         wf_path = "f2_631g.1det.wf"
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-        comm = MPI.COMM_WORLD
-        E0 = lewis.E0
-        d_one_e_integral = lewis.d_one_e_integral
-        d_two_e_integral = lewis.d_two_e_integral
-        DM = Davidson_manager(
-            comm,
-            len(psi_det),
-            Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
-        )
-        E_var = Powerplant(lewis, psi_det, DM).E(psi_coef)
+        E_var = Powerplant_manager(lewis.comm, lewis).E(psi_coef)
 
-        E_selection, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 0)
+        E_selection, _, _ = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 0)
 
         self.assertAlmostEqual(E_var, E_selection, places=6)
 
@@ -753,16 +732,7 @@ class TestSelection(unittest.TestCase):
         # Selection 10 determinant and check if the result make sence
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-        comm = MPI.COMM_WORLD
-        E0 = lewis.E0
-        d_one_e_integral = lewis.d_one_e_integral
-        d_two_e_integral = lewis.d_two_e_integral
-        DM = Davidson_manager(
-            comm,
-            len(psi_det),
-            Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
-        )
-        E, _, _ = selection_step(lewis, n_ord, psi_coef, psi_det, 10)
+        E, _, _ = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 10)
 
         self.assertAlmostEqual(E_ref, E, places=6)
 
@@ -775,17 +745,14 @@ class TestSelection(unittest.TestCase):
         E_ref = -198.73029308564543
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
-        comm = MPI.COMM_WORLD
-        E0 = lewis.E0
-        d_one_e_integral = lewis.d_one_e_integral
-        d_two_e_integral = lewis.d_two_e_integral
-        DM = Davidson_manager(
-            comm,
-            len(psi_det),
-            Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, psi_det),
+        _, psi_coef, psi_det = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 5)
+        # New instance of Hamiltonian_generator
+        lewis_new = Hamiltonian_generator(
+            lewis.comm, lewis.E0, lewis.d_one_e_integral, lewis.d_two_e_integral, psi_det
         )
-        _, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
-        E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, 5)
+        E, psi_coef, psi_det = selection_step(
+            lewis_new.comm, lewis_new, n_ord, psi_coef, psi_det, 5
+        )
 
         self.assertAlmostEqual(E_ref, E, places=6)
 

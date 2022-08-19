@@ -2029,7 +2029,7 @@ class Davidson_manager(object):
             assert (n, m) == V_iguess.shape
         V_ik = np.c_[V_ik, V_iguess]
         # Build `diagonal` of local Hamiltonian
-        D_i = self.H_i_generator.D_i  # TODO: Tridiagonal pre-conditioner? Shows better convergence
+        D_i = self.H_i_generator.D_i
 
         n_newvecs = dim_S  # No. of vectors added is initial subspace dimension
         restart = True
@@ -2240,6 +2240,7 @@ class Powerplant_manager(object):
         # Distribute connected determinants
         floor, remainder = divmod(external_size, self.world_size)
         ceiling = floor + 1
+        # Save these distributions + offsets for some MPI communication later
         self.external_distribution = [ceiling] * remainder + [floor] * (self.world_size - remainder)
         # Local problem size (no. of local external determinants)
         local_external_size = self.external_distribution[self.rank]

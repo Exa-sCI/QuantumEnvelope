@@ -1,4 +1,5 @@
 from typing import Tuple, Dict, NamedTuple, List, NewType
+
 # Orbital index (0,1,2,...,n_orb-1)
 OrbitalIdx = NewType("OrbitalIdx", int)
 # Two-electron integral :
@@ -28,4 +29,3 @@ Psi_coef = List[float]
 # The varitional Energy who correpond Psi_det
 # The pt2 Energy who correnpond to the pertubative energy induce by each determinant connected to Psi_det
 Energy = NewType("Energy", float)
-

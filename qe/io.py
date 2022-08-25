@@ -1,4 +1,11 @@
-from qe.fundamental_types import Tuple, One_electron_integral, Two_electron_integral, Determinant, Energy, List
+from qe.fundamental_types import (
+    Tuple,
+    One_electron_integral,
+    Two_electron_integral,
+    Determinant,
+    Energy,
+    List,
+)
 from collections import defaultdict
 from qe.integral_indexing_utils import compound_idx4
 import math
@@ -81,6 +88,7 @@ def load_integrals(
     f.close()
 
     return n_orb, E0, d_one_e_integral, d_two_e_integral
+
 
 def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
     """Read the input file :
@@ -169,4 +177,3 @@ def load_eref(path_ref) -> Energy:
     import re
 
     return float(re.search(r"E +=.+", data).group(0).strip().split()[-1])
-

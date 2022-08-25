@@ -4,10 +4,34 @@ import unittest
 import time
 import sys
 import os
+import random
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-from qe.drivers import *
-from qe.io import *
+from qe.integral_indexing_utils import (
+    compound_idx4_reverse,
+    compound_idx4,
+    canonical_idx4,
+    compound_idx2,
+    compound_idx2_reverse,
+    compound_idx4_reverse_all,
+)
+from qe.drivers import (
+    integral_category,
+    PhaseIdx,
+    Excitation,
+    Hamiltonian_two_electrons_integral_driven,
+    Hamiltonian_two_electrons_determinant_driven,
+    H_indices_generator,
+    Hamiltonian_generator,
+    Powerplant_manager,
+    selection_step,
+)
+from qe.io import load_eref, load_integrals, load_wf
+from collections import defaultdict
+from itertools import product
+from qe.fundamental_types import Determinant
+from mpi4py import MPI
+
 
 class Timing:
     def setUp(self):

@@ -76,7 +76,7 @@ def compound_idx2_reverse(ij):
     >>> compound_idx2_reverse(3)
     (0, 2)
     """
-    assert( (1 + 8*ij) >= 0)
+    assert (1 + 8 * ij) >= 0
     j = (math.isqrt(1 + 8 * ij) - 1) // 2
     i = ij - (j * (j + 1) // 2)
     return i, j

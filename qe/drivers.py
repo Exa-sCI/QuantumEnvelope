@@ -4,15 +4,24 @@ from itertools import chain, product, combinations, takewhile, permutations, acc
 from functools import partial, cached_property, cache
 from collections import defaultdict
 import numpy as np
-from math import sqrt
-import random
 
 # Import mpi4py and utilities
 from mpi4py import MPI  # Note this initializes and finalizes MPI session automatically
-import sys
 
-from qe.fundamental_types import *
-from qe.integral_indexing_utils import *
+from qe.fundamental_types import (
+    Spin_determinant,
+    Determinant,
+    Psi_det,
+    OrbitalIdx,
+    Energy,
+    Psi_coef,
+    One_electron_integral,
+    Two_electron_integral,
+    Two_electron_integral_index_phase,
+)
+from typing import Iterator, Set, Tuple, List, Dict
+from qe.integral_indexing_utils import compound_idx4_reverse, compound_idx4, canonical_idx4
+
 #  _____      _                       _   _
 # |_   _|    | |                     | | | |
 #   | | _ __ | |_ ___  __ _ _ __ __ _| | | |_ _   _ _ __   ___  ___
@@ -68,6 +77,7 @@ def integral_category(i, j, k, l):
         return "E"
     else:
         return "G"
+
 
 #   _____         _ _        _   _
 #  |  ___|       (_) |      | | (_)
@@ -653,7 +663,6 @@ class Hamiltonian_two_electrons_integral_driven(object):
         assert integral_category(i, j, k, l) == "A"
 
         def do_diagonal_A(i, j, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i):
-            phase = 1
             # Get indices of determinants occupied in ia and ib
             det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_occ_in_orbitals(
                 spindet_occ_i, oppspindet_occ_i, {"same": {i}, "opposite": {j}}, "all"
@@ -1710,7 +1719,7 @@ class Davidson_manager(object):
                     )
 
             if all(converged):  # Convergence check
-                self.print_master(f"All eigenvalues converged, exiting iteration")
+                self.print_master("All eigenvalues converged, exiting iteration")
                 break
             for j in working_indices:  # Iterate through non-converged eigenpairs
                 self.print_master(
@@ -1853,8 +1862,6 @@ class Powerplant_manager(object):
         ceiling = floor + 1
         # Save these distributions + offsets for some MPI communication later
         self.external_distribution = [ceiling] * remainder + [floor] * (self.world_size - remainder)
-        # Local problem size (no. of local external determinants)
-        local_external_size = self.external_distribution[self.rank]
         # Compute offsets (start of the local section) for all nodes
         self.external_offsets = [0] + list(accumulate(self.external_distribution[:-1]))
         # Distribute external dets

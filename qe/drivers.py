@@ -1313,14 +1313,8 @@ class Hamiltonian_generator(object):
     * Matrix elements of H are stored as a hash lookup.
     """
 
-    comm: MPI.COMM_WORLD
-    E0: Energy
-    d_one_e_integral: One_electron_integral
-    d_two_e_integral: Two_electron_integral
-    psi_internal: Psi_det
     # Only pass internal determinant, since we'll only want to cache the Hamiltonian matrix elts. for an iteration
     # For ex., we iterate through the (psi_int) x (psi_ext) matrix elts. once to compute the PT2 contribution
-
     def __init__(
         self,
         comm,
@@ -1496,8 +1490,6 @@ class Hamiltonian_generator(object):
 #
 #
 
-
-@dataclass
 class Davidson_manager(object):
     """A matrix-free implementation of Davidson's method in parallel.
     All matrix products involving the Hamiltonian matrix are computed implicitly, and
@@ -1778,7 +1770,6 @@ class Davidson_manager(object):
 #
 
 
-@dataclass
 class Powerplant_manager(object):
     """Class to compute all Energy associated with psi_internal (Psi_det);
     E denotes the variational energy <psi_det|H|psi_det>.
@@ -1786,8 +1777,6 @@ class Powerplant_manager(object):
 
     # Generator class for current basis of determinants
     # Each rank has instance of this corresponding to locally stored dets psi_local \subset psi_internal
-    H_i_generator: Hamiltonian_generator
-
     def __init__(self, comm, H_i_generator: Hamiltonian_generator):
         self.comm = comm
         self.world_size = self.comm.Get_size()  # No. of processes running

@@ -1279,7 +1279,6 @@ class Hamiltonian(object):
 #
 
 
-@dataclass
 class Hamiltonian_generator(object):
     """Generator class for matrix Hamiltonian; compute matrix elements of H
     in the basis of Slater determinants in a distributed fashion.
@@ -1330,20 +1329,52 @@ class Hamiltonian_generator(object):
         self.MPI_master_rank = 0  # Master rank
         # Full problem size is no. of internal determinants
         self.full_problem_size = len(psi_internal)
-        # At initialization, each rank computes distribution of determinants
-        floor, remainder = divmod(self.full_problem_size, self.world_size)
-        ceiling = floor + 1
-        self.distribution = [ceiling] * remainder + [floor] * (self.world_size - remainder)
-        # Local problem size (no. of local determinants)
-        self.local_size = self.distribution[self.rank]
-        # Compute offsets (start of the local section) for all nodes
-        self.offsets = [0] + list(accumulate(self.distribution[:-1]))
         # Save lists of determinants/integral dictionaries with instance of class
         self.psi_internal = psi_internal
         self.E0 = E0
         self.d_one_e_integral = d_one_e_integral
         self.d_two_e_integral = d_two_e_integral
         self.driven_by = driven_by
+
+    @cached_property
+    def distribution(self):
+        """
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100)
+        >>> h.world_size = 3
+        >>> h.distribution
+        array([34, 33, 33], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*101)
+        >>> h.world_size = 3
+        >>> h.distribution
+        array([34, 34, 33], dtype=int32)
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*102)
+        >>> h.world_size = 3
+        >>> h.distribution
+        array([34, 34, 34], dtype=int32)
+        """
+        # At initialization, each rank computes distribution of determinants
+        floor, remainder = divmod(self.full_problem_size, self.world_size)
+        ceiling = floor + 1
+        return np.array([ceiling] * remainder + [floor] * (self.world_size - remainder), dtype="i")
+
+    @cached_property
+    def local_size(self):
+        # At initialization, each rank computes distribution of determinants
+        return self.distribution[self.rank]
+
+    @cached_property
+    def offsets(self):
+        """
+        >>> __test__= { "Hamiltonian_generator.offsets": Hamiltonian_generator.offsets }
+        >>> h = Hamiltonian_generator(MPI.COMM_WORLD, 0, None, None, [0]*100)
+        >>> h.world_size = 3
+        >>> h.offsets
+        array([ 0, 34, 67], dtype=int32)
+        """
+        # Compute offsets (start of the local section) for all nodes
+        A = np.zeros(self.world_size, dtype="i")
+        np.add.accumulate(self.distribution[:-1], out=A[1:])
+        return A
 
     @cached_property
     def psi_local(self):
@@ -1450,6 +1481,11 @@ class Hamiltonian_generator(object):
         # Remove the default dict
         return dict(H_i_2e_matrix_elements)
 
+    # TODO:
+    # H * G
+    # ( \sum H_i) * G # We do that for now
+    # \sum (H_i * G) # H_i big enough to fit in memory
+
     def H_i_implicit_matrix_product(self, M):
         """Function to implicitly compute matrix-matrix product W_i = H_i * M
         At first call, matrix elements of H_i are built `on-the-fly'. Matrix elements are cached
@@ -1461,7 +1497,7 @@ class Hamiltonian_generator(object):
         :return W_i: locally computed chunk of matrix-matrix product (self.local_size \times k), as a numpy array
         """
 
-        def H_i_implicit_matrix_product_step(self, M, matrix_elements):
+        def H_i_implicit_matrix_product_step(matrix_elements, M):
             # Implicitly compute the 1e/2e Hamiltonain matrix-matrix product W_i = H_i * M
             # :param matrix_elements: python dictionary of 1e or 2e Hamiltonian matrix elements
             if M.ndim == 1:  # Handle case when M is a vector
@@ -1477,9 +1513,16 @@ class Hamiltonian_generator(object):
         # On first call, these will do the same things regardless of the `driven_by' option
         # If option to cache, compute elements and store in a sparse representation, then multiply
         return H_i_implicit_matrix_product_step(
-            self, M, self.H_i_1e_matrix_elements
-        ) + H_i_implicit_matrix_product_step(self, M, self.H_i_2e_matrix_elements)
+            self.H_i_1e_matrix_elements, M
+        ) + H_i_implicit_matrix_product_step(self.H_i_2e_matrix_elements, M)
 
+
+import inspect
+
+__test__ = {}
+for name, member in inspect.getmembers(Hamiltonian_generator):
+    if type(member) == cached_property:
+        __test__[f"Hamiltonian_generator.{name}"] = member
 
 #  ______            _     _
 #  |  _  \          (_)   | |
@@ -1489,6 +1532,7 @@ class Hamiltonian_generator(object):
 #  |___/ \__,_| \_/ |_|\__,_|___/\___/|_| |_|
 #
 #
+
 
 class Davidson_manager(object):
     """A matrix-free implementation of Davidson's method in parallel.
@@ -1836,6 +1880,7 @@ class Powerplant_manager(object):
     @cached_property
     def psi_external(self):
         # Generate all external (connected) determinants for current CIPSI iteration
+        # Todo this need to be a generator, we cannot store all the connected
         return Excitation(self.H_i_generator.N_orb).gen_all_connected_determinant(
             self.H_i_generator.psi_internal
         )
@@ -1871,12 +1916,32 @@ class Powerplant_manager(object):
         # Pre-allocate space for PT2 contributions
         E_pt2_conts = np.zeros(len(self.psi_external), dtype="float")
         # Two-electron matrix elements
+
+        # Naive
+        # for I in psi_local
+        # for J, val in gen_connected(I) # Loop over ALL the integral
+        # if J not in psi_local
+        # E_pt2[J] += c[I] * val
+        # Then brodcast over J
+
+        # Problem we cannot store the full set{J} == psi_external
+        # We want to split psi_external. How can we do that?!
+
+        # for J_chunk in gen_external(psi_internal,size_of_chunk) # If enoug memory sort full
+        #       for val, (Js, Is)  in find_connected(J_chunck) # Integral driven fashion
+        #           for J, I  in (Js,Is)
+        #               E_pt2_J[J] += c[I] * val
+        #    get_n_max(MAX_DET, E_pt2_J, J)
+
+        # Try to split the external, so we avoid broadcast to get E_pt2_J
+
         for (I, J), idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_indices(
             self.psi_local, self.psi_external
         ):
             E_pt2_conts[J] += (
                 c_i[I] * phase * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
             )
+
         # One-electron matrix elements
         for I, det_I in enumerate(self.psi_local):
             for J, det_J in enumerate(self.psi_external):

@@ -1,9 +1,5 @@
-# Types
-# -----
-from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
-from dataclasses import dataclass
-
 # Yes, I like itertools
+from dataclasses import dataclass
 from itertools import chain, product, combinations, takewhile, permutations, accumulate
 from functools import partial, cached_property, cache
 from collections import defaultdict

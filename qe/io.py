@@ -1,6 +1,6 @@
-from qe.fundamental_types import *
+from qe.fundamental_types import Tuple, One_electron_integral, Two_electron_integral, Determinant, Energy, List
 from collections import defaultdict
-from qe.integral_indexing_utils import *
+from qe.integral_indexing_utils import compound_idx4
 import math
 
 #   _____      _ _   _       _ _          _   _

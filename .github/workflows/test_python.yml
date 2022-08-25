@@ -32,10 +32,10 @@ jobs:
           ./tests/test_everything_all_at_once.py Test_Index
       - name: Run variational determinant-driven tests
         run: |
-          ./tests/test_everything_all_at_once.py Test1_VariationalPowerplant_Determinant
+          ./tests/test_everything_all_at_once.py Test_VariationalPowerplant_Determinant
       - name: Run variational integral-driven tests
         run: |
-          ./tests/test_everything_all_at_once.py Test1_VariationalPowerplant_Integral
+          ./tests/test_everything_all_at_once.py Test_VariationalPowerplant_Integral
       - name: Run full tests
         if: github.event.review.state == 'approved'
         run: |

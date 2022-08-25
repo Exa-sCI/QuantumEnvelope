@@ -631,18 +631,15 @@ def load_and_compute(fcidump_path, wf_path, driven_by):
     # Computation of the Energy of the input wave function (variational energy)
     comm = MPI.COMM_WORLD
     lewis = Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by)
-
     return Powerplant_manager(comm, lewis).E(psi_coef)
 
 
-class Test1_VariationalPowerplant_Determinant(
-    Timing, unittest.TestCase, Test_VariationalPowerplant
-):
+class Test_VariationalPowerplant_Determinant(Timing, unittest.TestCase, Test_VariationalPowerplant):
     def load_and_compute(self, fcidump_path, wf_path):
         return load_and_compute(fcidump_path, wf_path, "determinant")
 
 
-class Test1_VariationalPowerplant_Integral(Timing, unittest.TestCase, Test_VariationalPowerplant):
+class Test_VariationalPowerplant_Integral(Timing, unittest.TestCase, Test_VariationalPowerplant):
     def load_and_compute(self, fcidump_path, wf_path):
         return load_and_compute(fcidump_path, wf_path, "integral")
 
@@ -685,7 +682,6 @@ def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
     # Computation of the Energy of the input wave function (variational energy)
     comm = MPI.COMM_WORLD
     lewis = Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by)
-
     return Powerplant_manager(comm, lewis).E_pt2(psi_coef)
 
 
@@ -699,7 +695,7 @@ class Test_VariationalPT2_Integral(Timing, unittest.TestCase, Test_VariationalPT
         return load_and_compute_pt2(fcidump_path, wf_path, "integral")
 
 
-class TestSelection(unittest.TestCase):
+class Test_Selection(Timing, unittest.TestCase):
     def load(self, fcidump_path, wf_path):
         # Load integrals
         n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")

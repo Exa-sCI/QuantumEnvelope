@@ -12,7 +12,6 @@ from math import sqrt
 import random
 
 # Import mpi4py and utilities
-import mpi4py
 from mpi4py import MPI  # Note this initializes and finalizes MPI session automatically
 import sys
 

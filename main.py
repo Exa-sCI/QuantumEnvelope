@@ -17,8 +17,15 @@ if __name__ == "__main__":
     # Load wave function
     psi_coef, psi_det = load_wf(wf_path)
     # Hamiltonian engine
-    lewis = Hamiltonian(d_one_e_integral, d_two_e_integral, E0, driven_by=driven_by)
+    comm = MPI.COMM_WORLD
+    lewis = Hamiltonian_generator(
+        comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by=driven_by
+    )
 
     while len(psi_det) < N_det_target:
-        E, psi_coef, psi_det = selection_step(lewis, n_ord, psi_coef, psi_det, len(psi_det))
+        E, psi_coef, psi_det = selection_step(comm, lewis, n_ord, psi_coef, psi_det, len(psi_det))
+        # Update Hamiltonian engine
+        lewis = Hamiltonian_generator(
+            comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by=driven_by
+        )
         print(f"N_det: {len(psi_det)}, E {E}")

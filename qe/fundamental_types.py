@@ -1,4 +1,4 @@
-from typing import Tuple, Dict, NewType, NamedTuple, List, Set, Iterator, NewType
+from typing import Tuple, Dict, NamedTuple, List, NewType
 # Orbital index (0,1,2,...,n_orb-1)
 OrbitalIdx = NewType("OrbitalIdx", int)
 # Two-electron integral :

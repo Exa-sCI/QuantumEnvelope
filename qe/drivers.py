@@ -1740,7 +1740,7 @@ class Hamiltonian_generator(object):
     # ~ ~ ~
     # H_ii
     # ~ ~ ~
-    def H_ii(self, det_i: Determinant) -> List[Energy]:
+    def H_ii(self, det_i: Determinant) -> Energy:
         # Diagonal elements of local Hamiltonian
         return self.Hamiltonian_1e_driver.H_ii(det_i) + self.Hamiltonian_2e_driver.H_ii(det_i)
 
@@ -1795,8 +1795,8 @@ class Hamiltonian_generator(object):
         for I, det_I in enumerate(self.psi_local):
             for J, det_J in enumerate(self.psi_internal):
                 H_i_1e_matrix_elements[(I, J)] += self.Hamiltonian_1e_driver.H_ij(det_I, det_J)
-        # Cache and return non-zero matrix elements
-        return {det_pairs: elts for det_pairs, elts in H_i_1e_matrix_elements.items() if elts != 0}
+        # Remove the default dict
+        return dict(H_i_1e_matrix_elements)
 
     @cached_property
     def H_i_2e_matrix_elements(self):
@@ -1812,11 +1812,11 @@ class Hamiltonian_generator(object):
             H_i_2e_matrix_elements[(I, J)] += phase * self.Hamiltonian_2e_driver.H_ijkl_orbital(
                 *idx
             )
-        # Cache and return non-zero matrix elements
-        return {det_pairs: elts for det_pairs, elts in H_i_2e_matrix_elements.items() if elts != 0}
+        # Remove the default dict
+        return dict(H_i_2e_matrix_elements)
 
-    def H_i_implicit_matrix_product(self, V, driven_by="cache"):
-        """Function to implicitly compute matrix-matrix product W_i = H_i * V.
+    def H_i_implicit_matrix_product(self, M):
+        """Function to implicitly compute matrix-matrix product W_i = H_i * M
         At first call, matrix elements of H_i are built `on-the-fly'. Matrix elements are cached
         for later use, and iterated through to compute H_i * V implicitly.
 
@@ -1826,45 +1826,24 @@ class Hamiltonian_generator(object):
         :return W_i: locally computed chunk of matrix-matrix product (self.local_size \times k), as a numpy array
         """
 
-        def H_i_implicit_matrix_product_step(self, V, matrix_elements):
-            # Implicitly compute the 1e/2e Hamiltonain matrix-matrix product W_i = H_i * V
+        def H_i_implicit_matrix_product_step(self, M, matrix_elements):
+            # Implicitly compute the 1e/2e Hamiltonain matrix-matrix product W_i = H_i * M
             # :param matrix_elements: python dictionary of 1e or 2e Hamiltonian matrix elements
-            if V.ndim == 1:  # Handle case when V is a vector
-                V = V.reshape(len(V), 1)
-            k = V.shape[1]  # Column dimension
+            if M.ndim == 1:  # Handle case when M is a vector
+                M = M.reshape(len(M), 1)
+            k = M.shape[1]  # Column dimension
             # Pre-allocate space for local brick of matrix-matrix product
             W_i = np.zeros((self.local_size, k), dtype="float")
             # Iterate through nonzero matrix elements to compute matrix-matrix product
             for (I, J), matrix_elt in matrix_elements.items():
-                W_i[I, :] += matrix_elt * V[J, :]  # Update row I of W_i
+                W_i[I, :] += matrix_elt * M[J, :]  # Update row I of W_i
             return W_i
 
         # On first call, these will do the same things regardless of the `driven_by' option
         # If option to cache, compute elements and store in a sparse representation, then multiply
-        if driven_by == "cache":
-            return H_i_implicit_matrix_product_step(
-                self, V, self.H_i_1e_matrix_elements
-            ) + H_i_implicit_matrix_product_step(self, V, self.H_i_2e_matrix_elements)
-
-        elif driven_by == "on the fly":  # Compute elements on the fly
-            if V.ndim == 1:  # Handle case when V is a vector
-                V = V.reshape(len(V), 1)
-            k = V.shape[1]  # Column dimension
-            # Pre-allocate space for local brick of matrix-matrix product
-            W_i = np.zeros((self.local_size, k), dtype="float")
-            # Two-electron matrix elements
-            for (I, J), idx, phase in self.Hamiltonian_2e_driver.H_indices(
-                self.psi_local, self.psi_internal
-            ):
-                W_i[I, :] += phase * self.Hamiltonian_2e_driver.H_ijkl_orbital(*idx) * V[J, :]
-            # One-electron matrix elements
-            for I, det_I in enumerate(self.psi_local):
-                for J, det_J in enumerate(self.psi_internal):
-                    W_i[I, :] += self.Hamiltonian_1e_driver.H_ij(det_I, det_J) * V[J, :]
-            return W_i
-
-        else:
-            raise NotImplementedError
+        return H_i_implicit_matrix_product_step(
+            self, M, self.H_i_1e_matrix_elements
+        ) + H_i_implicit_matrix_product_step(self, M, self.H_i_2e_matrix_elements)
 
 
 #  ______            _     _

@@ -23,7 +23,7 @@ jobs:
           python -m pip install -r requirements.txt
       - name: Run Doctest
         run: |
-          python -m doctest -o NORMALIZE_WHITESPACE -v qe/drivers.py
+          python -m doctest -o NORMALIZE_WHITESPACE -v */*.py
       - name: Run Minimal Tests
         run: |
           ./tests/test_everything_all_at_once.py Test_Minimal

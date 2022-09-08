@@ -1847,7 +1847,7 @@ class Powerplant_manager(object):
         try:
             energies, coeffs = self.DM.distributed_davidson()
         except NotImplementedError:
-            print("Davidson Failed, fallback to numpy eigh")
+            print_master("Davidson Failed, fallback to numpy eigh")
             psi_H_psi = self.lewis.H  # Build full Hamiltonian
             energies, coeffs = np.linalg.eigh(psi_H_psi)
 
@@ -2009,4 +2009,4 @@ def selection_step(
         psi_det_extented,
     )  # Can optimize to only do this once
 
-    return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)
+    return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented,sum(psi_external_energy))

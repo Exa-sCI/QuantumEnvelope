@@ -13,6 +13,16 @@ We do on the fly computation of H, so we don't need to store it
 
 1. Split the psi_internal per process.
 2. psi_internal_local compute the sum of PT2 and store the best external determinant.
+ 
+### Size psi_external: 
+    
+- alpha*(virtual-alpha) Single ALPHA
+- beta*(virtual-beta)  Sine Beta 
+- alpha^2*(virtual-alpha)^2 AB doubles 
+- comb(alpha,2)*comb(virtual-alpha,2) AA doubles
+- comb(beta,2)*comb(virtual-beta,2) BB doubles
+
+
          
 
    

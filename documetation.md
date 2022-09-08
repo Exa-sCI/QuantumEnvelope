@@ -11,11 +11,15 @@ We do on the fly computation of H, so we don't need to store it
 
 ## Selection and PT2.
 
-1. Split the psi_internal per process.
-2. psi_internal_local compute the sum of PT2 and store the best external determinant.
- 
+1. Each process will handle psi_external by chunk
+2. Inside each process:
+      - For the maximun size of psi_external storable
+      - Compute sum E_PT2 and max det
+3. Do one reduciton to get full PT2
+
 ### Size psi_external: 
     
+For one det:
 - alpha*(orb-alpha) Single ALPHA
 - beta*(orb-beta)  Sine Beta 
 - alpha^2*(orb-alpha)^2 AB doubles 

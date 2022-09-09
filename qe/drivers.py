@@ -125,7 +125,7 @@ class Excitation:
         self, det: Determinant
     ) -> Iterator[Determinant]:
         """
-        Generate all the determinant who are single exictation from the input determinant
+        Generate all the determinant who are single excitation from the input determinant
 
         >>> sorted(Excitation(3).gen_all_connected_single_det_from_det( Determinant((0, 1), (0,))))
         [Determinant(alpha=(0, 1), beta=(1,)),
@@ -134,7 +134,7 @@ class Excitation:
          Determinant(alpha=(1, 2), beta=(0,))]
         """
 
-        # All single exitation from alpha or for beta determinant
+        # All single excitation from alpha or for beta determinant
 
         # We use l_single_a, and l_single_b twice. So we store them.
         l_single_a = set(self.gen_all_connected_spindet(det.alpha, 1))
@@ -149,7 +149,7 @@ class Excitation:
 
     def gen_all_connected_det_from_det(self, det: Determinant) -> Iterator[Determinant]:
         """
-        Generate all the determinant who are single or double exictation (aka connected) from the input determinant
+        Generate all the determinant who are single or double excitation (aka connected) from the input determinant
 
         >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant((0, 1), (0,))))
         [Determinant(alpha=(0, 1), beta=(1,)),
@@ -2003,22 +2003,33 @@ class Powerplant_manager(object):
         )  # vector * vector * vector -> scalar
 
     def MO_rdm1(self, psi_coef: Psi_coef, n, n_orb) -> MO_1rdm:
-        c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
+        """
+        Returns the 1-rdm in the MO basis,
+        Based off of implementation found here: 10.48550/ARXIV.1311.6244
+
+         psi_coef: Psi_coef
+            wave function coefficient
+         n: int
+            total number of determinants
+         n_orb: int
+            number of molecular orbitals
+        """
+        c = np.array(psi_coef, dtype="float")  # Coef. vector as np.array
         # Coeffs. of local determinants
         c_i = c[
             self.offsets[self.rank] : (
                 self.offsets[self.rank] + self.distribution[self.rank]
             )
         ]
-        # Pre-allocate mo 1rdm
+        # Pre-allocate MO 1RDM
         local_mo_rdm = np.zeros(n_orb, n_orb)
 
         # Naive
         # for I in psi_local
         #   do diagonal contribution
         #   for single excitations from I
-        #       do off diagonal contributions
-        # reduce on local mo_rdms
+        #       do off-diagonal contributions
+        # reduce on local_mo_rdms
 
         # Loop over local dets
         for I, det_I in enumerate(self.psi_local):
@@ -2028,8 +2039,19 @@ class Powerplant_manager(object):
                 local_mo_rdm[orb_i, orb_i] += coeff_sq
             for orb_i in det_I.beta:
                 local_mo_rdm[orb_i, orb_i] += coeff_sq
-
-            # do single excitation contributions
+            #  for single excitations from current determinants, this returns iterator
+            single_excitations = Excitation(n_orb).gen_all_connected_single_det_from_det(det_I)
+            for J, det_j in enumerate(single_excitations):
+                coeff_ij = c_i[I] * c_i[J]
+                # calculate phase, index of hole, and index of particle between two determinants
+                if det_I.alpha == det_J.alpha:
+                    # compute phase and hole particle index, returned as Tuple[phase,hole,particle].
+                    php_tuple = PhaseIdx.single_exc(det_I.alpha,det_J.alpha)
+                else: # not alpha_excitation:
+                    php_tuple = PhaseIdx.single_exc(det_I.beta,det_J.beta)
+                # account for spin average
+                local_mo_rdm[php_tuple[1], php_tuple[2]] += php_tuple[0]*coeff_ij*2
+                local_mo_rdm[php_tuple[2], php_tuple[1]] += php_tuple[0]*coeff_ij*2
 
         # reduce on local_rdm?
 

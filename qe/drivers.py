@@ -121,9 +121,7 @@ class Excitation:
         apply_excitation_to_spindet = partial(Excitation.apply_excitation, spindet)
         return map(apply_excitation_to_spindet, l_exc)
 
-    def gen_all_connected_single_det_from_det(
-        self, det: Determinant
-    ) -> Iterator[Determinant]:
+    def gen_all_connected_single_det_from_det(self, det: Determinant) -> Iterator[Determinant]:
         """
         Generate all the determinant who are single excitation from the input determinant
 
@@ -170,18 +168,12 @@ class Excitation:
         l_single_a = set(self.gen_all_connected_spindet(det.alpha, 1))
         l_double_aa = self.gen_all_connected_spindet(det.alpha, 2)
 
-        s_a = (
-            Determinant(det_alpha, det.beta)
-            for det_alpha in chain(l_single_a, l_double_aa)
-        )
+        s_a = (Determinant(det_alpha, det.beta) for det_alpha in chain(l_single_a, l_double_aa))
 
         l_single_b = set(self.gen_all_connected_spindet(det.beta, 1))
         l_double_bb = self.gen_all_connected_spindet(det.beta, 2)
 
-        s_b = (
-            Determinant(det.alpha, det_beta)
-            for det_beta in chain(l_single_b, l_double_bb)
-        )
+        s_b = (Determinant(det.alpha, det_beta) for det_beta in chain(l_single_b, l_double_bb))
 
         l_double_ab = product(l_single_a, l_single_b)
 
@@ -2016,11 +2008,7 @@ class Powerplant_manager(object):
         """
         c = np.array(psi_coef, dtype="float")  # Coef. vector as np.array
         # Coeffs. of local determinants
-        c_i = c[
-            self.offsets[self.rank] : (
-                self.offsets[self.rank] + self.distribution[self.rank]
-            )
-        ]
+        c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
         # Pre-allocate MO 1RDM
         local_mo_rdm = np.zeros(n_orb, n_orb)
 
@@ -2046,12 +2034,12 @@ class Powerplant_manager(object):
                 # calculate phase, index of hole, and index of particle between two determinants
                 if det_I.alpha == det_J.alpha:
                     # compute phase and hole particle index, returned as Tuple[phase,hole,particle].
-                    php_tuple = PhaseIdx.single_exc(det_I.alpha,det_J.alpha)
-                else: # not alpha_excitation:
-                    php_tuple = PhaseIdx.single_exc(det_I.beta,det_J.beta)
+                    php_tuple = PhaseIdx.single_exc(det_I.alpha, det_J.alpha)
+                else:  # not alpha_excitation:
+                    php_tuple = PhaseIdx.single_exc(det_I.beta, det_J.beta)
                 # account for spin average
-                local_mo_rdm[php_tuple[1], php_tuple[2]] += php_tuple[0]*coeff_ij*2
-                local_mo_rdm[php_tuple[2], php_tuple[1]] += php_tuple[0]*coeff_ij*2
+                local_mo_rdm[php_tuple[1], php_tuple[2]] += php_tuple[0] * coeff_ij * 2
+                local_mo_rdm[php_tuple[2], php_tuple[1]] += php_tuple[0] * coeff_ij * 2
 
         # reduce on local_rdm?
         return False

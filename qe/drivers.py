@@ -2054,8 +2054,7 @@ class Powerplant_manager(object):
                 local_mo_rdm[php_tuple[2], php_tuple[1]] += php_tuple[0]*coeff_ij*2
 
         # reduce on local_rdm?
-
-    return False
+        return False
 
     def E_pt2(self, psi_coef: Psi_coef) -> Energy:
         # The sum of the pt2 contribution of each external determinant

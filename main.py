@@ -56,7 +56,7 @@ if __name__ == "__main__":
     # Load wave function
     psi_coef, psi_det = load_wf(args.wf_path)
 
-    psi_coef, psi_det, (ndet_gen, ndet_sel) = sorted_wf_thresh(psi_coef, psi_det, [thresh_generators, thresh_selectors])
+    psi_coef, psi_det, (ndet_gen, ndet_sel) = sorted_wf_thresh(psi_coef, psi_det, [args.thresh_generators, args.thresh_selectors])
     # Hamiltonian engine
     comm = MPI.COMM_WORLD
     lewis = Hamiltonian_generator(

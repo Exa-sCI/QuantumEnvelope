@@ -21,7 +21,7 @@ def sorted_wf(psi_coef: List[float], psi_det: List[Determinant]) -> Tuple[List[f
         psi_det_sorted.append(psi_det[i])
     return psi_coef_sorted, psi_det_sorted
 
-def sorted_wf_thresh(psi_coef: List[float], psi_det: List[Determinant], thresholds=[]: List[float]) -> Tuple[List[float], List[Determinant], List[int]]:
+def sorted_wf_thresh(psi_coef: List[float], psi_det: List[Determinant], thresholds: List[float]=[]) -> Tuple[List[float], List[Determinant], List[int]]:
     """
     return copy of psi_coef and psi_det, sorted by decreasing magnitude of psi_coef
     also return list of det indices j such that \sum_{i=1}^{j[k]} |c_i|^2 <= thresholds[k]
@@ -41,7 +41,7 @@ def sorted_wf_thresh(psi_coef: List[float], psi_det: List[Determinant], threshol
     assert all(ni >= 0 for ni in ndet_thresh)
     return psi_coef_sorted, psi_det_sorted, ndet_thresh
 
-def ndet_thresh_from_sorted_coef(psi_coef: List[float], thresholds=[]: List[float]) -> List[int]:
+def ndet_thresh_from_sorted_coef(psi_coef: List[float], thresholds: List[float]=[]) -> List[int]:
     """
     psi_coef: coefs ordered by decreasing magnitude
     thresholds: list of floats in range [0,1]

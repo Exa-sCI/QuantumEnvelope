@@ -121,6 +121,32 @@ class Excitation:
         apply_excitation_to_spindet = partial(Excitation.apply_excitation, spindet)
         return map(apply_excitation_to_spindet, l_exc)
 
+    def gen_all_connected_single_det_from_det(
+        self, det: Determinant
+    ) -> Iterator[Determinant]:
+        """
+        Generate all the determinant who are single exictation from the input determinant
+
+        >>> sorted(Excitation(3).gen_all_connected_single_det_from_det( Determinant((0, 1), (0,))))
+        [Determinant(alpha=(0, 1), beta=(1,)),
+         Determinant(alpha=(0, 1), beta=(2,)),
+         Determinant(alpha=(0, 2), beta=(0,)),
+         Determinant(alpha=(1, 2), beta=(0,))]
+        """
+
+        # All single exitation from alpha or for beta determinant
+
+        # We use l_single_a, and l_single_b twice. So we store them.
+        l_single_a = set(self.gen_all_connected_spindet(det.alpha, 1))
+
+        s_a = (Determinant(det_alpha, det.beta) for det_alpha in l_single_a)
+
+        l_single_b = set(self.gen_all_connected_spindet(det.beta, 1))
+
+        s_b = (Determinant(det.alpha, det_beta) for det_beta in l_single_b)
+
+        return chain(s_a, s_b)
+
     def gen_all_connected_det_from_det(self, det: Determinant) -> Iterator[Determinant]:
         """
         Generate all the determinant who are single or double exictation (aka connected) from the input determinant
@@ -144,12 +170,18 @@ class Excitation:
         l_single_a = set(self.gen_all_connected_spindet(det.alpha, 1))
         l_double_aa = self.gen_all_connected_spindet(det.alpha, 2)
 
-        s_a = (Determinant(det_alpha, det.beta) for det_alpha in chain(l_single_a, l_double_aa))
+        s_a = (
+            Determinant(det_alpha, det.beta)
+            for det_alpha in chain(l_single_a, l_double_aa)
+        )
 
         l_single_b = set(self.gen_all_connected_spindet(det.beta, 1))
         l_double_bb = self.gen_all_connected_spindet(det.beta, 2)
 
-        s_b = (Determinant(det.alpha, det_beta) for det_beta in chain(l_single_b, l_double_bb))
+        s_b = (
+            Determinant(det.alpha, det_beta)
+            for det_beta in chain(l_single_b, l_double_bb)
+        )
 
         l_double_ab = product(l_single_a, l_single_b)
 
@@ -1969,6 +2001,39 @@ class Powerplant_manager(object):
         return np.einsum(
             "i,i,i -> i", nominator, nominator, denominator
         )  # vector * vector * vector -> scalar
+
+    def MO_rdm1(self, psi_coef: Psi_coef, n, n_orb) -> MO_1rdm:
+        c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
+        # Coeffs. of local determinants
+        c_i = c[
+            self.offsets[self.rank] : (
+                self.offsets[self.rank] + self.distribution[self.rank]
+            )
+        ]
+        # Pre-allocate mo 1rdm
+        local_mo_rdm = np.zeros(n_orb, n_orb)
+
+        # Naive
+        # for I in psi_local
+        #   do diagonal contribution
+        #   for single excitations from I
+        #       do off diagonal contributions
+        # reduce on local mo_rdms
+
+        # Loop over local dets
+        for I, det_I in enumerate(self.psi_local):
+            # do diagonal contribution
+            coeff_sq = c_i[I] * c_i[I]
+            for orb_i in det_I.alpha:
+                local_mo_rdm[orb_i, orb_i] += coeff_sq
+            for orb_i in det_I.beta:
+                local_mo_rdm[orb_i, orb_i] += coeff_sq
+
+            # do single excitation contributions
+
+        # reduce on local_rdm?
+
+    return False
 
     def E_pt2(self, psi_coef: Psi_coef) -> Energy:
         # The sum of the pt2 contribution of each external determinant

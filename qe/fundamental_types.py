@@ -1,4 +1,5 @@
 from typing import Tuple, Dict, NamedTuple, List, NewType
+import numpy as np
 
 # Orbital index (0,1,2,...,n_orb-1)
 OrbitalIdx = NewType("OrbitalIdx", int)
@@ -25,6 +26,11 @@ class Determinant(NamedTuple):
 
 Psi_det = List[Determinant]
 Psi_coef = List[float]
+
+MO_1rdm = np.ndarray
+no_occ = np.ndarray
+no_coeff = np.ndarray
+
 # We have two type of energy.
 # The varitional Energy who correpond Psi_det
 # The pt2 Energy who correnpond to the pertubative energy induce by each determinant connected to Psi_det

@@ -1905,6 +1905,9 @@ class Powerplant_manager(object):
             )
         ]
 
+#    def psi_external_pt2_distributed(self, psi_coef: Psi_coef, thresh_gen = 0.99, thresh_sel = 0.999) -> Tuple[Psi_det, List[Energy]]:
+#        c = np.array(psi_coef, dtype="float")
+
     def psi_external_pt2(self, psi_coef: Psi_coef) -> Tuple[Psi_det, List[Energy]]:
         # Compute the pt2 contrution of all the external (aka connected) determinant.
         #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
@@ -2010,3 +2013,9 @@ def selection_step(
     )  # Can optimize to only do this once
 
     return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)
+
+#def selection_step_batched(
+#    comm, lewis: Hamiltonian_generator, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n
+#) -> Tuple[Energy, Psi_coef, Psi_det]:
+
+

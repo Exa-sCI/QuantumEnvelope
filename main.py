@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from qe.drivers import *
 from qe.io import *
+from qe.wf_utils import *
 import sys
 import argparse
 
@@ -26,6 +27,22 @@ if __name__ == "__main__":
     )
 
     parser.add_argument(
+        "--thresh_generators",
+        type=float,
+        default=0.99,
+        required=False,
+        help="Threshold on sum-squared of generator coefs",
+    )
+
+    parser.add_argument(
+        "--thresh_selectors",
+        type=float,
+        default=0.999,
+        required=False,
+        help="Threshold on sum-squared of selector coefs",
+    )
+
+    parser.add_argument(
         "-driven_by",
         choices=["integral", "determinant"],
         default="integral",
@@ -38,6 +55,8 @@ if __name__ == "__main__":
     n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(args.fcidump_path)
     # Load wave function
     psi_coef, psi_det = load_wf(args.wf_path)
+
+    psi_coef, psi_det, (ndet_gen, ndet_sel) = sorted_wf_thresh(psi_coef, psi_det, [thresh_generators, thresh_selectors])
     # Hamiltonian engine
     comm = MPI.COMM_WORLD
     lewis = Hamiltonian_generator(

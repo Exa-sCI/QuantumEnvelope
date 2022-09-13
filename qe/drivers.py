@@ -188,7 +188,7 @@ class Excitation:
     def gen_all_connected_determinant(self, comm: MPI.COMM_WORLD, psi_det: Psi_det):
         """
         >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-        >>> psi_external, _ = Excitation(4).gen_all_connected_determinant(None, [ d1,d2 ] )
+        >>> psi_external, _ = Excitation(4).gen_all_connected_determinant(MPI.COMM_WORLD, [ d1,d2 ] )
         >>> len(psi_external)
         22
 

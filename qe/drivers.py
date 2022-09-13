@@ -79,6 +79,34 @@ def integral_category(i, j, k, l):
         return "G"
 
 
+#  ___  _________ _____
+#  |  \/  || ___ \_   _|
+#  | .  . || |_/ / | |
+#  | |\/| ||  __/  | |
+#  | |  | || |    _| |_
+#  \_|  |_/\_|    \___/
+#
+
+
+def get_chunk(comm: MPI.COMM_WORLD, psi_global: Psi_det):
+    # MPI function, compute work distribution and get chunk of determinants
+    # Used to distribute internal (diagonalization) or external space (PT2), depending on application
+    # TODO: Doc tests
+    global_size = len(psi_global)
+    rank = comm.Get_rank()
+    world_size = comm.Get_size()
+    # At job initialization, each rank computes distribution of determinants
+    floor, remainder = divmod(global_size, world_size)
+    ceiling = floor + 1
+    # Compute work distribution (size of chunk given to each node)
+    distribution = np.array([ceiling] * remainder + [floor] * (world_size - remainder), dtype="i")
+    # Compute offests (start of the local chunk)
+    offsets = np.zeros(world_size, dtype="i")
+    np.add.accumulate(distribution[:-1], out=offsets[1:])
+
+    return psi_global[offsets[rank] : (offsets[rank] + distribution[rank])]
+
+
 #   _____         _ _        _   _
 #  |  ___|       (_) |      | | (_)
 #  | |____  _____ _| |_ __ _| |_ _  ___  _ __
@@ -157,10 +185,11 @@ class Excitation:
 
         return chain(s_a, s_b, s_ab)
 
-    def gen_all_connected_determinant(self, psi_det: Psi_det) -> Psi_det:
+    def gen_all_connected_determinant(self, comm: MPI.COMM_WORLD, psi_det: Psi_det):
         """
         >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-        >>> len(Excitation(4).gen_all_connected_determinant( [ d1,d2 ] ))
+        >>> psi_external, _ Excitation(4).gen_all_connected_determinant( [ d1,d2 ] )
+        >>> len(psi_external)
         22
 
         We remove the connected determinant who are already inside the wave function. Order doesn't matter
@@ -170,7 +199,7 @@ class Excitation:
         # return set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det)))- set(psi_det)
 
         # Naive algorithm 13
-        l = []
+        l_global = []
         for i, det in enumerate(psi_det):
             for det_connected in self.gen_all_connected_det_from_det(det):
                 # Remove determinant who are in psi_det
@@ -180,9 +209,12 @@ class Excitation:
                 if any(Excitation.is_connected(det_connected, d) for d in psi_det[:i]):
                     continue
 
-                l.append(det_connected)
+                l_global.append(det_connected)
 
-        return l
+        global_size = len(l_global)
+
+        # Return chunk of l_global corresponding to MPI rank and size of the total connected space
+        return get_chunk(comm, l_global), global_size
 
     @staticmethod
     @cache
@@ -1122,7 +1154,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
         # Returns H_indices, and idx of associated integral
         generator = H_indices_generator(psi_i, psi_j)
         spindet_a_occ_i, spindet_b_occ_i = generator.spindet_occ_int
-        det_to_index_j = generator.det_to_index_ext
+        det_to_index_j = generator.det_to_index
         for idx4, integral_values in self.d_two_e_integral.items():
             idx = compound_idx4_reverse(idx4)
             for (
@@ -1164,7 +1196,7 @@ class Hamiltonian_two_electrons_integral_driven(object):
     def H(self, psi_i, psi_j) -> List[List[Energy]]:
         generator = H_indices_generator(psi_i, psi_j)
         spindet_a_occ_i, spindet_b_occ_i = generator.spindet_occ_int
-        det_to_index_j = generator.det_to_index_ext
+        det_to_index_j = generator.det_to_index
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_i), len(psi_j)))
         for idx4, integral_values in self.d_two_e_integral.items():
@@ -1190,6 +1222,9 @@ class H_indices_generator(object):
     psi_external: Psi_det  # External wavefunction
 
     def __init__(self, psi_internal: Psi_det, psi_external: Psi_det = None):
+        # Application dependent
+        # If Davidson diagonalization, psi_i = psi_j
+        # If PT2 selection, psi_i \neq psi_j
         if psi_external is None:
             psi_external = psi_internal
         self.psi_i = psi_internal
@@ -1217,85 +1252,14 @@ class H_indices_generator(object):
         return tuple(get_dets_occ(psi_i, spin) for spin in ["alpha", "beta"])
 
     @cached_property
-    def det_to_index_ext(self):
+    def det_to_index(self):
         # Create and cache dictionary mapping connected determinants \in psi_j to associated indices.
         return {det: i for i, det in enumerate(self.psi_j)}
 
     @cached_property
     def spindet_occ_int(self):
-        # Create and cache dictionaries mapping spin-orbital indices (alpha) to det indices
+        # Create and cache dictionaries mapping spin-orbital indices to determinants \in psi_i to associated indices
         return self.get_spindet_a_occ_spindet_b_occ(self.psi_i)
-
-
-#   _   _                 _ _ _              _
-#  | | | |               (_) | |            (_)
-#  | |_| | __ _ _ __ ___  _| | |_ ___  _ __  _  __ _ _ __
-#  |  _  |/ _` | '_ ` _ \| | | __/ _ \| '_ \| |/ _` | '_ \
-#  | | | | (_| | | | | | | | | || (_) | | | | | (_| | | | |
-#  \_| |_/\__,_|_| |_| |_|_|_|\__\___/|_| |_|_|\__,_|_| |_|
-#
-
-
-@dataclass
-class Hamiltonian(object):
-    """
-    Now, we consider the Hamiltonian matrix in the basis of Slater determinants.
-    Slater-Condon rules are used to compute the matrix elements <I|H|J> where I
-    and J are Slater determinants.
-
-     ~
-     Slater-Condon Rules
-     ~
-
-     https://en.wikipedia.org/wiki/Slater%E2%80%93Condon_rules
-     https://arxiv.org/abs/1311.6244
-
-     * H is symmetric
-     * If I and J differ by more than 2 orbitals, <I|H|J> = 0, so the number of
-       non-zero elements of H is bounded by N_det x ( N_alpha x (n_orb - N_alpha))^2,
-       where N_det is the number of determinants, N_alpha is the number of
-       alpha-spin electrons (N_alpha >= N_beta), and n_orb is the number of
-       molecular orbitals.  So the number of non-zero elements scales linearly with
-       the number of selected determinant.
-    """
-
-    d_one_e_integral: One_electron_integral
-    d_two_e_integral: Two_electron_integral
-    E0: Energy
-    driven_by: str = "determinant"
-
-    @cached_property
-    def H_one_electron(self):
-        return Hamiltonian_one_electron(self.d_one_e_integral, self.E0)
-
-    @cached_property
-    def H_two_electrons(self):
-        if self.driven_by == "determinant":
-            return Hamiltonian_two_electrons_determinant_driven(self.d_two_e_integral)
-        elif self.driven_by == "integral":
-            return Hamiltonian_two_electrons_integral_driven(self.d_two_e_integral)
-        else:
-            raise NotImplementedError
-
-    # ~ ~ ~
-    # H_ii
-    # ~ ~ ~
-    def H_ii(self, det_i: Determinant) -> List[Energy]:
-        return self.H_one_electron.H_ii(det_i) + self.H_two_electrons.H_ii(det_i)
-
-    # ~ ~ ~
-    # H
-    # ~ ~ ~
-    def H(self, psi_internal: Psi_det, psi_external: Psi_det = None) -> List[List[Energy]]:
-        """Return a matrix of size psi x psi_j containing the value of the Hamiltonian.
-        If psi_j == None, then assume a return psi x psi hermitian Hamiltonian,
-        if not not overlap exist between psi and psi_j"""
-        if psi_external is None:
-            psi_external = psi_internal
-
-        return self.H_one_electron.H(psi_internal, psi_external) + self.H_two_electrons.H(
-            psi_internal, psi_external
-        )
 
 
 #   _   _                 _ _ _              _
@@ -1865,10 +1829,9 @@ class Powerplant_manager(object):
         # TODO: Is there a best practice with this sort of thing? (Computing dist. of work and the like)
         # Hamiltonian_generator computes dist. of work, so pass these to this class for easier reference.
         self.full_problem_size = H_i_generator.full_problem_size
-        self.distribution = H_i_generator.distribution
-        self.offsets = H_i_generator.offsets
-        self.local_size = H_i_generator.local_size
-        self.psi_local = self.H_i_generator.psi_local
+        self.internal_distribution = H_i_generator.distribution
+        self.internal_offsets = H_i_generator.offsets
+        self.psi_internal = self.H_i_generator.psi_internal
 
     @cached_property
     def DM(self):
@@ -1896,13 +1859,17 @@ class Powerplant_manager(object):
 
         We assume the wavefunction is normalized; np.linalg.norm(c) = 1.
         Each rank will necessarily have access to the full list of determinant coefficients
-        Vector * Vector.T * Matrix"""
+        Vector * Vector.T * Matrix, distributed matrix inner product"""
         c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
         # Compute local portion of matrix * vector product H_i * |psi_det>
         H_i_psi_det = self.H_i_generator.H_i_implicit_matrix_product(c)
         # Each rank computes portion of Vector.T * Vector inner-product (E_i, portion of variational energy)
         # Get coeffs. of local determinants
-        c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
+        c_i = c[
+            self.internal_offsets[self.rank] : (
+                self.internal_offsets[self.rank] + self.internal_distribution[self.rank]
+            )
+        ]
         E_i = np.copy(np.dot(c_i.T, H_i_psi_det))
         E = np.zeros(1, dtype="float")  # Pre-allocate
         self.comm.Allreduce(
@@ -1913,50 +1880,48 @@ class Powerplant_manager(object):
         return E.item()
 
     @cached_property
-    def psi_external(self):
+    def psi_external_chunk(self):
         # Generate all external (connected) determinants for current CIPSI iteration
-        # Todo this need to be a generator, we cannot store all the connected
-        return Excitation(self.H_i_generator.N_orb).gen_all_connected_determinant(
-            self.H_i_generator.psi_internal
+        # TODO: this need to be a generator, we cannot store all the connected
+        # Return `chunk' of external space given to MPI rank.
+        # Function `gen_all_connected_determinant' gets chunk automatically
+
+        # Compute external determinants + size of external space
+        external_chunk, external_size = Excitation(
+            self.H_i_generator.N_orb
+        ).gen_all_connected_determinant(self.comm, self.H_i_generator.psi_internal)
+        # Save size of external space (used in MPI communications below)
+        self.external_size = external_size
+
+        # Get `work' distribution for this external chunk as well, save with instance of class
+        # Also used in MPI communications
+        self.external_distribution = np.zeros(self.world_size, dtype="i")
+        self.comm.Allgather(
+            [np.array(len(external_chunk), dtype="i"), MPI.INT],
+            [self.external_distribution, MPI.INT],
         )
+        # Offsets (starting indices of local connected determinants)
+        self.external_offsets = np.zeros(self.world_size, dtype="i")
+        np.add.accumulate(self.external_distribution[:-1], out=self.external_offsets[1:])
 
-    @cached_property
-    def psi_external_local(self):
-        # While we're assuming we can store the external determinants (bad assumption)
-        # Let's distribute them, to make some of the computations better
-
-        external_size = len(self.psi_external)  # Size of external space
-        # Distribute connected determinants
-        floor, remainder = divmod(external_size, self.world_size)
-        ceiling = floor + 1
-        # Save these distributions + offsets for some MPI communication later
-        self.external_distribution = [ceiling] * remainder + [floor] * (self.world_size - remainder)
-        # Compute offsets (start of the local section) for all nodes
-        self.external_offsets = [0] + list(accumulate(self.external_distribution[:-1]))
-        # Distribute external dets
-        return self.psi_external[
-            self.external_offsets[self.rank] : (
-                self.external_offsets[self.rank] + self.external_distribution[self.rank]
-            )
-        ]
+        return external_chunk
 
     def psi_external_pt2(self, psi_coef: Psi_coef) -> Tuple[Psi_det, List[Energy]]:
         # Compute the pt2 contrution of all the external (aka connected) determinant.
         #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
 
-        # Compute len(psi_local) \times len(psi_external) `Hamiltonian'
+        # Compute len(psi_internal) \times len(psi_external_chunk) `Hamiltonian'
+        # Each rank computes its contributions in place, these are gathered to compute the fulL PT2 energy
         c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
-        # Coeffs. of local determinants
-        c_i = c[self.offsets[self.rank] : (self.offsets[self.rank] + self.distribution[self.rank])]
-        # Pre-allocate space for PT2 contributions
-        E_pt2_conts = np.zeros(len(self.psi_external), dtype="float")
+        # Pre-allocate space for nominators E_pt2 contributions (corresponding to local portion of the external space)
+        nominator_conts = np.zeros(len(self.psi_external_chunk), dtype="float")
         # Two-electron matrix elements
 
-        # Naive
-        # for I in psi_local
-        # for J, val in gen_connected(I) # Loop over ALL the integral
-        # if J not in psi_local
-        # E_pt2[J] += c[I] * val
+        # Naive:
+        # for I in psi_internal
+        #   for J, val in gen_connected(I) # Loop over ALL the integral
+        #       if J not in psi_internal
+        #           E_pt2[J] += c[I] * val
         # Then brodcast over J
 
         # Problem we cannot store the full set{J} == psi_external
@@ -1970,46 +1935,48 @@ class Powerplant_manager(object):
 
         # Try to split the external, so we avoid broadcast to get E_pt2_J
 
+        # Iterate over full internal space, each rank computes portion for local chunk external space
         for (I, J), idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_indices(
-            self.psi_local, self.psi_external
+            self.psi_internal, self.psi_external_chunk
         ):
-            E_pt2_conts[J] += (
-                c_i[I] * phase * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
+            nominator_conts[J] += (
+                c[I] * phase * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
             )
 
         # One-electron matrix elements
-        for I, det_I in enumerate(self.psi_local):
-            for J, det_J in enumerate(self.psi_external):
-                E_pt2_conts[J] += c_i[I] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(
+        for I, det_I in enumerate(self.psi_internal):
+            for J, det_J in enumerate(self.psi_external_chunk):
+                nominator_conts[J] += c[I] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(
                     det_I, det_J
                 )
-        E_pt2_conts = np.array(E_pt2_conts, dtype="float")
-        E_pt2 = np.zeros(len(self.psi_external), dtype="float")
-        self.comm.Allreduce(
-            [E_pt2_conts, MPI.DOUBLE], [E_pt2, MPI.DOUBLE]
-        )  # Default op=SUM, reduce contributions
-        nominator = E_pt2
-        # Distribute this computation and Gather
+        # Compute local PT2 contributions
+        nominator_conts = np.array(nominator_conts, dtype="float")
+        E_var = self.E(psi_coef)  # Pre-compute variational energy
         denominator_conts = np.divide(
             1.0,
-            self.E(psi_coef)
-            - np.array([self.H_i_generator.H_ii(det) for det in self.psi_external_local]),
-        )
-        denominator = np.zeros(len(self.psi_external), dtype="float")
-        self.comm.Allgatherv(
-            [denominator_conts, MPI.DOUBLE],
-            [denominator, self.external_distribution, self.external_offsets, MPI.DOUBLE],
+            E_var - np.array([self.H_i_generator.H_ii(det) for det in self.psi_external_chunk]),
         )
 
+        # Compute E_pt2 contributions of the local chunk of connected determinants
+        # Do this einsum in place, then Reduce later
         return np.einsum(
-            "i,i,i -> i", nominator, nominator, denominator
+            "i,i,i -> i", nominator_conts, nominator_conts, denominator_conts
         )  # vector * vector * vector -> scalar
 
     def E_pt2(self, psi_coef: Psi_coef) -> Energy:
         # The sum of the pt2 contribution of each external determinant
-        psi_external_energy = self.psi_external_pt2(psi_coef)
+        # Get contributions of distributed external determinants
+        E_pt2_conts = self.psi_external_pt2(psi_coef)
 
-        return sum(psi_external_energy)
+        # Equivalent to MPI AllGather + sum. Do this because we can't store the full external space
+        psi_external_energy_conts = sum(E_pt2_conts)
+        psi_external_energy = np.zeros(1, dtype="float")
+        # Sum in place -> MPI.Allreduce call
+        self.comm.Allreduce(
+            [psi_external_energy_conts, MPI.DOUBLE], [psi_external_energy, MPI.DOUBLE]
+        )
+
+        return psi_external_energy.item()
 
 
 #  __
@@ -2019,29 +1986,54 @@ class Powerplant_manager(object):
 def selection_step(
     comm, lewis: Hamiltonian_generator, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n
 ) -> Tuple[Energy, Psi_coef, Psi_det]:
-    # 1. Generate a list of all the external determinant and their pt2 contribution
-    # 2. Take the n  determinants who have the biggest contribution and add it the wave function psi
+    # 1. Each MPI rank has a chunk of external determinants and computes their E_pt2 contribution
+    # 2. Take the n determinants who have the biggest contribution and add it the wave function psi
     # 3. Diagonalize H corresponding to this new wave function to get the new variational energy, and new psi_coef.
 
     # In the main code:
     # -> Go to 1., stop when E_pt2 < Threshold || N < Threshold
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
     # 1.
-    psi_external_energy = Powerplant_manager(comm, lewis).psi_external_pt2(psi_coef)
+    PP_manager = Powerplant_manager(comm, lewis)
+    # Compute E_pt2 contributions of the distributed external space
+    psi_external_energy = PP_manager.psi_external_pt2(psi_coef)
 
     # 2.
-    idx = np.argpartition(psi_external_energy, n)[:n]
-    psi_external_det = Powerplant_manager(comm, lewis).psi_external
-    psi_det_extented = psi_det + [psi_external_det[i] for i in idx]
+    # Get indices of top n determinants from each rank + associated dets
+    # E_pt2 < 0, so n smallest are actually the largest contributors
+    local_idx = np.argpartition(psi_external_energy, n)[:n]
+    # External dets are ordered consistent w/ local_idx
+    local_dets = [PP_manager.psi_external_chunk[i] for i in local_idx]
+    # MPI Gather call + partial sort to get n best of these indices
+    # Ugly, but at least we can store this in memory
+    local_energies = np.array(psi_external_energy[local_idx], dtype="float")
+    aggregated_energies = np.zeros((comm.Get_size()) * n, dtype="float")
+    # Gather best local contributions + associated determinants
+    comm.Allgather([local_energies, MPI.DOUBLE], [aggregated_energies, MPI.DOUBLE])
+    aggregated_dets = comm.allgather(local_dets)  # Lower-case command for python objs
+    # Partial sort the gathered contributions to get the global n biggest E_pt2 contributions
+    if comm.Get_size() > 1:  # Else, out of index error is thrown
+        global_idx = np.argpartition(aggregated_energies, n)[:n]
+    else:
+        global_idx = np.arange(n)
+
+    # Add new determinants to the internal wavefunction
+    psi_det_extented = psi_det
+    for i in global_idx:
+        # rank_loc gives the rank where determinant with index i in idx is located
+        # index is the index of that external determinant on rank_loc
+        rank_loc, det_index = divmod(i, n)
+        local_list = aggregated_dets[rank_loc]  # external determinants on MPI rank: rank_loc
+        psi_det_extented = psi_det_extented + [local_list[det_index]]
 
     # 3.
-    # New instance of Davidson manager class for the extended wavefunction
+    # New instance of Hamiltonian manager class for the extended wavefunction
     lewis_new = Hamiltonian_generator(
         comm,
         lewis.E0,
         lewis.d_one_e_integral,
         lewis.d_two_e_integral,
         psi_det_extented,
-    )  # Can optimize to only do this once
+    )
 
     return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)

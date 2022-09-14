@@ -195,7 +195,7 @@ class Excitation:
         MPI function, generates chunks of connected determinants of size L at a time
 
         >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-        >>> psi_chunk = Excitation(4).gen_chunk_of_connected_determinants( [ d1,d2 ] )
+        >>> psi_chunk = Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ] )
         >>> len(psi_chunk)
         22
         """

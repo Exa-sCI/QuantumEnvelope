@@ -186,13 +186,12 @@ class Excitation:
         # Return connected space
         return l_global
 
-    def get_chunk_of_connected_determinants(self, psi_det: Psi_det, L):
+    def get_chunk_of_connected_determinants(self, psi_det: Psi_det):
         """
         Inputs:
         :param psi_det: list of determinants
-        :param L: integer, dtype="i", maximal size of determinants we can afford to store
 
-        MPI function, generates chunks of connected determinants of size L at a time
+        MPI function, generates chunks of connected determinants
 
         >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
         >>> psi_chunk = Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ] )

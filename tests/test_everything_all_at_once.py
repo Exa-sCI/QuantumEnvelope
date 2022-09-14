@@ -267,7 +267,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         psi = [Determinant((0, 1), (0, 1))]
-        psi_connected, _ = Excitation(4).gen_all_connected_determinant(MPI.COMM_WORLD, psi)
+        psi_connected = Excitation(4).gen_all_connected_determinant(psi)
         psi += psi_connected
         d_two_e_integral = {}
         for (i, j, k, l) in product(range(4), repeat=4):
@@ -278,7 +278,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     def psi_and_integral_PT2(self):
         # minimal psi_and_integral, psi_i != psi_j
         psi_i = [Determinant((0, 1), (0, 1)), Determinant((1, 2), (1, 2))]
-        psi_j, _ = Excitation(4).gen_all_connected_determinant(MPI.COMM_WORLD, psi_i)
+        psi_j = Excitation(4).gen_all_connected_determinant(psi_i)
         _, d_two_e_integral = self.psi_and_integral
         return psi_i, psi_j, d_two_e_integral
 

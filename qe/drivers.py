@@ -79,34 +79,6 @@ def integral_category(i, j, k, l):
         return "G"
 
 
-#  ___  _________ _____
-#  |  \/  || ___ \_   _|
-#  | .  . || |_/ / | |
-#  | |\/| ||  __/  | |
-#  | |  | || |    _| |_
-#  \_|  |_/\_|    \___/
-#
-
-
-def get_chunk(comm: MPI.COMM_WORLD, psi_global: Psi_det):
-    # MPI function, compute work distribution and get chunk of determinants
-    # Used to distribute internal (diagonalization) or external space (PT2), depending on application
-    # TODO: Doc tests
-    global_size = len(psi_global)
-    rank = comm.Get_rank()
-    world_size = comm.Get_size()
-    # At job initialization, each rank computes distribution of determinants
-    floor, remainder = divmod(global_size, world_size)
-    ceiling = floor + 1
-    # Compute work distribution (size of chunk given to each node)
-    distribution = np.array([ceiling] * remainder + [floor] * (world_size - remainder), dtype="i")
-    # Compute offests (start of the local chunk)
-    offsets = np.zeros(world_size, dtype="i")
-    np.add.accumulate(distribution[:-1], out=offsets[1:])
-
-    return psi_global[offsets[rank] : (offsets[rank] + distribution[rank])]
-
-
 #   _____         _ _        _   _
 #  |  ___|       (_) |      | | (_)
 #  | |____  _____ _| |_ __ _| |_ _  ___  _ __
@@ -185,10 +157,10 @@ class Excitation:
 
         return chain(s_a, s_b, s_ab)
 
-    def gen_all_connected_determinant(self, comm: MPI.COMM_WORLD, psi_det: Psi_det):
+    def gen_all_connected_determinant(self, psi_det: Psi_det):
         """
         >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-        >>> psi_external, _ = Excitation(4).gen_all_connected_determinant(MPI.COMM_WORLD, [ d1,d2 ] )
+        >>> psi_external = Excitation(4).gen_all_connected_determinant( [ d1,d2 ] )
         >>> len(psi_external)
         22
 
@@ -211,10 +183,41 @@ class Excitation:
 
                 l_global.append(det_connected)
 
-        global_size = len(l_global)
+        # Return connected space
+        return l_global
 
-        # Return chunk of l_global corresponding to MPI rank and size of the total connected space
-        return get_chunk(comm, l_global), global_size
+    def get_chunk_of_connected_determinants(self, psi_det: Psi_det, L):
+        """
+        Inputs:
+        :param psi_det: list of determinants
+        :param L: integer, dtype="i", maximal size of determinants we can afford to store
+
+        MPI function, generates chunks of connected determinants of size L at a time
+
+        >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
+        >>> psi_chunk = Excitation(4).gen_chunk_of_connected_determinants( [ d1,d2 ] )
+        >>> len(psi_chunk)
+        22
+        """
+        # Generate all connected determinants
+        psi_connected = self.gen_all_connected_determinant(psi_det)
+        world_size = MPI.COMM_WORLD.Get_size()
+        # TODO: len(psi_connected) will not scale, but is needed for this naive representation
+        floor, remainder = divmod(len(psi_connected), world_size)
+        ceiling = floor + 1
+        # Compute work distribution (size of chunk given to each node)
+        distribution = np.array(
+            [ceiling] * remainder + [floor] * (world_size - remainder), dtype="i"
+        )
+        # Compute offests (start of the local chunk)
+        offsets = np.zeros(world_size, dtype="i")
+        np.add.accumulate(distribution[:-1], out=offsets[1:])
+
+        return psi_connected[
+            offsets[MPI.COMM_WORLD.Get_rank()] : (
+                offsets[MPI.COMM_WORLD.Get_rank()] + distribution[MPI.COMM_WORLD.Get_rank()]
+            )
+        ]
 
     @staticmethod
     @cache
@@ -1887,24 +1890,10 @@ class Powerplant_manager(object):
         # Function `gen_all_connected_determinant' gets chunk automatically
 
         # Compute external determinants + size of external space
-        external_chunk, external_size = Excitation(
-            self.H_i_generator.N_orb
-        ).gen_all_connected_determinant(self.comm, self.H_i_generator.psi_internal)
-        # Save size of external space (used in MPI communications below)
-        self.external_size = external_size
-
-        # Get `work' distribution for this external chunk as well, save with instance of class
-        # Also used in MPI communications
-        self.external_distribution = np.zeros(self.world_size, dtype="i")
-        self.comm.Allgather(
-            [np.array(len(external_chunk), dtype="i"), MPI.INT],
-            [self.external_distribution, MPI.INT],
+        # TODO: Yield chunks of size L
+        return Excitation(self.H_i_generator.N_orb).get_chunk_of_connected_determinants(
+            self.H_i_generator.psi_internal
         )
-        # Offsets (starting indices of local connected determinants)
-        self.external_offsets = np.zeros(self.world_size, dtype="i")
-        np.add.accumulate(self.external_distribution[:-1], out=self.external_offsets[1:])
-
-        return external_chunk
 
     def psi_external_pt2(self, psi_coef: Psi_coef) -> Tuple[Psi_det, List[Energy]]:
         # Compute the pt2 contrution of all the external (aka connected) determinant.

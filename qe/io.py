@@ -128,6 +128,10 @@ def load_wf(n_elec,n_orb,path_wf) -> Tuple[List[float], List[Determinant]]:
     psi_coef = []
 
     if(rank==0): 
+       def decode_det(str_):
+          for i, v in enumerate(str_):
+              if v == "+":
+                  yield i
        if (path_wf!="Guess"):
           if len(glob.glob(path_wf)) == 1:
               path_wf = glob.glob(path_wf)[0]
@@ -152,11 +156,6 @@ def load_wf(n_elec,n_orb,path_wf) -> Tuple[List[float], List[Determinant]]:
               with open(path_wf) as f:
                   data = f.read().split()
       
-          def decode_det(str_):
-              for i, v in enumerate(str_):
-                  if v == "+":
-                      yield i
-      
           def grouper(iterable, n):
               "Collect data into fixed-length chunks or blocks"
               args = [iter(iterable)] * n
@@ -165,14 +164,13 @@ def load_wf(n_elec,n_orb,path_wf) -> Tuple[List[float], List[Determinant]]:
               psi_coef.append(float(coef))
               det.append(Determinant(tuple(decode_det(det_i)), tuple(decode_det(det_j))))
        else:
-          print("Bazinga")
+          print("Starting from HF guess - 1 determinant")
           coef=1.0
           alpha=math.ceil(n_elec/2)
           beta=n_elec-alpha
           psi_coef.append(float(coef))
-          #$This is Wrong!!!! Needs fixing!!!!
-          det_i="+++++------" 
-          det_j="+++++------" 
+          det_i = "+"*alpha + "-" * (n_orb - alpha)
+          det_j = "+"*beta + "-" * (n_orb - beta)
           det.append(Determinant(tuple(decode_det(det_i)), tuple(decode_det(det_j))))
  
  

@@ -4,6 +4,7 @@ from itertools import chain, product, combinations, takewhile, permutations, acc
 from functools import partial, cached_property, cache
 from collections import defaultdict
 import numpy as np
+import time
 
 # Import mpi4py and utilities
 from mpi4py import MPI  # Note this initializes and finalizes MPI session automatically
@@ -1546,7 +1547,7 @@ class Davidson_manager(object):
     Each process will have local access to instance of the `Hamiltonian_generator()' class, to construct
     the local portion Hamiltonian on the fly.
     """
-
+    
     def __init__(self, comm, H_i_generator: Hamiltonian_generator):
         self.comm = comm
         self.world_size = self.comm.Get_size()  # No. of processes running
@@ -2009,4 +2010,4 @@ def selection_step(
         psi_det_extented,
     )  # Can optimize to only do this once
 
-    return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)
+    return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented,sum(psi_external_energy))

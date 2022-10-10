@@ -157,7 +157,7 @@ class Excitation:
 
         return chain(s_a, s_b, s_ab)
 
-    def gen_all_connected_determinant(self, psi_det: Psi_det):
+    def gen_all_connected_determinant(self, psi_det: Psi_det) -> Psi_det:
         """
         >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
         >>> psi_external = Excitation(4).gen_all_connected_determinant( [ d1,d2 ] )
@@ -166,7 +166,6 @@ class Excitation:
 
         We remove the connected determinant who are already inside the wave function. Order doesn't matter
         """
-
         # Literal programing
         # return set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det)))- set(psi_det)
 
@@ -186,37 +185,47 @@ class Excitation:
         # Return connected space
         return l_global
 
-    def get_chunk_of_connected_determinants(self, psi_det: Psi_det):
+    def get_chunk_of_connected_determinants(self, psi_det: Psi_det, L=None) -> Iterator[Psi_det]:
         """
+        MPI function, generates chunks of connected determinants of size L
+
         Inputs:
         :param psi_det: list of determinants
-
-        MPI function, generates chunks of connected determinants
+        :param L: integer, maximally allowed `chunk' of the conneceted space to yield at a time
+        default is L = None, if no chunk size specified, a chunk of the connected space is allocated to each rank
 
         >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-        >>> psi_chunk = Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ] )
-        >>> len(psi_chunk)
+        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ] ):
+        ...     len(psi_chunk)
         22
+        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ], 11 ):
+        ...     len(psi_chunk)
+        11
+        11
+        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ], 10 ):
+        ...     len(psi_chunk)
+        10
+        10
+        2
         """
-        # Generate all connected determinants
+        # Naive: Each ranks generates all connected determinants, and takes what is theirs
         psi_connected = self.gen_all_connected_determinant(psi_det)
         world_size = MPI.COMM_WORLD.Get_size()
         # TODO: len(psi_connected) will not scale, but is needed for this naive representation
-        floor, remainder = divmod(len(psi_connected), world_size)
-        ceiling = floor + 1
-        # Compute work distribution (size of chunk given to each node)
-        distribution = np.array(
-            [ceiling] * remainder + [floor] * (world_size - remainder), dtype="i"
-        )
-        # Compute offests (start of the local chunk)
-        offsets = np.zeros(world_size, dtype="i")
-        np.add.accumulate(distribution[:-1], out=offsets[1:])
+        full_idx = np.arange(len(psi_connected))
+        split_idx = np.array_split(full_idx, world_size)
+        # Part of connected space available to each rank
+        full_chunk = [psi_connected[i] for i in split_idx[MPI.COMM_WORLD.Get_rank()]]
 
-        return psi_connected[
-            offsets[MPI.COMM_WORLD.Get_rank()] : (
-                offsets[MPI.COMM_WORLD.Get_rank()] + distribution[MPI.COMM_WORLD.Get_rank()]
-            )
-        ]
+        if L is None:  # If no argument passed by the user
+            L = len(full_chunk)
+        number_of_chunks, leftovers = divmod(len(full_chunk), L)
+        # Yield chunks of size L one at a time
+        for i in np.arange(number_of_chunks):
+            yield full_chunk[i * L : (i + 1) * L]
+        # Yield `leftover' determinants (size of chunk < L)
+        if leftovers > 0:  # If there are leftover determinants to handle
+            yield full_chunk[number_of_chunks * L : number_of_chunks * L + leftovers]
 
     @staticmethod
     @cache
@@ -384,6 +393,8 @@ class PhaseIdx(object):
 #   / \ ._   _    |_ |  _   _ _|_ ._ _  ._
 #   \_/ | | (/_   |_ | (/_ (_  |_ | (_) | |
 #
+
+
 @dataclass
 class Hamiltonian_one_electron(object):
     """
@@ -437,6 +448,8 @@ class Hamiltonian_one_electron(object):
 #   | \  _ _|_  _  ._ ._ _  o ._   _. ._ _|_   | \ ._ o     _  ._
 #   |_/ (/_ |_ (/_ |  | | | | | | (_| | | |_   |_/ |  | \/ (/_ | |
 #
+
+
 @dataclass
 class Hamiltonian_two_electrons_determinant_driven(object):
     d_two_e_integral: Two_electron_integral
@@ -1828,10 +1841,10 @@ class Powerplant_manager(object):
         self.rank = self.comm.Get_rank()  # Rank of current process
         self.MPI_master_rank = 0  # Master rank
         self.H_i_generator = H_i_generator
-        # TODO: Is there a best practice with this sort of thing? (Computing dist. of work and the like)
         # Hamiltonian_generator computes dist. of work, so pass these to this class for easier reference.
         self.full_problem_size = H_i_generator.full_problem_size
         self.internal_distribution = H_i_generator.distribution
+        # Offsets + distribution used for distributed computation of E_var
         self.internal_offsets = H_i_generator.offsets
         self.psi_internal = self.H_i_generator.psi_internal
 
@@ -1857,7 +1870,7 @@ class Powerplant_manager(object):
     def E(self, psi_coef: Psi_coef) -> Energy:
         """Compute the variatonal energy associated with psi_det
 
-        :param psi_coef: list of determinant coefficients in expansion of trial WF, as python list
+        :param psi_coef: list of determinant coefficients in expansion of trial WF
 
         We assume the wavefunction is normalized; np.linalg.norm(c) = 1.
         Each rank will necessarily have access to the full list of determinant coefficients
@@ -1881,28 +1894,32 @@ class Powerplant_manager(object):
         # TODO: Fix this if there's a more efficient way to convert to a float
         return E.item()
 
-    @cached_property
-    def psi_external_chunk(self):
+    def gen_connected_from_internal(self, L=None) -> Iterator[Psi_det]:
         # Generate all external (connected) determinants for current CIPSI iteration
-        # TODO: this need to be a generator, we cannot store all the connected
-        # Return `chunk' of external space given to MPI rank.
-        # Function `gen_all_connected_determinant' gets chunk automatically
+        # Just a pass to Excitation function; yields chunk of connected determinants of size L
 
-        # Compute external determinants + size of external space
-        # TODO: Yield chunks of size L
-        return Excitation(self.H_i_generator.N_orb).get_chunk_of_connected_determinants(
-            self.H_i_generator.psi_internal
+        yield from Excitation(self.H_i_generator.N_orb).get_chunk_of_connected_determinants(
+            self.H_i_generator.psi_internal, L
         )
 
-    def psi_external_pt2(self, psi_coef: Psi_coef) -> Tuple[Psi_det, List[Energy]]:
-        # Compute the pt2 contrution of all the external (aka connected) determinant.
-        #   eα=⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
+    def psi_external_pt2(self, psi_external_chunk: Psi_det, psi_coef: Psi_coef) -> List[Energy]:
+        """
+        Compute the E_pt2 contributions of the determinants in psi_external_chunk (subset of the connected space)
+            eα = ⟨Ψ(n)∣H∣∣α⟩^2 / ( E(n)−⟨α∣H∣∣α⟩ )
+
+        Inputs:
+        :param psi_external_chunk: subset (`chunk') of determinants in the connected space
+        :param psi_coef: list of determinant coefficients in expansion of trial WF
+
+        Outputs:
+        List of energies, ith entry contains E_pt2 contribution of determinant i \in psi_external_chunk
+        """
 
         # Compute len(psi_internal) \times len(psi_external_chunk) `Hamiltonian'
-        # Each rank computes its contributions in place, these are gathered to compute the fulL PT2 energy
+        # Each rank computes its contributions in place, these are then gathered to compute the full PT2 energy in self.E_pt2
         c = np.array(psi_coef, dtype="float")  # Coef. vector as np array
-        # Pre-allocate space for nominators E_pt2 contributions (corresponding to local portion of the external space)
-        nominator_conts = np.zeros(len(self.psi_external_chunk), dtype="float")
+        # Pre-allocate space for nominators of E_pt2 contributions
+        nominator_conts = np.zeros(len(psi_external_chunk), dtype="float")
         # Two-electron matrix elements
 
         # Naive:
@@ -1915,7 +1932,7 @@ class Powerplant_manager(object):
         # Problem we cannot store the full set{J} == psi_external
         # We want to split psi_external. How can we do that?!
 
-        # for J_chunk in gen_external(psi_internal,size_of_chunk) # If enoug memory sort full
+        # for J_chunk in gen_external(psi_internal,size_of_chunk) # If enough memory sort full
         #       for val, (Js, Is)  in find_connected(J_chunck) # Integral driven fashion
         #           for J, I  in (Js,Is)
         #               E_pt2_J[J] += c[I] * val
@@ -1923,26 +1940,26 @@ class Powerplant_manager(object):
 
         # Try to split the external, so we avoid broadcast to get E_pt2_J
 
-        # Iterate over full internal space, each rank computes portion for local chunk external space
+        # Iterate over full internal space, each rank computes portion for respective chunk of connected space
         for (I, J), idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_indices(
-            self.psi_internal, self.psi_external_chunk
+            self.psi_internal, psi_external_chunk
         ):
             nominator_conts[J] += (
                 c[I] * phase * self.H_i_generator.Hamiltonian_2e_driver.H_ijkl_orbital(*idx)
             )
-
         # One-electron matrix elements
         for I, det_I in enumerate(self.psi_internal):
-            for J, det_J in enumerate(self.psi_external_chunk):
+            for J, det_J in enumerate(psi_external_chunk):
                 nominator_conts[J] += c[I] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(
                     det_I, det_J
                 )
-        # Compute local PT2 contributions
+
+        # Compute local E_pt2 contributions
         nominator_conts = np.array(nominator_conts, dtype="float")
         E_var = self.E(psi_coef)  # Pre-compute variational energy
         denominator_conts = np.divide(
             1.0,
-            E_var - np.array([self.H_i_generator.H_ii(det) for det in self.psi_external_chunk]),
+            E_var - np.array([self.H_i_generator.H_ii(det) for det in psi_external_chunk]),
         )
 
         # Compute E_pt2 contributions of the local chunk of connected determinants
@@ -1951,68 +1968,104 @@ class Powerplant_manager(object):
             "i,i,i -> i", nominator_conts, nominator_conts, denominator_conts
         )  # vector * vector * vector -> scalar
 
-    def E_pt2(self, psi_coef: Psi_coef) -> Energy:
-        # The sum of the pt2 contribution of each external determinant
-        # Get contributions of distributed external determinants
-        E_pt2_conts = self.psi_external_pt2(psi_coef)
+    def E_pt2(self, psi_coef: Psi_coef, L=None) -> Energy:
+        """
+        Computes the E_pt2 contributions of each connected determinant split across MPI ranks
+        E_pt2 energies are computed in `chunks' of size L at a time, then Reduced
 
-        # Equivalent to MPI AllGather + sum. Do this because we can't store the full external space
-        psi_external_energy_conts = sum(E_pt2_conts)
-        psi_external_energy = np.zeros(1, dtype="float")
+        Inputs:
+        :param psi_coef: list of determinant coefficients in expansion of trial WF
+        :param L: `chunk' size of connected determinants to work with at a time
+
+        Output:
+        E_pt2 value for the current CIPSI iteration, as a float
+        """
+
+        # Pre-allocate space for the reduced E_pt2 contributions
+        E_pt2_conts = np.zeros(1, dtype="float")
+        # Generate chunks of the connected space of size L
+        for psi_external_chunk in self.gen_connected_from_internal(L):
+            # Track E_pt2 contributions of determinants in the current chunk of the connected space
+            E_pt2_conts += sum(self.psi_external_pt2(psi_external_chunk, psi_coef))
+
         # Sum in place -> MPI.Allreduce call
-        self.comm.Allreduce(
-            [psi_external_energy_conts, MPI.DOUBLE], [psi_external_energy, MPI.DOUBLE]
-        )
+        # Equivalent to MPI AllGather + sum. Do this because we can't store the full external space
+        E_pt2 = np.zeros(1, dtype="float")  # Pre-allocate recvbuf for final E_pt2 value
+        self.comm.Allreduce([E_pt2_conts, MPI.DOUBLE], [E_pt2, MPI.DOUBLE])
 
-        return psi_external_energy.item()
+        return E_pt2.item()
 
 
 #  __
 # (_   _  |  _   _ _|_ o  _  ._
 # __) (/_ | (/_ (_  |_ | (_) | |
 #
+
+
 def selection_step(
-    comm, lewis: Hamiltonian_generator, n_ord, psi_coef: Psi_coef, psi_det: Psi_det, n
+    comm,
+    lewis: Hamiltonian_generator,
+    n_ord,
+    psi_coef: Psi_coef,
+    psi_det: Psi_det,
+    n,
+    chunk_size=None,
 ) -> Tuple[Energy, Psi_coef, Psi_det]:
-    # 1. Each MPI rank has a chunk of external determinants and computes their E_pt2 contribution
+    # 1. Each MPI rank has a chunk of external determinants and computes their E_pt2 contribution (size `chunk_size' at a time)
     # 2. Take the n determinants who have the biggest contribution and add it the wave function psi
     # 3. Diagonalize H corresponding to this new wave function to get the new variational energy, and new psi_coef.
 
     # In the main code:
     # -> Go to 1., stop when E_pt2 < Threshold || N < Threshold
     # See example of chained call to this function in `test_f2_631g_1p5p5det`
-    # 1.
+
+    # Assumption: No. of desired determinants n assumed to be greater than the chunk_size to produce at a time
+    if chunk_size is not None:
+        assert chunk_size >= n
+    # Instance of Powerplant manager class for computing E_pt2 energies
     PP_manager = Powerplant_manager(comm, lewis)
-    # Compute E_pt2 contributions of the distributed external space
-    psi_external_energy = PP_manager.psi_external_pt2(psi_coef)
 
-    # 2.
-    # Get indices of top n determinants from each rank + associated dets
-    # E_pt2 < 0, so n smallest are actually the largest contributors
-    local_idx = np.argpartition(psi_external_energy, n)[:n]
-    # External dets are ordered consistent w/ local_idx
-    local_dets = [PP_manager.psi_external_chunk[i] for i in local_idx]
-    # MPI Gather call + partial sort to get n best of these indices
-    # Ugly, but at least we can store this in memory
-    local_energies = np.array(psi_external_energy[local_idx], dtype="float")
-    aggregated_energies = np.zeros((comm.Get_size()) * n, dtype="float")
-    # Gather best local contributions + associated determinants
-    comm.Allgather([local_energies, MPI.DOUBLE], [aggregated_energies, MPI.DOUBLE])
-    aggregated_dets = comm.allgather(local_dets)  # Lower-case command for python objs
-    # Partial sort the gathered contributions to get the global n biggest E_pt2 contributions
-    if comm.Get_size() > 1:  # Else, out of index error is thrown
-        global_idx = np.argpartition(aggregated_energies, n)[:n]
-    else:
-        global_idx = np.arange(n)
+    # Each rank generates a chunk of the external space at the time -> computes the E_pt2 contributions of its respective chunk
+    # Every rank tracks the n (global) best contributions/dets from the previous iteration
+    # Then, compute the n (local) best contributions among the current chunk + current global best dets
+    # Allgather + sort to get new n global best -> iterate until all chunks are done
 
-    # Add new determinants to the internal wavefunction
-    psi_det_extented = psi_det
-    for i in global_idx:
-        # rank_loc gives the rank where determinant with index i in idx is located
-        # index is the index of that external determinant on rank_loc
-        rank_loc, det_index = divmod(i, n)
-        local_list = aggregated_dets[rank_loc]  # external determinants on MPI rank: rank_loc
-        psi_det_extented = psi_det_extented + [local_list[det_index]]
+    # Pre-allocate space for current top n E_pt2 contributions/associated dets (`dummy' global bests)
+    global_best_energies = np.ones(n, dtype="float")
+    global_best_dets = [Determinant(alpha=(), beta=())] * n  # `Dummy' determinants
+    for psi_external_chunk in PP_manager.gen_connected_from_internal(chunk_size):
+        # 1.
+        # Compute E_pt2 contributions of current chunk of determinants
+        psi_external_energies = PP_manager.psi_external_pt2(psi_external_chunk, psi_coef)
+
+        # 2.
+        # Get `local' n largest mangitude E_pt2 contributions -> indices of top n determinants in this rank
+        # E_pt2 < 0, so n `smallest' are actually the largest magnitude contributors
+        local_idx = np.argpartition(psi_external_energies, n)[:n]
+        local_best_energies = np.array(psi_external_energies[local_idx], dtype="float")
+        # Get determinants that are the local best contributors
+        local_best_dets = [psi_external_chunk[i] for i in local_idx]
+
+        # MPI Gather call local bests -> partial sort to get n global best of these guys
+        # Ugly, but at least we can store this in memory
+        # Pre-allocate space + Gather locally best contributions on all ranks
+        aggregated_energies = np.zeros((comm.Get_size()) * n, dtype="float")
+        comm.Allgather([local_best_energies, MPI.DOUBLE], [aggregated_energies, MPI.DOUBLE])
+        # Lower-case MPI command for python objs
+        aggregated_dets_ = comm.allgather(local_best_dets)
+        # mpi4py gathers lists into a list of lists -> need to unpack into a single list
+        aggregated_dets = list(chain.from_iterable(aggregated_dets_))
+        # Partial sort gathered local bests + global bests from previous iteration -> `global' n largest mangitude E_pt2 contributions
+        current_dets = aggregated_dets + global_best_dets
+        current_energies = np.r_[aggregated_energies, global_best_energies]
+        global_idx = np.argpartition(current_energies, n)[:n]
+
+        # Now, save global best E_pt2 contributors
+        global_best_energies = np.array(current_energies[global_idx])
+        global_best_dets = [current_dets[i] for i in global_idx]
+
+    # Add best determinants to the trial wavefunction
+    psi_det_extented = psi_det + global_best_dets
 
     # 3.
     # New instance of Hamiltonian manager class for the extended wavefunction
@@ -2024,4 +2077,5 @@ def selection_step(
         psi_det_extented,
     )
 
+    # Return new E_var, psi_coef, and extended wavefunction
     return (*Powerplant_manager(comm, lewis_new).E_and_psi_coef, psi_det_extented)

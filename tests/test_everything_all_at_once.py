@@ -267,9 +267,8 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         psi = [Determinant((0, 1), (0, 1))]
-        psi_connected = Excitation(4).gen_all_connected_determinant(psi)
-        psi += psi_connected
-        self.assertEqual(len(psi), 27)
+        for det in Excitation(4).get_chunk_of_connected_determinants(psi):
+            psi += det
         d_two_e_integral = {}
         for (i, j, k, l) in product(range(4), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1
@@ -279,7 +278,9 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     def psi_and_integral_PT2(self):
         # minimal psi_and_integral, psi_i != psi_j
         psi_i = [Determinant((0, 1), (0, 1)), Determinant((1, 2), (1, 2))]
-        psi_j = Excitation(4).gen_all_connected_determinant(psi_i)
+        psi_j = []
+        for det in Excitation(4).get_chunk_of_connected_determinants(psi_i):
+            psi_j += det
         _, d_two_e_integral = self.psi_and_integral
         return psi_i, psi_j, d_two_e_integral
 
@@ -708,6 +709,16 @@ class Test_VariationalPT2Powerplant:
         E = self.load_and_compute_pt2(fcidump_path, wf_path, chunk_size)
         self.assertAlmostEqual(E_ref, E, places=6)
 
+        # What if chunk_size is > len(psi_connected)?
+        chunk_size = 100000
+        E = self.load_and_compute_pt2(fcidump_path, wf_path, chunk_size)
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+        # What if chunk_size is = len(psi_connected)?
+        chunk_size = 74262
+        E = self.load_and_compute_pt2(fcidump_path, wf_path, chunk_size)
+        self.assertAlmostEqual(E_ref, E, places=6)
+
 
 def load_and_compute_pt2(fcidump_path, wf_path, driven_by, chunk_size=None):
     # Load integrals
@@ -793,16 +804,16 @@ class Test_Selection(Timing, unittest.TestCase):
         # No a value optained with QP
         E_ref = -198.72696793971556
         # Selection 10 determinant
-        # Parse through the connected space using a chunk of 20 dets at a time
 
         n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
 
-        # Let's look at size of connected space
-        psi_connected = Excitation(n_ord).gen_all_connected_determinant(psi_det)
-        self.assertEqual(len(psi_connected), 9315)
-
         # Chunk the connected space by 1000 at a time, so it doesn't take forever
         E, _, _ = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 10, 1000)
+
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+        # What if chunk_size > len(psi_connected)?
+        E, _, _ = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 10, 100000)
 
         self.assertAlmostEqual(E_ref, E, places=6)
 

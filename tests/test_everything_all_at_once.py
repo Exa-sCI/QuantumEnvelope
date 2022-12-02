@@ -28,7 +28,7 @@ from qe.drivers import (
 )
 from qe.io import load_eref, load_integrals, load_wf
 from collections import defaultdict
-from itertools import product
+from itertools import product, chain
 from qe.fundamental_types import Determinant
 from mpi4py import MPI
 
@@ -278,9 +278,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     def psi_and_integral_PT2(self):
         # minimal psi_and_integral, psi_i != psi_j
         psi_i = [Determinant((0, 1), (0, 1)), Determinant((1, 2), (1, 2))]
-        psi_j = []
-        for det in Excitation(4).get_chunk_of_connected_determinants(psi_i):
-            psi_j += det
+        psi_j = list(chain.from_iterable(Excitation(4).get_chunk_of_connected_determinants(psi_i)))
         _, d_two_e_integral = self.psi_and_integral
         return psi_i, psi_j, d_two_e_integral
 

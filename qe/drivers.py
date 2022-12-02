@@ -184,8 +184,7 @@ class Excitation:
         def gen_all_connected_determinant(exci: Excitation, psi_det: Psi_det) -> Psi_det:
             """
             >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-            >>> psi_external = Excitation(4).gen_all_connected_determinant( [ d1,d2 ] )
-            >>> len(psi_external)
+            >>> len(Excitation(4).gen_all_connected_determinant( [ d1,d2 ] ))
             22
 
             We remove the connected determinant who are already inside the wave function. Order doesn't matter

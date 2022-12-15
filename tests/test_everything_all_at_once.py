@@ -28,7 +28,7 @@ from qe.drivers import (
 )
 from qe.io import load_eref, load_integrals, load_wf
 from collections import defaultdict
-from itertools import product
+from itertools import product, chain
 from qe.fundamental_types import Determinant
 from mpi4py import MPI
 
@@ -267,8 +267,8 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         psi = [Determinant((0, 1), (0, 1))]
-        psi += Excitation(4).gen_all_connected_determinant(psi)
-        self.assertEqual(len(psi), 27)
+        for det in Excitation(4).get_chunk_of_connected_determinants(psi):
+            psi += det
         d_two_e_integral = {}
         for (i, j, k, l) in product(range(4), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1
@@ -278,8 +278,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     def psi_and_integral_PT2(self):
         # minimal psi_and_integral, psi_i != psi_j
         psi_i = [Determinant((0, 1), (0, 1)), Determinant((1, 2), (1, 2))]
-        psi_j = Excitation(4).gen_all_connected_determinant(psi_i)
-        #        self.assertEqual(len(psi_j), 26)
+        psi_j = list(chain.from_iterable(Excitation(4).get_chunk_of_connected_determinants(psi_i)))
         _, d_two_e_integral = self.psi_and_integral
         return psi_i, psi_j, d_two_e_integral
 
@@ -697,8 +696,29 @@ class Test_VariationalPT2Powerplant:
         E = self.load_and_compute_pt2(fcidump_path, wf_path)
         self.assertAlmostEqual(E_ref, E, places=6)
 
+    def test_f2_631g_10det_chunked(self):
+        fcidump_path = "f2_631g.FCIDUMP"
+        wf_path = "f2_631g.10det.wf"
+        E_ref = -0.24321128
 
-def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
+        # Connected space has 74262 determinants
+        # Compute E_pt2 energy 5000 dets at a time
+        chunk_size = 5000
+        E = self.load_and_compute_pt2(fcidump_path, wf_path, chunk_size)
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+        # What if chunk_size is > len(psi_connected)?
+        chunk_size = 100000
+        E = self.load_and_compute_pt2(fcidump_path, wf_path, chunk_size)
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+        # What if chunk_size is = len(psi_connected)?
+        chunk_size = 74262
+        E = self.load_and_compute_pt2(fcidump_path, wf_path, chunk_size)
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+
+def load_and_compute_pt2(fcidump_path, wf_path, driven_by, chunk_size=None):
     # Load integrals
     n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(f"data/{fcidump_path}")
     # Load wave function
@@ -706,17 +726,17 @@ def load_and_compute_pt2(fcidump_path, wf_path, driven_by):
     # Computation of the Energy of the input wave function (variational energy)
     comm = MPI.COMM_WORLD
     lewis = Hamiltonian_generator(comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by)
-    return Powerplant_manager(comm, lewis).E_pt2(psi_coef)
+    return Powerplant_manager(comm, lewis).E_pt2(psi_coef, chunk_size)
 
 
 class Test_VariationalPT2_Determinant(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
-    def load_and_compute_pt2(self, fcidump_path, wf_path):
-        return load_and_compute_pt2(fcidump_path, wf_path, "determinant")
+    def load_and_compute_pt2(self, fcidump_path, wf_path, chunk_size=None):
+        return load_and_compute_pt2(fcidump_path, wf_path, "determinant", chunk_size)
 
 
 class Test_VariationalPT2_Integral(Timing, unittest.TestCase, Test_VariationalPT2Powerplant):
-    def load_and_compute_pt2(self, fcidump_path, wf_path):
-        return load_and_compute_pt2(fcidump_path, wf_path, "integral")
+    def load_and_compute_pt2(self, fcidump_path, wf_path, chunk_size=None):
+        return load_and_compute_pt2(fcidump_path, wf_path, "integral", chunk_size)
 
 
 class Test_Selection(Timing, unittest.TestCase):
@@ -773,6 +793,25 @@ class Test_Selection(Timing, unittest.TestCase):
         E, psi_coef, psi_det = selection_step(
             lewis_new.comm, lewis_new, n_ord, psi_coef, psi_det, 5
         )
+
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+    def test_f2_631g_1p10det_chunked(self):
+        fcidump_path = "f2_631g.FCIDUMP"
+        wf_path = "f2_631g.1det.wf"
+        # No a value optained with QP
+        E_ref = -198.72696793971556
+        # Selection 10 determinant
+
+        n_ord, psi_coef, psi_det, lewis = self.load(fcidump_path, wf_path)
+
+        # Chunk the connected space by 1000 at a time, so it doesn't take forever
+        E, _, _ = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 10, 1000)
+
+        self.assertAlmostEqual(E_ref, E, places=6)
+
+        # What if chunk_size > len(psi_connected)?
+        E, _, _ = selection_step(lewis.comm, lewis, n_ord, psi_coef, psi_det, 10, 100000)
 
         self.assertAlmostEqual(E_ref, E, places=6)
 

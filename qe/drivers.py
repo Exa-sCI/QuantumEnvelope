@@ -278,10 +278,7 @@ class Excitation:
         # We assume the bottom n_elec - m alpha-electrons are at the lowest ON, since only the top three matter
         # Then, just bin the last m among n_orb - (n_elec - m) remaining orbitals.
         unfilled_orbs = [i for i in range(n_elec - m, self.n_orb)]
-        all_constraints = []
-        for constraint in combinations(unfilled_orbs, m):
-            all_constraints.append(constraint)
-        return all_constraints
+        return [constraint for constraint in combinations(unfilled_orbs, m)]
 
     # TODO: This should ultimately replace gen_chunk_of_connected_determinants...
     def triplet_constrained_single_excitations_from_det(
@@ -515,47 +512,44 @@ class Excitation:
                     hab.append((x_a, y_b))
 
         # Finally, generate all excitations
-        for ha1, ha2 in haa:
-            for pa1, pa2 in paa:
-                excited_spindet = self.apply_excitation(det_a, [[ha1, ha2], [pa1, pa2]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant(excited_spindet, det_b)
-                else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant(det_b, excited_spindet)
-                assert excited_spindet[-3:] == constraint
-                yield excited_det
+        for holes, particles in product(haa, paa):
+            excited_spindet = self.apply_excitation(det_a, [holes, particles])
+            if spin == "alpha":  # Then, det_b is beta spindet
+                excited_det = Determinant(excited_spindet, det_b)
+            else:  # Then, det_b is alpha spindet
+                excited_det = Determinant(det_b, excited_spindet)
+            assert excited_spindet[-3:] == constraint
+            yield excited_det
 
-        for hb1, hb2 in hbb:
-            for pb1, pb2 in pbb:
-                excited_spindet = self.apply_excitation(det_b, [[hb1, hb2], [pb1, pb2]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant(det_a, excited_spindet)
-                else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant(excited_spindet, det_a)
-                assert det_a == constraint
-                yield excited_det
+        for holes, particles in product(hbb, pbb):
+            excited_spindet = self.apply_excitation(det_b, [holes, particles])
+            if spin == "alpha":  # Then, det_b is beta spindet
+                excited_det = Determinant(det_a, excited_spindet)
+            else:  # Then, det_b is alpha spindet
+                excited_det = Determinant(excited_spindet, det_a)
+            assert det_a == constraint
+            yield excited_det
 
-        for ha, hb in hab:
-            for pa, pb in pab:
-                excited_spindet_a = self.apply_excitation(det_a, [[ha], [pa]])
-                excited_spindet_b = self.apply_excitation(det_b, [[hb], [pb]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant(excited_spindet_a, excited_spindet_b)
-                else:
-                    excited_det = Determinant(excited_spindet_b, excited_spindet_a)
-                assert excited_spindet_a[-3:] == constraint
-                yield excited_det
+        for holes, particles in product(hab, pab):
+            ha, hb = holes
+            pa, pb = particles
+            excited_spindet_a = self.apply_excitation(det_a, [[ha], [pa]])
+            excited_spindet_b = self.apply_excitation(det_b, [[hb], [pb]])
+            if spin == "alpha":  # Then, det_b is beta spindet
+                excited_det = Determinant(excited_spindet_a, excited_spindet_b)
+            else:
+                excited_det = Determinant(excited_spindet_b, excited_spindet_a)
+            assert excited_spindet_a[-3:] == constraint
+            yield excited_det
 
     # TODO: Next, MPI function to distribute work
     def gen_all_connected_by_triplet_constraints(
         self, psi: Psi_det, constraints: List[Spin_determinant], spin="alpha"
     ) -> Iterator[Determinant]:
-        # Outer pass over constraints
-        for con in constraints:
-            # Inner pass over internal determinants in psi
-            for det in psi:
-                yield from self.triplet_constrained_single_excitations_from_det(det, con, spin)
-                yield from self.triplet_constrained_double_excitations_from_det(det, con, spin)
+        # Outer pass over constraints, inner pass over internal determinants in psi
+        for con, det in product(constraints, psi):
+            yield from self.triplet_constrained_single_excitations_from_det(det, con, spin)
+            yield from self.triplet_constrained_double_excitations_from_det(det, con, spin)
 
 
 #  ______ _                        _   _       _

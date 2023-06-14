@@ -35,11 +35,11 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     # Load integrals
-    n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(args.fcidump_path)
-    # Load wave function
-    psi_coef, psi_det = load_wf(args.wf_path)
-    # Hamiltonian engine
     comm = MPI.COMM_WORLD
+    n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(args.fcidump_path, comm)
+    # Load wave function
+    psi_coef, psi_det = load_wf(args.wf_path, comm)
+    # Hamiltonian engine
     lewis = Hamiltonian_generator(
         comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by=args.driven_by
     )

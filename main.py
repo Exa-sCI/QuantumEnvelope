@@ -4,7 +4,6 @@ from qe.io import *
 import sys
 
 if __name__ == "__main__":
-
     fcidump_path = sys.argv[1]
     wf_path = sys.argv[2]
     N_det_target = int(sys.argv[3])

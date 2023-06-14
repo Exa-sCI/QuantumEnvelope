@@ -158,6 +158,7 @@ def load_wf(path_wf, comm) -> Tuple[List[float], List[Determinant]]:
     else:
         # make tuple for all other ranks equal to nothing
         tup = ()
+        
     # returns tuple broadcasted from the master
     return comm.bcast(tup, 0)
 

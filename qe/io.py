@@ -17,6 +17,7 @@ import math
 #   _| || | | | | |_| | (_| | | |/ / (_| | |_| | (_) | | | |
 #   \___/_| |_|_|\__|_|\__,_|_|_/___\__,_|\__|_|\___/|_| |_|
 
+
 # ~
 # Integrals of the Hamiltonian over molecular orbitals
 # ~
@@ -33,8 +34,8 @@ def load_integrals(
     import glob
 
     rank = comm.Get_rank()
-    #only master handles file
-    if(rank == 0):
+    # only master handles file
+    if rank == 0:
         if len(glob.glob(fcidump_path)) == 1:
             fcidump_path = glob.glob(fcidump_path)[0]
         elif len(glob.glob(fcidump_path)) == 0:
@@ -88,13 +89,13 @@ def load_integrals(
                 # Exchange j,l
                 key = compound_idx4(i - 1, j - 1, k - 1, l - 1)
                 d_two_e_integral[key] = v
-        #pack all the variables into tuple so it can be sent by master
+        # pack all the variables into tuple so it can be sent by master
         tup = (n_orb, E0, d_one_e_integral, d_two_e_integral)
         f.close()
     else:
         tup = ()
-        
-    return comm.bcast(tup, 0) 
+
+    return comm.bcast(tup, 0)
 
 
 def load_wf(path_wf, comm) -> Tuple[List[float], List[Determinant]]:
@@ -105,8 +106,8 @@ def load_wf(path_wf, comm) -> Tuple[List[float], List[Determinant]]:
     import glob
 
     rank = comm.Get_rank()
-    #only master handles file
-    if(rank == 0): 
+    # only master handles file
+    if rank == 0:
         if len(glob.glob(path_wf)) == 1:
             path_wf = glob.glob(path_wf)[0]
         elif len(glob.glob(path_wf)) == 0:
@@ -142,7 +143,7 @@ def load_wf(path_wf, comm) -> Tuple[List[float], List[Determinant]]:
 
         det = []
         psi_coef = []
-        for (coef, det_i, det_j) in grouper(data, 3):
+        for coef, det_i, det_j in grouper(data, 3):
             psi_coef.append(float(coef))
             det.append(Determinant(tuple(decode_det(det_i)), tuple(decode_det(det_j))))
 
@@ -155,7 +156,7 @@ def load_wf(path_wf, comm) -> Tuple[List[float], List[Determinant]]:
     else:
         tup = None
 
-    return comm.bcast(tup, 0) 
+    return comm.bcast(tup, 0)
 
 
 def load_eref(path_ref) -> Energy:
@@ -191,4 +192,3 @@ def load_eref(path_ref) -> Energy:
     import re
 
     return float(re.search(r"E +=.+", data).group(0).strip().split()[-1])
-

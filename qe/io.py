@@ -17,6 +17,7 @@ import math
 #   _| || | | | | |_| | (_| | | |/ / (_| | |_| | (_) | | | |
 #   \___/_| |_|_|\__|_|\__,_|_|_/___\__,_|\__|_|\___/|_| |_|
 
+
 # ~
 # Integrals of the Hamiltonian over molecular orbitals
 # ~
@@ -132,7 +133,7 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
 
     det = []
     psi_coef = []
-    for (coef, det_i, det_j) in grouper(data, 3):
+    for coef, det_i, det_j in grouper(data, 3):
         psi_coef.append(float(coef))
         det.append(Determinant(tuple(decode_det(det_i)), tuple(decode_det(det_j))))
 

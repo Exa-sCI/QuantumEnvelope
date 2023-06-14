@@ -454,7 +454,7 @@ class Excitation:
             #   No same spin (bb) excitations will satisfy constraint
             #   An oppopsite spin (ab) double (x_a, y_b) \in \hab to (a_unocc, z_b), where z\not\in|D_b>
             det_unocc_b_orbs = set(range(self.n_orb)) - set(det_b)  # Unocc orbitals in |D_b>
-            for _, z_b in enumerate(det_unocc_b_orbs):
+            for z_b in det_unocc_b_orbs:
                 pab.append((a_unocc, z_b))
 
         elif len(constraint_orbitals_occupied) == 3:
@@ -467,13 +467,13 @@ class Excitation:
                         paa.append((w_a, z_a))
             #   Any same-spin (bb) double (x_b, y_b) \in hbb to (w_b, z_b)
             det_unocc_b_orbs = self.all_orbs - set(det_b)  # Unocc orbitals in |D_a>
-            for _, w_b in enumerate(det_unocc_b_orbs):
-                for _, z_b in enumerate(det_unocc_b_orbs):
+            for w_b in det_unocc_b_orbs:
+                for z_b in det_unocc_b_orbs:
                     if w_b != z_b:
                         pbb.append((w_b, z_b))
             #   Any oppospite-spin (ab) double (x_a, y_b) \in hab to (w_a, z_b), where w_a < a1
             for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                for _, z_b in enumerate(det_unocc_b_orbs):
+                for z_b in det_unocc_b_orbs:
                     pab.append((w_a, z_b))
 
         # Create list of possible `holes` s.to constraint
@@ -502,13 +502,13 @@ class Excitation:
                     if x_a != y_a:
                         haa.append((x_a, y_a))
             #   A same-spin (bb) double (x_b, y_b) to (w_b, z_b) \in pbb
-            for _, x_b in enumerate(det_b):
-                for _, y_b in enumerate(det_b):
+            for x_b in det_b:
+                for y_b in det_b:
                     if x_b != y_b:
                         hbb.append((x_b, y_b))
             #   A opposite-spin (ab) double (x_a, y_b) to (w_a, z_b) \in pab, where x_a < a1
             for x_a in takewhile(lambda x: x < a1, det_a):
-                for _, y_b in enumerate(det_b):
+                for y_b in det_b:
                     hab.append((x_a, y_b))
 
         # Finally, generate all excitations

@@ -404,7 +404,6 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
 
             # Lets generate the full connected space for reference
             psi_connected_ref = self.connected_space
-            print(len(psi_connected_ref), len(psi_connected_by_constraint))
 
             # Are these constraints disjoint??
             for ref_con, dets in d.items():

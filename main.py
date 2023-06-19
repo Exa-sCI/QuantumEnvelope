@@ -35,11 +35,24 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     # Load integrals
-    n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(args.fcidump_path)
-    # Load wave function
-    psi_coef, psi_det = load_wf(args.wf_path)
-    # Hamiltonian engine
     comm = MPI.COMM_WORLD
+    # Initialize rank
+    rank = comm.Get_rank()
+    # Only master will load integrals and wave functions
+    if rank == 0:
+        n_ord, E0, d_one_e_integral, d_two_e_integral = load_integrals(args.fcidump_path)
+        # Load wave function
+        psi_coef, psi_det = load_wf(args.wf_path)
+
+        # pack into tuple so it can be sent with bcast
+        load_tup = (n_ord, E0, d_one_e_integral, d_two_e_integral, psi_coef, psi_det)
+    else:
+        load_tup = None
+
+    # broadcast variables to all ranks
+    n_ord, E0, d_one_e_integral, d_two_e_integral, psi_coef, psi_det = comm.bcast(load_tup, 0)
+
+    # Hamiltonian engine
     lewis = Hamiltonian_generator(
         comm, E0, d_one_e_integral, d_two_e_integral, psi_det, driven_by=args.driven_by
     )

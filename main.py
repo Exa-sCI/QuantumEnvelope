@@ -1,4 +1,4 @@
-!/usr/bin/env python3
+#!/usr/bin/env python3
 from qe.drivers import *
 from qe.io import *
 import sys

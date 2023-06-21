@@ -41,6 +41,9 @@ def load_integrals(
         for i in glob.glob(fcidump_path):
             print(i)
 
+    # Add used_zip boolean so we know if we need to decode the lines
+    used_zip = True
+
     # Use an iterator to avoid storing everything in memory twice.
     if fcidump_path.split(".")[-1] == "gz":
         import gzip
@@ -52,13 +55,23 @@ def load_integrals(
         f = bz2.open(fcidump_path)
     else:
         f = open(fcidump_path)
+        used_zip = False
 
     # Only non-zero integrals are stored in the fci_dump.
     # Hence we use a defaultdict to handle the sparsity
     n_orb = int(next(f).split()[2])
 
-    for _ in range(3):
-        next(f)
+    # Key were looking for
+    key = " /\n"
+    found = False
+    # Keep looping until the key is found
+    while not found:
+        # Read line
+        line = f.readline()
+        # Decode if needed
+        line = line.decode("utf-8") if used_zip else line
+        # Check if it equals the key
+        found = line == key
 
     d_one_e_integral = defaultdict(int)
     d_two_e_integral = defaultdict(int)

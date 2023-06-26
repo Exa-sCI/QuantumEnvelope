@@ -1,5 +1,4 @@
 # Yes, I like itertools
-import unittest
 from dataclasses import dataclass
 from itertools import chain, product, combinations, takewhile, permutations, accumulate
 from functools import partial, cached_property, cache
@@ -3345,7 +3344,7 @@ class Powerplant_manager(object):
         else:
             raise NotImplementedError
 
-        # Remove contributions of internal determinants TODO: This is probably dirty
+        # Remove contributions of internal determinants
         for det_I in self.psi_internal:
             if det_I in nominator_conts_table:
                 del nominator_conts_table[det_I]

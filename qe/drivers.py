@@ -1624,7 +1624,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         #   Occupied in: (alpha) h, C = {a1, a2, a3} (beta) occ
                         #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h} (beta) none
                         # p \not\in C in this instance, and < a1, so must include in `empty` orbital set
-                        higher_unocc_orbitals = set(range(a1 + 1, exci.n_orb)) - (set(C) | {h})
                         det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                             spindet_occ,
                             oppspindet_occ,
@@ -3354,6 +3353,7 @@ class Powerplant_manager(object):
         E_pt2_J = nominator_conts_table.values()
         nominator_conts = np.array(list(E_pt2_J), dtype="float")
         # TODO: For integral driven, loop over integrals? In general, be more efficient in this area.
+        # TODO: In general, though, we need a different way to do this. It goes back to storing the connected space. We can even do the denominator conts in a separate array..
         psi_connected_C = [det_J for det_J in nominator_conts_table.keys()]
         denominator_conts = np.divide(
             1.0,

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from qe.drivers import *
 from qe.io import *
+from qe.no import *
 import sys
 import argparse
 
@@ -31,6 +32,14 @@ if __name__ == "__main__":
         default="integral",
         required=False,
         help="Way in which Hamiltonian is generated. Integral driven: local set of integrals, determinants are found on each node. Determinant driven: local set of determinants, all integrals are on each node.",
+    )
+
+    parser.add_argument(
+        "-NOs",
+        type=bool,
+        default=False,
+        required=False,
+        help="Construct Natural Orbitals?"
     )
 
     args = parser.parse_args()
@@ -69,3 +78,6 @@ if __name__ == "__main__":
             driven_by=args.driven_by,
         )
         print(f"N_det: {len(psi_det)}, E {E}")
+
+    if do_NOs:
+        no_occ, no_coeff = natural_orbitals(comm, lewis, n_orb, psi_coef, psi_det, n)

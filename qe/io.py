@@ -9,6 +9,7 @@ from qe.fundamental_types import (
 from collections import defaultdict
 from qe.integral_indexing_utils import compound_idx4
 import math
+from itertools import takewhile
 
 #   _____      _ _   _       _ _          _   _
 #  |_   _|    (_) | (_)     | (_)        | | (_)
@@ -16,6 +17,12 @@ import math
 #    | || '_ \| | __| |/ _` | | |_  / _` | __| |/ _ \| '_ \
 #   _| || | | | | |_| | (_| | | |/ / (_| | |_| | (_) | | | |
 #   \___/_| |_|_|\__|_|\__,_|_|_/___\__,_|\__|_|\___/|_| |_|
+
+
+# Takes in the raw lines and manipulates them if needed based on using zip or not.
+def manipulate_line(raw_line, used_zip):
+    line = raw_line.decode("utf-8") if used_zip else raw_line
+    return line.strip()
 
 
 # ~
@@ -41,6 +48,9 @@ def load_integrals(
         for i in glob.glob(fcidump_path):
             print(i)
 
+    # Add used_zip boolean so we know if we need to decode the lines.
+    used_zip = True
+
     # Use an iterator to avoid storing everything in memory twice.
     if fcidump_path.split(".")[-1] == "gz":
         import gzip
@@ -52,13 +62,15 @@ def load_integrals(
         f = bz2.open(fcidump_path)
     else:
         f = open(fcidump_path)
+        used_zip = False
 
     # Only non-zero integrals are stored in the fci_dump.
     # Hence we use a defaultdict to handle the sparsity
     n_orb = int(next(f).split()[2])
 
-    for _ in range(3):
-        next(f)
+    # Using takewhile we 'take lines from the file' while '/' has not been found
+    # Needed so we can start reading data on the integrals.
+    lines = list(takewhile(lambda line: "/" not in manipulate_line(line, used_zip), f))
 
     d_one_e_integral = defaultdict(int)
     d_two_e_integral = defaultdict(int)

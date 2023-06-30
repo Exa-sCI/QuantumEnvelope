@@ -64,7 +64,7 @@ spin_det_t combi(size_t i, size_t n, size_t k)
   if (k == 0)
     return spin_det_t(n);
   assert(i < binom(n, k));
-  auto n0 = binomial(n - 1, k - 1);
+  auto n0 = binom(n - 1, k - 1);
   if (i < n0)
     return spin_det_t(n, 1) + (combi(i, n - 1, k - 1) >> 1);
   else

@@ -256,25 +256,26 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
 }
 
 int main(int argc, char** argv) {
-  int N = std::stoi(argv[1]);
+  int Norb  = std::stoi(argv[1]);
+  int Nelec = 4;
+  int Ndet  = std::min(10, (int)binom(Norb, Nelec));
   std::vector<det_t> psi;
-  for(int i = 0; i < N; i++) {
-    for(int j = 0; j < N; j++) {
-      auto d1 = spin_det_t(N, i);
-      auto d2 = spin_det_t(N, j);
+  for(int i = 0; i < Ndet; i++) {
+    for(int j = 0; j < Ndet; j++) {
+      auto d1 = combi(i, Norb, Nelec);
+      auto d2 = combi(j, Norb, Nelec);
       psi.push_back({d1, d2});
     }
   }
 
-  std::cout << combi(0, 4, 2) << std::endl;
-  std::cout << combi(1, 4, 2) << std::endl;
-  std::cout << combi(2, 4, 2) << std::endl;
-  std::cout << combi(3, 4, 2) << std::endl;
-  std::cout << combi(4, 4, 2) << std::endl;
-  std::cout << combi(5, 4, 2) << std::endl;
+  // test combi/unchoose
+  for(int i = 0; i < binom(Norb, Nelec); i++) {
+    assert(unchoose(Norb, combi(i, Norb, Nelec)) == i);
+    std::cout << i << " " << combi(i, Norb, Nelec) << std::endl;
+  }
 
   return 0;
-  for(auto& [pair_det, phase] : category_C(N, {1, 2, 1, 3}, psi)) {
+  for(auto& [pair_det, phase] : category_C(Norb, {1, 2, 1, 3}, psi)) {
     std::cout << psi[pair_det.first] << " " << psi[pair_det.second] << std::endl;
   }
   return 0;

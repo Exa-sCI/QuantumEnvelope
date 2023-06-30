@@ -34,16 +34,14 @@ typedef std::pair<spin_unoccupancy_mask_t, spin_unoccupancy_mask_t> unoccupancy_
 typedef std::array<uint64_t, 4> eri_4idx_t;
 
 uint64_t binom(int n, int k) {
-   if (k == 0 || k == n)
-	  return 1;
-   return binom(n - 1, k - 1) + binom(n - 1, k);
+  if (k == 0 || k == n)
+    return 1;
+  return binom(n - 1, k - 1) + binom(n - 1, k);
 }
-
 
 // We don't need it.
 // But one day... Map a spin_det_t to a int
-uint64_t unchoose(int n, spin_det_t S)
-{
+uint64_t unchoose(int n, spin_det_t S) {
   auto k = S.count();
   if ((k == 0) || (k == n))
     return 0;
@@ -57,8 +55,7 @@ uint64_t unchoose(int n, spin_det_t S)
 }
 
 //// i-th lexicographical bit string of lenth n with popcount k
-spin_det_t combi(size_t i, size_t n, size_t k)
-{
+spin_det_t combi(size_t i, size_t n, size_t k) {
   if (k == 0) {
     return spin_det_t(n);
   }
@@ -75,9 +72,7 @@ spin_det_t combi(size_t i, size_t n, size_t k)
   }
 }
 
-template <typename T>
-spin_det_t vec_to_spin_det(std::vector<T> idx, size_t nbits = 0)
-{
+template <typename T> spin_det_t vec_to_spin_det(std::vector<T> idx, size_t nbits = 0) {
   if (!nbits)
     nbits = *std::max_element(idx.begin(), idx.end());
   spin_det_t res(nbits);
@@ -273,7 +268,7 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
       }
     }
   }
-  return;
+  return result;
   for (auto index : get_dets_index_statisfing_masks(psi, {occ_a, occ_b}, {unocc, unocc_c}))
     result.push_back({{index, index}, 1});
   for (auto index : get_dets_index_statisfing_masks(psi, {occ_a, occ_c}, {unocc, unocc_b}))
@@ -297,14 +292,14 @@ int main(int argc, char **argv) {
     }
   }
 
-   std::cout << combi(0, 4, 2) << std::endl;
-   std::cout << combi(1, 4, 2) << std::endl;
-   std::cout << combi(2, 4, 2) << std::endl;
-   std::cout << combi(3,4,2) << std::endl;
-   std::cout << combi(4, 4, 2) << std::endl;
-   std::cout << combi(5, 4, 2) << std::endl;
+  std::cout << combi(0, 4, 2) << std::endl;
+  std::cout << combi(1, 4, 2) << std::endl;
+  std::cout << combi(2, 4, 2) << std::endl;
+  std::cout << combi(3, 4, 2) << std::endl;
+  std::cout << combi(4, 4, 2) << std::endl;
+  std::cout << combi(5, 4, 2) << std::endl;
 
-   return 0;
+  return 0;
   for (auto &[pair_det, phase] : category_C(N, {1, 2, 1, 3}, psi)) {
     std::cout << psi[pair_det.first] << " " << psi[pair_det.second] << std::endl;
   }

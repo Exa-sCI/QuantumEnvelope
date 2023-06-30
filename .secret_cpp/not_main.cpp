@@ -221,7 +221,7 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
   const auto occ_ab = occ_a | occ_b;
   const auto occ_ac = occ_a | occ_c;
 
-  // Phase is always one
+  // C1
   std::vector<H_contribution_t> result;
   for (auto index : get_dets_index_statisfing_masks(psi, {occ_ab, occ}, {unocc_c, unocc})) {
     const auto &[alpha, beta] = psi[index];
@@ -234,10 +234,22 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
       }
     }
   }
+
+  // C2
+  for (auto index : get_dets_index_statisfing_masks(psi, {occ_ac, occ}, {unocc_b, unocc})) {
+    const auto &[alpha, beta] = psi[index];
+    const auto alpha2 = apply_single_excitation(alpha, a, c);
+    const det_t det2{alpha2, beta};
+    // Ahahahaha...
+    for (uint64_t index2 = 0; index2 < psi.size(); index2++) {
+      if (psi[index2] == det2) {
+        result.push_back({{index, index2}, 1});
+      }
+    }
+  }
+
   return result;
 
-  for (auto index : get_dets_index_statisfing_masks(psi, {occ_ac, occ}, {unocc_b, unocc}))
-    result.push_back({{index, index}, 1});
   for (auto index : get_dets_index_statisfing_masks(psi, {occ, occ_ab}, {unocc, unocc_c}))
     result.push_back({{index, index}, 1});
   for (auto index : get_dets_index_statisfing_masks(psi, {occ, occ_ac}, {unocc, unocc_b}))

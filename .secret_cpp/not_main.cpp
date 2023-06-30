@@ -58,18 +58,18 @@ uint64_t unchoose(int n, spin_det_t S)
   return binom(n - 1, k - 1) + unchoose(n - 1, S);
 }
 
-// i-th lexicographical bit string of lenth n with popcount k
-spin_det_t combi(size_t i, size_t n, size_t k)
-{
-  if (k == 0)
-    return spin_det_t(n);
-  assert(i < binom(n, k));
-  auto n0 = binom(n - 1, k - 1);
-  if (i < n0)
-    return spin_det_t(n, 1) + (combi(i, n - 1, k - 1) >> 1);
-  else
-    return combi(i - n0, n - 1, k) >> 1;
-}
+//// i-th lexicographical bit string of lenth n with popcount k
+//spin_det_t combi(size_t i, size_t n, size_t k)
+//{
+//  if (k == 0)
+//    return spin_det_t(n);
+//  assert(i < binom(n, k));
+//  auto n0 = binom(n - 1, k - 1);
+//  if (i < n0)
+//    return spin_det_t(n, 1) + (combi(i, n - 1, k - 1) >> 1);
+//  else
+//    return combi(i - n0, n - 1, k) >> 1;
+//}
 
 template <typename T>
 spin_det_t vec_to_spin_det(std::vector<T> idx, size_t nbits = 0)

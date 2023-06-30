@@ -221,7 +221,7 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
   const auto occ_ab = occ_a | occ_b;
   const auto occ_ac = occ_a | occ_c;
 
-  // C1
+  // C1a
   std::vector<H_contribution_t> result;
   for (auto index : get_dets_index_statisfing_masks(psi, {occ_ab, occ}, {unocc_c, unocc})) {
     const auto &[alpha, beta] = psi[index];
@@ -235,10 +235,10 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
     }
   }
 
-  // C2
+  // C2a
   for (auto index : get_dets_index_statisfing_masks(psi, {occ_ac, occ}, {unocc_b, unocc})) {
     const auto &[alpha, beta] = psi[index];
-    const auto alpha2 = apply_single_excitation(alpha, a, c);
+    const auto alpha2 = apply_single_excitation(alpha, c, b);
     const det_t det2{alpha2, beta};
     // Ahahahaha...
     for (uint64_t index2 = 0; index2 < psi.size(); index2++) {
@@ -248,13 +248,32 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
     }
   }
 
-  return result;
+  // C1b
+  for (auto index : get_dets_index_statisfing_masks(psi, {occ, occ_ab}, {unocc, unocc_c})) {
+    const auto &[alpha, beta] = psi[index];
+    const auto beta2 = apply_single_excitation(beta, b, c);
+    const det_t det2{alpha, beta2};
+    // Ahahahaha...
+    for (uint64_t index2 = 0; index2 < psi.size(); index2++) {
+      if (psi[index2] == det2) {
+        result.push_back({{index, index2}, 1});
+      }
+    }
+  }
 
-  for (auto index : get_dets_index_statisfing_masks(psi, {occ, occ_ab}, {unocc, unocc_c}))
-    result.push_back({{index, index}, 1});
-  for (auto index : get_dets_index_statisfing_masks(psi, {occ, occ_ac}, {unocc, unocc_b}))
-    result.push_back({{index, index}, 1});
-
+  // C2b
+  for (auto index : get_dets_index_statisfing_masks(psi, {occ, occ_ac}, {unocc, unocc_b})) {
+    const auto &[alpha, beta] = psi[index];
+    const auto beta2 = apply_single_excitation(beta, c, b);
+    const det_t det2{alpha, beta2};
+    // Ahahahaha...
+    for (uint64_t index2 = 0; index2 < psi.size(); index2++) {
+      if (psi[index2] == det2) {
+        result.push_back({{index, index2}, 1});
+      }
+    }
+  }
+  return;
   for (auto index : get_dets_index_statisfing_masks(psi, {occ_a, occ_b}, {unocc, unocc_c}))
     result.push_back({{index, index}, 1});
   for (auto index : get_dets_index_statisfing_masks(psi, {occ_a, occ_c}, {unocc, unocc_b}))

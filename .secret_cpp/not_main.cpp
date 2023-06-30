@@ -33,6 +33,55 @@ typedef std::pair<spin_unoccupancy_mask_t, spin_unoccupancy_mask_t> unoccupancy_
 
 typedef std::array<uint64_t, 4> eri_4idx_t;
 
+uint64_t binom(int n, int k)
+{
+  std::vector<uint64_t> res(k);
+  res[0] = n - k + 1;
+  for (int i = 1; i < k; i++)
+  {
+    res[i] = res[i - 1] * (n - k + 1 + i) / (i + 1);
+  }
+  return res[k - 1];
+}
+
+uint64_t unchoose(int n, spin_det_t S)
+{
+  auto k = S.count();
+  if ((k == 0) || (k == n))
+    return 0;
+  auto j = S.find_first();
+  if (k == 1)
+    return j;
+  S >>= 1;
+  if (!j)
+    return unchoose(n - 1, S);
+  return binom(n - 1, k - 1) + unchoose(n - 1, S);
+}
+
+// i-th lexicographical bit string of lenth n with popcount k
+spin_det_t combi(size_t i, size_t n, size_t k)
+{
+  if (k == 0)
+    return spin_det_t(n);
+  assert(i < binom(n, k));
+  auto n0 = binomial(n - 1, k - 1);
+  if (i < n0)
+    return spin_det_t(n, 1) + (combi(i, n - 1, k - 1) >> 1);
+  else
+    return combi(i - n0, n - 1, k) >> 1;
+}
+
+template <typename T>
+spin_det_t vec_to_spin_det(std::vector<T> idx, size_t nbits = 0)
+{
+  if (!nbits)
+    nbits = *std::max_element(idx.begin(), idx.end());
+  spin_det_t res(nbits);
+  for (auto i : idx)
+    res.set(i);
+  return res;
+}
+
 std::vector<unsigned> get_dets_index_statisfing_masks(std::vector<det_t> &psi,
                                                       occupancy_mask_t occupancy_mask,
                                                       unoccupancy_mask_t unoccupancy_mask) {

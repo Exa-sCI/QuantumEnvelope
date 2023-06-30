@@ -56,18 +56,18 @@ uint64_t unchoose(int n, spin_det_t S) {
 
 //// i-th lexicographical bit string of lenth n with popcount k
 spin_det_t combi(size_t i, size_t n, size_t k) {
-  if (k == 0) {
-    return spin_det_t(n);
-  }
+  if(k == 0) { return spin_det_t(n); }
   assert(i < binom(n, k));
   auto n0 = binom(n - 1, k - 1);
-  if (i < n0) {
-    auto c = combi(i, n - 1, k - 1) << 1;
+  if(i < n0) {
+    auto c = combi(i, n - 1, k - 1);
     c.resize(n);
-    return spin_det_t(n, 1) ^ c;
+    c <<= 1;
+    return spin_det_t(n, 1) | c;
   } else {
-    auto c = combi(i - n0, n - 1, k) << 1;
+    auto c = combi(i - n0, n - 1, k);
     c.resize(n);
+    c <<= 1;
     return c;
   }
 }

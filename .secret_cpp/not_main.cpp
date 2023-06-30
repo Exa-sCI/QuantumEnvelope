@@ -33,17 +33,15 @@ typedef std::pair<spin_unoccupancy_mask_t, spin_unoccupancy_mask_t> unoccupancy_
 
 typedef std::array<uint64_t, 4> eri_4idx_t;
 
-uint64_t binom(int n, int k)
-{
-  std::vector<uint64_t> res(k);
-  res[0] = n - k + 1;
-  for (int i = 1; i < k; i++)
-  {
-    res[i] = res[i - 1] * (n - k + 1 + i) / (i + 1);
-  }
-  return res[k - 1];
+uint64_t binom(int n, int k) {
+   if (k == 0 || k == n)
+	  return 1;
+   return binom(n - 1, k - 1) + binom(n - 1, k);
 }
 
+
+// We don't need it.
+// But one day... Map a spin_det_t to a int
 uint64_t unchoose(int n, spin_det_t S)
 {
   auto k = S.count();
@@ -59,17 +57,23 @@ uint64_t unchoose(int n, spin_det_t S)
 }
 
 //// i-th lexicographical bit string of lenth n with popcount k
-//spin_det_t combi(size_t i, size_t n, size_t k)
-//{
-//  if (k == 0)
-//    return spin_det_t(n);
-//  assert(i < binom(n, k));
-//  auto n0 = binom(n - 1, k - 1);
-//  if (i < n0)
-//    return spin_det_t(n, 1) + (combi(i, n - 1, k - 1) >> 1);
-//  else
-//    return combi(i - n0, n - 1, k) >> 1;
-//}
+spin_det_t combi(size_t i, size_t n, size_t k)
+{
+  if (k == 0) {
+    return spin_det_t(n);
+  }
+  assert(i < binom(n, k));
+  auto n0 = binom(n - 1, k - 1);
+  if (i < n0) {
+    auto c = combi(i, n - 1, k - 1) << 1;
+    c.resize(n);
+    return spin_det_t(n, 1) ^ c;
+  } else {
+    auto c = combi(i - n0, n - 1, k) << 1;
+    c.resize(n);
+    return c;
+  }
+}
 
 template <typename T>
 spin_det_t vec_to_spin_det(std::vector<T> idx, size_t nbits = 0)
@@ -262,6 +266,14 @@ int main(int argc, char **argv) {
     }
   }
 
+   std::cout << combi(0, 4, 2) << std::endl;
+   std::cout << combi(1, 4, 2) << std::endl;
+   std::cout << combi(2, 4, 2) << std::endl;
+   std::cout << combi(3,4,2) << std::endl;
+   std::cout << combi(4, 4, 2) << std::endl;
+   std::cout << combi(5, 4, 2) << std::endl;
+
+   return 0;
   for (auto &[pair_det, phase] : category_C(N, {1, 2, 1, 3}, psi)) {
     std::cout << psi[pair_det.first] << " " << psi[pair_det.second] << std::endl;
   }

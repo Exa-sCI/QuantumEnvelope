@@ -9,14 +9,17 @@
 
 typedef sul::dynamic_bitset<> spin_det_t;
 
-// get phasemask
-spin_det_t get_pm(spin_det_t p);
-
 template<>
 struct std::hash<spin_det_t> {
   std::size_t operator()(spin_det_t const& s) const noexcept {
     return std::hash<std::string>()(s.to_string());
   }
+};
+
+enum spin_type_e {
+  ALPHA = 0,
+  BETA  = 1,
+  SPIN_MAX,
 };
 
 typedef std::array<spin_det_t, 2> det_t;
@@ -40,6 +43,29 @@ typedef std::array<spin_unoccupancy_mask_t, 2> unoccupancy_mask_t;
 
 typedef std::array<uint64_t, 4> eri_4idx_t;
 
+
+spin_det_t get_phase_mask(spin_det_t p) {
+  size_t i = 0;
+  while(true) {
+    spin_det_t q = (p << (1 << i++));
+    if(!q.any()) return p;
+    p ^= q;
+  }
+  /*
+  for(size_t i = 0; (p << (1 << i)).any(); i++)
+     { p ^= (p << (1 << i)); }
+  return p;
+*/
+}
+
+int get_phase_single(spin_det_t d, size_t h, size_t p) {
+  auto pm     = get_phase_mask(d);
+  bool parity = (pm[h] ^ pm[p]);
+  //auto tmp = std::pow(-1, parity);
+  //return (p> h) ? tmp : -tmp;
+  return (parity ^ (p > h)) ? 1 : -1;
+}
+
 uint64_t binom(int n, int k) {
   if(k == 0 || k == n) return 1;
   return binom(n - 1, k - 1) + binom(n - 1, k);
@@ -60,21 +86,21 @@ uint64_t unchoose(int n, spin_det_t S) {
 //// i-th lexicographical bit string of lenth n with popcount k
 spin_det_t combi(size_t i, size_t n, size_t k, size_t N = 0) {
   if(N == 0) N = n;
-  if(k == 0) { return spin_det_t(N); }
+  if(k == 0) return spin_det_t(N);
+
   assert(i < binom(n, k));
   auto n0 = binom(n - 1, k - 1);
   if(i < n0) {
     return spin_det_t(N, 1) | (combi(i, n - 1, k - 1, N) << 1);
   } else {
-    return (combi(i - n0, n - 1, k, N) << 1);
+    return combi(i - n0, n - 1, k, N) << 1;
   }
 }
 
 template<typename T>
-spin_det_t vec_to_spin_det(std::vector<T> idx, size_t nbits = 0) {
-  if(!nbits) nbits = *std::max_element(idx.begin(), idx.end());
-  spin_det_t res(nbits);
-  for(auto i : idx) res.set(i);
+spin_det_t vec_to_spin_det(std::vector<T> idx, size_t n_orb) {
+  spin_det_t res(n_orb);
+  for(auto i : idx) res[i] = 1;
   return res;
 }
 
@@ -90,7 +116,7 @@ std::vector<unsigned> get_dets_index_statisfing_masks(std::vector<det_t>& psi,
     bool cond_occupancy = alpha_omask.is_subset_of(det_alpha) && beta_omask.is_subset_of(det_beta);
     bool cond_unoccupancy =
         alpha_umask.is_subset_of(~det_alpha) && beta_umask.is_subset_of(~det_beta);
-    if(cond_occupancy && cond_unoccupancy) { matching_indexes.push_back(i); }
+    if(cond_occupancy && cond_unoccupancy) matching_indexes.push_back(i);
   }
   return matching_indexes;
 }
@@ -104,7 +130,8 @@ spin_det_t apply_single_excitation(spin_det_t s, uint64_t hole, uint64_t particl
   s2[particle] = 1;
   return s2;
 }
-det_t apply_single_spin_excitation(det_t s, size_t spin, uint64_t hole, uint64_t particle) {
+
+det_t apply_single_spin_excitation(det_t s, spin_type_e spin, uint64_t hole, uint64_t particle) {
   auto opp_spin = (spin + 1) % 2;
 
   assert(s[spin][hole] == 1);
@@ -114,12 +141,6 @@ det_t apply_single_spin_excitation(det_t s, size_t spin, uint64_t hole, uint64_t
   s2[spin][hole]     = 0;
   s2[spin][particle] = 1;
   return s2;
-}
-
-double get_phase_single(spin_det_t d, size_t p, size_t h) {
-  auto pm     = get_pm(d);
-  auto parity = pm[h] + pm[p] + (int)(h > p);
-  return std::pow(-1, parity);
 }
 
 enum integrals_categorie_e { IC_A, IC_B, IC_C, IC_D, IC_E, IC_F, IC_G };
@@ -189,125 +210,8 @@ std::vector<H_contribution_t> category_B(uint64_t N_orb, eri_4idx_t idx, std::ve
   return result;
 }
 
-std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi) {
-  const auto& [i, j, k, l] = idx;
-
-  uint64_t a, b, c;
-
-  if(i == k) {
-    a = i;
-    b = j;
-    c = l;
-  } else {
-    a = j;
-    b = i;
-    c = k;
-  }
-
-  const auto occ   = spin_occupancy_mask_t(N_orb);
-  auto occ_a       = spin_occupancy_mask_t(N_orb);
-  auto occ_b       = spin_occupancy_mask_t(N_orb);
-  auto occ_c       = spin_occupancy_mask_t(N_orb);
-  const auto unocc = spin_unoccupancy_mask_t(N_orb);
-  auto unocc_b     = spin_unoccupancy_mask_t(N_orb);
-  auto unocc_c     = spin_unoccupancy_mask_t(N_orb);
-  occ_a[a]         = 1;
-  occ_b[b]         = 1;
-  occ_c[c]         = 1;
-  unocc_b[b]       = 1;
-  unocc_c[c]       = 1;
-
-  const auto occ_ab = occ_a | occ_b;
-  const auto occ_ac = occ_a | occ_c;
-
-  // aα,bα -> aα,cα
-  std::vector<H_contribution_t> result;
-  for(auto index : get_dets_index_statisfing_masks(psi, {occ_ab, occ}, {unocc_c, unocc})) {
-    const auto& [alpha, beta] = psi[index];
-    const auto alpha2         = apply_single_excitation(alpha, b, c);
-    const det_t det2{alpha2, beta};
-    for(uint64_t index2 = 0; index2 < psi.size(); index2++) {
-      if(psi[index2] == det2) { result.push_back({{index, index2}, 1}); }
-    }
-  }
-
-  // aα,bβ -> aα,cβ
-  for(auto index : get_dets_index_statisfing_masks(psi, {occ_a, occ_b}, {unocc, unocc_c})) {
-    const auto& [alpha, beta] = psi[index];
-    const auto beta2          = apply_single_excitation(beta, b, c);
-    const det_t det2{alpha, beta2};
-    for(uint64_t index2 = 0; index2 < psi.size(); index2++) {
-      if(psi[index2] == det2) { result.push_back({{index, index2}, 2}); }
-    }
-  }
-
-  // aβ,bα -> aβ,cα
-  for(auto index : get_dets_index_statisfing_masks(psi, {occ_b, occ_a}, {unocc_c, unocc})) {
-    const auto& [alpha, beta] = psi[index];
-    const auto alpha2         = apply_single_excitation(alpha, b, c);
-    const det_t det2{alpha2, beta};
-    for(uint64_t index2 = 0; index2 < psi.size(); index2++) {
-      if(psi[index2] == det2) { result.push_back({{index, index2}, 3}); }
-    }
-  }
-  // aβ,bβ -> aβ,cβ
-  for(auto index : get_dets_index_statisfing_masks(psi, {occ, occ_ab}, {unocc, unocc_c})) {
-    const auto& [alpha, beta] = psi[index];
-    const auto beta2          = apply_single_excitation(beta, b, c);
-    const det_t det2{alpha, beta2};
-    for(uint64_t index2 = 0; index2 < psi.size(); index2++) {
-      if(psi[index2] == det2) { result.push_back({{index, index2}, 4}); }
-    }
-  }
-
-  return result;
-  // rest not yet implemented in C_ijil function
-
-  // aα,cα -> aα,bα
-  for(auto index : get_dets_index_statisfing_masks(psi, {occ_ac, occ}, {unocc_b, unocc})) {
-    const auto& [alpha, beta] = psi[index];
-    const auto alpha2         = apply_single_excitation(alpha, c, b);
-    const det_t det2{alpha2, beta};
-    for(uint64_t index2 = 0; index2 < psi.size(); index2++) {
-      if(psi[index2] == det2) { result.push_back({{index, index2}, 5}); }
-    }
-  }
-
-  // aα,cβ -> aα,bβ
-  for(auto index : get_dets_index_statisfing_masks(psi, {occ_a, occ_c}, {unocc, unocc_b})) {
-    const auto& [alpha, beta] = psi[index];
-    const auto beta2          = apply_single_excitation(beta, c, b);
-    const det_t det2{alpha, beta2};
-    for(uint64_t index2 = 0; index2 < psi.size(); index2++) {
-      if(psi[index2] == det2) { result.push_back({{index, index2}, 6}); }
-    }
-  }
-
-  // aβ,cα -> aβ,bα
-  for(auto index : get_dets_index_statisfing_masks(psi, {occ_c, occ_a}, {unocc_b, unocc})) {
-    const auto& [alpha, beta] = psi[index];
-    const auto alpha2         = apply_single_excitation(alpha, c, b);
-    const det_t det2{alpha2, beta};
-    for(uint64_t index2 = 0; index2 < psi.size(); index2++) {
-      if(psi[index2] == det2) { result.push_back({{index, index2}, 7}); }
-    }
-  }
-  // aβ,cβ -> aβ,bβ
-  for(auto index : get_dets_index_statisfing_masks(psi, {occ, occ_ac}, {unocc, unocc_b})) {
-    const auto& [alpha, beta] = psi[index];
-    const auto beta2          = apply_single_excitation(beta, c, b);
-    const det_t det2{alpha, beta2};
-    for(uint64_t index2 = 0; index2 < psi.size(); index2++) {
-      if(psi[index2] == det2) { result.push_back({{index, index2}, 8}); }
-    }
-  }
-
-  return result;
-}
-
-
-std::vector<H_contribution_t> category_C_ijil(uint64_t N_orb, eri_4idx_t idx,
-                                              std::vector<det_t>& psi) {
+void category_C_ijil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
+                     std::vector<H_contribution_t>& result) {
   const auto& [i, j, k, l] = idx;
   assert(i == k);
   uint64_t a, b, c;
@@ -315,11 +219,8 @@ std::vector<H_contribution_t> category_C_ijil(uint64_t N_orb, eri_4idx_t idx,
   b = j;
   c = l;
 
-  std::vector<H_contribution_t> result;
-  int tmpphase = 1;
-
-  for(size_t spin_a = 0; spin_a < 2; spin_a++) {
-    for(size_t spin_bc = 0; spin_bc < 2; spin_bc++) {
+  for(size_t spin_a = 0; spin_a < SPIN_MAX; spin_a++) {
+    for(size_t spin_bc = 0; spin_bc < SPIN_MAX; spin_bc++) {
       auto occ_alpha           = spin_occupancy_mask_t(N_orb);
       auto occ_beta            = spin_occupancy_mask_t(N_orb);
       auto unocc_alpha         = spin_unoccupancy_mask_t(N_orb);
@@ -332,27 +233,40 @@ std::vector<H_contribution_t> category_C_ijil(uint64_t N_orb, eri_4idx_t idx,
       unocc[spin_bc][c] = 1;
       for(auto index0 : get_dets_index_statisfing_masks(psi, occ, unocc)) {
         const auto det0 = psi[index0];
-        const auto det1 = apply_single_spin_excitation(det0, spin_bc, b, c);
+        const auto det1 =
+            apply_single_spin_excitation(det0, static_cast<spin_type_e>(spin_bc), b, c);
 
         for(uint64_t index1 = 0; index1 < psi.size(); index1++) {
           if(psi[index1] == det1) {
-            result.push_back(
-                {{index0, index1}, tmpphase}); //get_phase_single(det0[spin_bc], b, c)});
+            result.push_back({{index0, index1}, get_phase_single(det0[spin_bc], b, c)});
           }
         }
       }
-      tmpphase += 1;
     }
   }
-
-  return result;
 }
 
+std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi) {
+  std::vector<H_contribution_t> result;
 
-spin_det_t get_pm(spin_det_t p) {
-  auto n = p.size();
-  for(size_t i = 0; (p << (1 << (i))).any(); i++) { p ^= (p << (1 << (i))); }
-  return p;
+  const auto& [i, j, k, l] = idx;
+  uint64_t a, b, c;
+
+  if(i == k) {
+    a = i;
+    b = j;
+    c = l;
+  } else {
+    a = j;
+    b = i;
+    c = k;
+  }
+  const eri_4idx_t idx_bc = {a, b, a, c};
+  const eri_4idx_t idx_cb = {a, c, a, b};
+
+  category_C_ijil(N_orb, idx_bc, psi, result);
+  category_C_ijil(N_orb, idx_cb, psi, result);
+  return result;
 }
 
 int main(int argc, char** argv) {
@@ -367,24 +281,29 @@ int main(int argc, char** argv) {
       psi.push_back({d1, d2});
     }
   }
-
+  /*
   // test combi/unchoose
   for(int i = 0; i < binom(Norb, Nelec); i++) {
     assert(unchoose(Norb, combi(i, Norb, Nelec)) == i);
     std::cout << i << " " << combi(i, Norb, Nelec) << std::endl;
   }
-  // return 0;
-
-  auto res1 = category_C(Norb, {1, 2, 1, 3}, psi);
-  auto res2 = category_C_ijil(Norb, {1, 2, 1, 3}, psi);
-
-  assert(res1.size() == res2.size());
-
+*/
+  /*
+  auto res1 = category_C(Norb, {1, 2, 1, 4}, psi);
   for(size_t i = 0; i < res1.size(); i++) {
     auto& [pd1, ph1] = res1[i];
-    assert(res1[i] == res2[i]);
-    std::cout << i << "\t: " << psi[pd1.first] << " " << psi[pd1.second] << "\t" << ph1
+    std::cout << i << "\t: " << " " << psi[pd1.first] << "->"  << psi[pd1.second] << "\t" << ph1
               << std::endl;
   }
   return 0;
+*/
+
+  spin_det_t d1{"11000"}; // 4->2
+  spin_det_t d2{"10001"}; // 4->2
+  spin_det_t d3{"01100"}; // 2->4
+  spin_det_t d4{"00101"}; // 2->4
+  std::cout << "d" << d1 << " " << get_phase_single(d1, 4, 2) << std::endl;
+  std::cout << "d" << d1 << " " << get_phase_single(d2, 4, 2) << std::endl;
+  std::cout << "d" << d1 << " " << get_phase_single(d3, 2, 4) << std::endl;
+  std::cout << "d" << d1 << " " << get_phase_single(d4, 2, 4) << std::endl;
 }

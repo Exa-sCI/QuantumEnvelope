@@ -255,14 +255,20 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
   return result;
 }
 
+spin_det_t get_pm(spin_det_t p) {
+  auto n = p.size();
+  for(size_t i = 0; (p << (1 << (i))).any(); i++) { p ^= (p << (1 << (i))); }
+  return p;
+}
+
 int main(int argc, char** argv) {
   int Norb  = std::stoi(argv[1]);
   int Nelec = 4;
   int Ndet  = std::min(10, (int)binom(Norb, Nelec));
   std::vector<det_t> psi;
   for(int i = 0; i < Ndet; i++) {
+    auto d1 = combi(i, Norb, Nelec);
     for(int j = 0; j < Ndet; j++) {
-      auto d1 = combi(i, Norb, Nelec);
       auto d2 = combi(j, Norb, Nelec);
       psi.push_back({d1, d2});
     }

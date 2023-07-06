@@ -59,12 +59,21 @@ spin_det_t get_phase_mask(spin_det_t p) {
 */
 }
 
-int get_phase_single(spin_det_t d, size_t h, size_t p) {
+int get_phase_single_slow(spin_det_t d, size_t h, size_t p) {
   auto pm     = get_phase_mask(d);
   bool parity = (pm[h] ^ pm[p]);
   //auto tmp = std::pow(-1, parity);
   //return (p> h) ? tmp : -tmp;
   return (parity ^ (p > h)) ? 1 : -1;
+}
+
+int get_phase_single(spin_det_t d, size_t h, size_t p) {
+  const auto& [i, j] = std::minmax(h, p);
+  // set bits in range [i+1,j-1] to 1 (rest are 0)
+  spin_det_t hpmask(d.size(), ((1 << (j - i - 1)) - 1) << (i + 1));
+  hpmask &= d;
+  bool parity = hpmask.count() % 2;
+  return parity ? -1 : 1;
 }
 
 uint64_t binom(int n, int k) {
@@ -367,6 +376,20 @@ int main(int argc, char** argv) {
   }
   return 0;
 */
+
+  spin_det_t d("1100111110010100101010");
+  for(int p = 0; p < d.size(); p++) {
+    for(int h = 0; h < d.size(); h++) {
+      if(h != p) {
+        if(d.test(h) & !d.test(p)) {
+          auto ph0 = get_phase_single_slow(d, h, p);
+          auto ph1 = get_phase_single(d, h, p);
+          assert(ph0 == ph1);
+        }
+      }
+    }
+  }
+  return 0;
 
   spin_det_t d1{"11000"}; // 4->2
   spin_det_t d2{"10001"}; // 4->2

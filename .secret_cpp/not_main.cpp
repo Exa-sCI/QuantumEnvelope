@@ -47,47 +47,7 @@ typedef std::array<spin_unoccupancy_mask_t, 2> unoccupancy_mask_t;
 typedef std::array<uint64_t, 4> eri_4idx_t;
 
 
-spin_det_t get_phase_mask(spin_det_t p) {
-  size_t i = 0;
-  while(true) {
-    spin_det_t q = (p << (1 << i++));
-    if(!q.any()) return p;
-    p ^= q;
-  }
-  /*
-  for(size_t i = 0; (p << (1 << i)).any(); i++)
-     { p ^= (p << (1 << i)); }
-  return p;
-*/
-}
-
-int get_phase_single_slow(spin_det_t d, size_t h, size_t p) {
-  auto pm     = get_phase_mask(d);
-  bool parity = (pm[h] ^ pm[p]);
-  //auto tmp = std::pow(-1, parity);
-  //return (p> h) ? tmp : -tmp;
-  return (parity ^ (p > h)) ? 1 : -1;
-}
-
-int get_phase_single(spin_det_t d, size_t h, size_t p) {
-  const auto& [i, j] = std::minmax(h, p);
-  // set bits in range [i+1,j-1] to 1 (rest are 0)
-  // equivalent to ((1 << (j - i - 1)) - 1) << (i + 1)
-  spin_det_t hpmask(d.size(), 0);
-  hpmask.set(i + 1, j - i - 1, 1);
-  hpmask &= d;
-  bool parity = hpmask.count() % 2;
-  return parity ? -1 : 1;
-}
-
-
-TEST_CASE("testing get_phase_single") {
-    CHECK(get_phase_single( spin_det_t{"11000"} , 4, 2) == -1);
-    CHECK(get_phase_single( spin_det_t{"10001"} , 4, 2) ==  1);
-    CHECK(get_phase_single( spin_det_t{"01100"} , 2, 4) == -1);
-    CHECK(get_phase_single( spin_det_t{"00100"} , 2, 4) ==  1);
-}
-
+// Utils
 uint64_t binom(int n, int k) {
   if(k == 0 || k == n) return 1;
   return binom(n - 1, k - 1) + binom(n - 1, k);
@@ -126,6 +86,46 @@ spin_det_t vec_to_spin_det(std::vector<T> idx, size_t n_orb) {
   return res;
 }
 
+
+// Phase
+
+spin_det_t get_phase_mask(spin_det_t p) {
+  size_t i = 0;
+  while(true) {
+    spin_det_t q = (p << (1 << i++));
+    if(!q.any()) return p;
+    p ^= q;
+  }
+  /*
+  for(size_t i = 0; (p << (1 << i)).any(); i++)
+     { p ^= (p << (1 << i)); }
+  return p;
+*/
+}
+
+int get_phase_single(spin_det_t d, size_t h, size_t p) {
+  //auto pm     = get_phase_mask(d);
+  //bool parity = (pm[h] ^ pm[p]);
+  //auto tmp = std::pow(-1, parity);
+  //return (p> h) ? tmp : -tmp;
+
+  const auto& [i, j] = std::minmax(h, p);
+  spin_det_t hpmask(d.size());
+  hpmask.set(i + 1, j - i - 1, 1);
+  bool parity = (hpmask & d).count() % 2;
+  return parity ? -1 : 1;
+}
+
+TEST_CASE("testing get_phase_single") {
+  CHECK(get_phase_single(spin_det_t{"11000"}, 4, 2) == -1);
+  CHECK(get_phase_single(spin_det_t{"10001"}, 4, 2) == 1);
+  CHECK(get_phase_single(spin_det_t{"01100"}, 2, 4) == -1);
+  CHECK(get_phase_single(spin_det_t{"00100"}, 2, 4) == 1);
+}
+
+
+// Integral Driven
+
 std::vector<unsigned> get_dets_index_statisfing_masks(std::vector<det_t>& psi,
                                                       occupancy_mask_t occupancy_mask,
                                                       unoccupancy_mask_t unoccupancy_mask) {
@@ -143,19 +143,41 @@ std::vector<unsigned> get_dets_index_statisfing_masks(std::vector<det_t>& psi,
   return matching_indexes;
 }
 
-spin_det_t apply_single_excitation(spin_det_t s, uint64_t hole, uint64_t particle) {
-  assert(s[hole] == 1);
-  assert(s[particle] == 0);
+TEST_CASE("testing get_dets_index_statisfing_masks") {
+  std::vector<det_t> psi{
+      {spin_det_t{"11000"}, spin_det_t{"11000"}},
+      {spin_det_t{"11000"}, spin_det_t{"11010"}},
+  };
 
-  auto s2      = spin_det_t{s};
-  s2[hole]     = 0;
-  s2[particle] = 1;
-  return s2;
+  SUBCASE("") {
+    occupancy_mask_t occupancy_mask{spin_occupancy_mask_t{"10000"}, spin_occupancy_mask_t{"11000"}};
+    unoccupancy_mask_t unoccupancy_mask{spin_unoccupancy_mask_t{"00010"},
+                                        spin_unoccupancy_mask_t{"00100"}};
+
+    CHECK(get_dets_index_statisfing_masks(psi, occupancy_mask, unoccupancy_mask) ==
+          std::vector<unsigned>{0, 1});
+  }
+
+  SUBCASE("") {
+    occupancy_mask_t occupancy_mask{spin_occupancy_mask_t{"10000"}, spin_occupancy_mask_t{"11000"}};
+    unoccupancy_mask_t unoccupancy_mask{spin_unoccupancy_mask_t{"00010"},
+                                        spin_unoccupancy_mask_t{"00010"}};
+
+    CHECK(get_dets_index_statisfing_masks(psi, occupancy_mask, unoccupancy_mask) ==
+          std::vector<unsigned>{0});
+  }
+
+  SUBCASE("") {
+    occupancy_mask_t occupancy_mask{spin_occupancy_mask_t{"11000"}, spin_occupancy_mask_t{"10010"}};
+    unoccupancy_mask_t unoccupancy_mask{spin_unoccupancy_mask_t{"00010"},
+                                        spin_unoccupancy_mask_t{"00100"}};
+
+    CHECK(get_dets_index_statisfing_masks(psi, occupancy_mask, unoccupancy_mask) ==
+          std::vector<unsigned>{1});
+  }
 }
 
 det_t apply_single_spin_excitation(det_t s, int spin, uint64_t hole, uint64_t particle) {
-  auto opp_spin = (spin + 1) % 2;
-
   assert(s[spin][hole] == 1);
   assert(s[spin][particle] == 0);
 
@@ -163,6 +185,14 @@ det_t apply_single_spin_excitation(det_t s, int spin, uint64_t hole, uint64_t pa
   s2[spin][hole]     = 0;
   s2[spin][particle] = 1;
   return s2;
+}
+
+TEST_CASE("testing apply_single_spin_excitation") {
+  det_t s{spin_det_t{"11000"}, spin_det_t{"00001"}};
+  CHECK(apply_single_spin_excitation(s, 0, 4, 1) ==
+        det_t{spin_det_t{"01010"}, spin_det_t{"00001"}});
+  CHECK(apply_single_spin_excitation(s, 1, 0, 1) ==
+        det_t{spin_det_t{"11000"}, spin_det_t{"00010"}});
 }
 
 enum integrals_categorie_e { IC_A, IC_B, IC_C, IC_D, IC_E, IC_F, IC_G };

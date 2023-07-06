@@ -16,11 +16,12 @@ struct std::hash<spin_det_t> {
   }
 };
 
-enum spin_type_e {
-  ALPHA = 0,
-  BETA  = 1,
-  SPIN_MAX,
-};
+#define N_SPIN_SPECIES 2
+// enum spin_type_e {
+//   ALPHA = 0,
+//   BETA  = 1,
+//   SPIN_MAX,
+// };
 
 typedef std::array<spin_det_t, 2> det_t;
 template<>
@@ -131,7 +132,7 @@ spin_det_t apply_single_excitation(spin_det_t s, uint64_t hole, uint64_t particl
   return s2;
 }
 
-det_t apply_single_spin_excitation(det_t s, spin_type_e spin, uint64_t hole, uint64_t particle) {
+det_t apply_single_spin_excitation(det_t s, int spin, uint64_t hole, uint64_t particle) {
   auto opp_spin = (spin + 1) % 2;
 
   assert(s[spin][hole] == 1);
@@ -219,8 +220,8 @@ void category_C_ijil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
   b = j;
   c = l;
 
-  for(size_t spin_a = 0; spin_a < SPIN_MAX; spin_a++) {
-    for(size_t spin_bc = 0; spin_bc < SPIN_MAX; spin_bc++) {
+  for(size_t spin_a = 0; spin_a < N_SPIN_SPECIES; spin_a++) {
+    for(size_t spin_bc = 0; spin_bc < N_SPIN_SPECIES; spin_bc++) {
       auto occ_alpha           = spin_occupancy_mask_t(N_orb);
       auto occ_beta            = spin_occupancy_mask_t(N_orb);
       auto unocc_alpha         = spin_unoccupancy_mask_t(N_orb);
@@ -233,8 +234,7 @@ void category_C_ijil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
       unocc[spin_bc][c] = 1;
       for(auto index0 : get_dets_index_statisfing_masks(psi, occ, unocc)) {
         const auto det0 = psi[index0];
-        const auto det1 =
-            apply_single_spin_excitation(det0, static_cast<spin_type_e>(spin_bc), b, c);
+        const auto det1 = apply_single_spin_excitation(det0, spin_bc, b, c);
 
         for(uint64_t index1 = 0; index1 < psi.size(); index1++) {
           if(psi[index1] == det1) {
@@ -269,10 +269,78 @@ std::vector<H_contribution_t> category_C(uint64_t N_orb, eri_4idx_t idx, std::ve
   return result;
 }
 
+void category_D_iiil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
+                     std::vector<H_contribution_t>& result) {
+  const auto& [i, j, k, l] = idx;
+  assert(i == k);
+  assert(i == j);
+  uint64_t a, b;
+  a = i;
+  b = l;
+
+  std::array<uint64_t, 2> ph{a, b};
+
+  // aβ aα -> aβ bα
+  // aβ aα <- aβ bα
+  // aα aβ -> aα bβ
+  // aα aβ <- aα bβ
+  for(size_t spin_ph = 0; spin_ph < N_SPIN_SPECIES; spin_ph++) {
+    size_t spin_aa = !spin_ph;
+    for(size_t exc_fwd = 0; exc_fwd < 2; exc_fwd++) {
+      size_t exc_rev = !exc_fwd;
+      auto p         = ph[exc_fwd];
+      auto h         = ph[exc_rev];
+
+      auto occ_alpha           = spin_occupancy_mask_t(N_orb);
+      auto occ_beta            = spin_occupancy_mask_t(N_orb);
+      auto unocc_alpha         = spin_unoccupancy_mask_t(N_orb);
+      auto unocc_beta          = spin_unoccupancy_mask_t(N_orb);
+      occupancy_mask_t occ     = {occ_alpha, occ_beta};
+      unoccupancy_mask_t unocc = {unocc_alpha, unocc_beta};
+
+      occ[spin_ph][h]   = 1;
+      occ[spin_aa][a]   = 1;
+      unocc[spin_ph][p] = 1;
+      for(auto index0 : get_dets_index_statisfing_masks(psi, occ, unocc)) {
+        const auto det0 = psi[index0];
+        const auto det1 = apply_single_spin_excitation(det0, spin_ph, h, p);
+
+        for(uint64_t index1 = 0; index1 < psi.size(); index1++) {
+          if(psi[index1] == det1) {
+            result.push_back({{index0, index1}, get_phase_single(det0[spin_ph], h, p)});
+          }
+        }
+      }
+    }
+  }
+}
+
+
+std::vector<H_contribution_t> category_D(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi) {
+  std::vector<H_contribution_t> result;
+
+  const auto& [i, j, k, l] = idx;
+  uint64_t a, b;
+
+  if(i == j) {
+    // (ii|il)
+    a = i;
+    b = l;
+  } else {
+    // (il|ll)
+    a = l;
+    b = i;
+  }
+
+  category_D_iiil(N_orb, {a, a, a, b}, psi, result);
+  return result;
+}
+
+
 int main(int argc, char** argv) {
   int Norb  = std::stoi(argv[1]);
   int Nelec = 4;
-  int Ndet  = std::min(10, (int)binom(Norb, Nelec));
+  int Ndet  = std::min(100, (int)binom(Norb, Nelec));
   std::vector<det_t> psi;
   for(int i = 0; i < Ndet; i++) {
     auto d1 = combi(i, Norb, Nelec);
@@ -289,7 +357,9 @@ int main(int argc, char** argv) {
   }
 */
   /*
-  auto res1 = category_C(Norb, {1, 2, 1, 4}, psi);
+  // auto res1 = category_C(Norb, {1, 2, 1, 4}, psi);
+  // auto res1 = category_D(Norb, {1, 1, 1, 3}, psi);
+  auto res1 = category_D(Norb, {1, 3, 3, 3}, psi);
   for(size_t i = 0; i < res1.size(); i++) {
     auto& [pd1, ph1] = res1[i];
     std::cout << i << "\t: " << " " << psi[pd1.first] << "->"  << psi[pd1.second] << "\t" << ph1

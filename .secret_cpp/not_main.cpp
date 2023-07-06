@@ -70,7 +70,9 @@ int get_phase_single_slow(spin_det_t d, size_t h, size_t p) {
 int get_phase_single(spin_det_t d, size_t h, size_t p) {
   const auto& [i, j] = std::minmax(h, p);
   // set bits in range [i+1,j-1] to 1 (rest are 0)
-  spin_det_t hpmask(d.size(), ((1 << (j - i - 1)) - 1) << (i + 1));
+  // equivalent to ((1 << (j - i - 1)) - 1) << (i + 1)
+  spin_det_t hpmask(d.size(), 0);
+  hpmask.set(i + 1, j - i - 1, 1);
   hpmask &= d;
   bool parity = hpmask.count() % 2;
   return parity ? -1 : 1;

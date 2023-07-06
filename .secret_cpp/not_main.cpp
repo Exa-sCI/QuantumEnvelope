@@ -6,6 +6,8 @@
 #include <unordered_map>
 #include <vector>
 #include <array>
+#define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
+#include <doctest/doctest.h>
 
 typedef sul::dynamic_bitset<> spin_det_t;
 
@@ -20,7 +22,7 @@ struct std::hash<spin_det_t> {
 // enum spin_type_e {
 //   ALPHA = 0,
 //   BETA  = 1,
-//   SPIN_MAX,
+//   N_SPIN_SPECIES,
 // };
 
 typedef std::array<spin_det_t, 2> det_t;
@@ -76,6 +78,14 @@ int get_phase_single(spin_det_t d, size_t h, size_t p) {
   hpmask &= d;
   bool parity = hpmask.count() % 2;
   return parity ? -1 : 1;
+}
+
+
+TEST_CASE("testing get_phase_single") {
+    CHECK(get_phase_single( spin_det_t{"11000"} , 4, 2) == -1);
+    CHECK(get_phase_single( spin_det_t{"10001"} , 4, 2) ==  1);
+    CHECK(get_phase_single( spin_det_t{"01100"} , 2, 4) == -1);
+    CHECK(get_phase_single( spin_det_t{"00100"} , 2, 4) ==  1);
 }
 
 uint64_t binom(int n, int k) {
@@ -347,7 +357,9 @@ std::vector<H_contribution_t> category_D(uint64_t N_orb, eri_4idx_t idx, std::ve
   return result;
 }
 
+// No more main, just test now
 
+/*
 int main(int argc, char** argv) {
   int Norb  = std::stoi(argv[1]);
   int Nelec = 4;
@@ -360,14 +372,11 @@ int main(int argc, char** argv) {
       psi.push_back({d1, d2});
     }
   }
-  /*
   // test combi/unchoose
   for(int i = 0; i < binom(Norb, Nelec); i++) {
     assert(unchoose(Norb, combi(i, Norb, Nelec)) == i);
     std::cout << i << " " << combi(i, Norb, Nelec) << std::endl;
   }
-*/
-  /*
   // auto res1 = category_C(Norb, {1, 2, 1, 4}, psi);
   // auto res1 = category_D(Norb, {1, 1, 1, 3}, psi);
   auto res1 = category_D(Norb, {1, 3, 3, 3}, psi);
@@ -377,8 +386,6 @@ int main(int argc, char** argv) {
               << std::endl;
   }
   return 0;
-*/
-
   spin_det_t d("1100111110010100101010");
   for(int p = 0; p < d.size(); p++) {
     for(int h = 0; h < d.size(); h++) {
@@ -402,3 +409,4 @@ int main(int argc, char** argv) {
   std::cout << "d" << d1 << " " << get_phase_single(d3, 2, 4) << std::endl;
   std::cout << "d" << d1 << " " << get_phase_single(d4, 2, 4) << std::endl;
 }
+*/

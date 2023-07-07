@@ -27,6 +27,9 @@ One_electron_integral = Dict[Tuple[OrbitalIdx, OrbitalIdx], float]
 Spin_determinant_tuple = Tuple[OrbitalIdx, ...]
 Spin_determinant_bitstring = int
 
+# TODO: Will remove this later... But fixes build for now
+Spin_determinant = Tuple[OrbitalIdx, ...]
+
 
 class Determinant(NamedTuple):
     """Slater determinant: Product of 2 determinants.

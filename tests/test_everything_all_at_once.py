@@ -30,7 +30,7 @@ from qe.io import load_eref, load_integrals, load_wf
 from collections import defaultdict
 from itertools import product, chain
 from functools import cached_property
-from qe.fundamental_types import Determinant
+from qe.fundamental_types import Determinant, Determinant_tuple, Determinant_bitstring
 from mpi4py import MPI
 
 
@@ -267,11 +267,12 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     def psi_and_integral(self):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
-        psi = [Determinant((0, 1), (0, 1))]
-        for det in Excitation(4).get_chunk_of_connected_determinants(psi):
-            psi += det
+        n_orb = 4
+        psi = [Determinant_tuple((0, 1), (0, 1))]
+        for det in Determinant_tuple((0, 1), (0, 1)).gen_all_connected_det(n_orb):
+            psi.append(det)
         d_two_e_integral = {}
-        for i, j, k, l in product(range(4), repeat=4):
+        for i, j, k, l in product(range(n_orb), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1
         return psi, d_two_e_integral
 
@@ -279,10 +280,11 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
     def psi_and_integral_PT2(self):
         # minimal psi_and_integral, psi_i != psi_j
         # Na = 3, Nb = 3, Norb = 6 to account for triplet constraints
-        psi_i = [Determinant((0, 1, 2), (0, 1, 2)), Determinant((1, 2, 3), (1, 2, 3))]
+        n_orb = 6
+        psi_i = [Determinant_tuple((0, 1, 2), (0, 1, 2)), Determinant_tuple((1, 2, 3), (1, 2, 3))]
         psi_j = []
         for i, det in enumerate(psi_i):
-            for det_connected in Excitation(6).gen_all_connected_det_from_det(det):
+            for det_connected in det.gen_all_connected_det(n_orb):
                 # Remove determinant who are in psi_det
                 if det_connected in psi_i:
                     continue
@@ -293,7 +295,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
                 psi_j.append(det_connected)
 
         d_two_e_integral = {}
-        for i, j, k, l in product(range(6), repeat=4):
+        for i, j, k, l in product(range(n_orb), repeat=4):
             d_two_e_integral[compound_idx4(i, j, k, l)] = 1
         return psi_i, psi_j, d_two_e_integral
 
@@ -336,8 +338,8 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
     def psi_and_norb_2det(self):
         # Do 5 e, 10 orb
         return 10, [
-            Determinant((0, 1, 2, 3, 4), (0, 1, 2, 3, 4)),
-            Determinant((1, 2, 3, 4, 5), (1, 2, 3, 4, 5)),
+            Determinant_tuple((0, 1, 2, 3, 4), (0, 1, 2, 3, 4)),
+            Determinant_tuple((1, 2, 3, 4, 5), (1, 2, 3, 4, 5)),
         ]
 
     @cached_property
@@ -392,7 +394,7 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
             d[con].append(det)
         return d
 
-    def check_constraint(self, det: Determinant, spin="alpha"):
+    def check_constraint(self, det: Determinant_tuple, spin="alpha"):
         # Give me a determinant. What constraint does it satisfy? (What are three most highly occupied alpha spin orbitas)
         spindet = getattr(det, spin)
         # Return constraint as |Spin_determinant|
@@ -579,13 +581,14 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for i, j, k, l in self.integral_by_category["C"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_C(
-                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
+                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
             ):
                 indices.append(((a, b), (i, j, k, l), phase))
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["C"])
 
     def test_category_C_PT2(self):
+        n_orb = 6
         psi_i, psi_j, _ = self.psi_and_integral_PT2
         # Will need hash to map yielding determinants to a particular index
         det_to_index_j = {det: i for i, det in enumerate(psi_j)}
@@ -594,11 +597,11 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         # Pass over constraints, pass over integrals
-        for con in Excitation(6).generate_all_constraints(3):
+        for con in Excitation(n_orb).generate_all_constraints(3):
             indices_PT2_con = []  # Reset list for each constraint
             for i, j, k, l in self.integral_by_category_PT2["C"]:
                 for (I, det_J), phase in Hamiltonian_two_electrons_integral_driven.category_C_pt2(
-                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, Excitation(6)
+                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, n_orb
                 ):
                     if det_J not in psi_i:
                         indices_PT2_con.append(((I, det_to_index_j[det_J]), (i, j, k, l), phase))
@@ -624,13 +627,14 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for i, j, k, l in self.integral_by_category["D"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_D(
-                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
+                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
             ):
                 indices.append(((a, b), (i, j, k, l), phase))
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["D"])
 
     def test_category_D_PT2(self):
+        n_orb = 6
         psi_i, psi_j, _ = self.psi_and_integral_PT2
         # Will need hash to map yielding determinants to a particular index
         det_to_index_j = {det: i for i, det in enumerate(psi_j)}
@@ -639,11 +643,11 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         # Pass over constraints, pass over integrals
-        for con in Excitation(6).generate_all_constraints(3):
+        for con in Excitation(n_orb).generate_all_constraints(3):
             indices_PT2_con = []  # Reset list for each constraint
             for i, j, k, l in self.integral_by_category_PT2["D"]:
                 for (I, det_J), phase in Hamiltonian_two_electrons_integral_driven.category_D_pt2(
-                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, Excitation(6)
+                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, n_orb
                 ):
                     if det_J not in psi_i:
                         indices_PT2_con.append(((I, det_to_index_j[det_J]), (i, j, k, l), phase))
@@ -669,13 +673,14 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for i, j, k, l in self.integral_by_category["E"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_E(
-                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
+                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
             ):
                 indices.append(((a, b), (i, j, k, l), phase))
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["E"])
 
     def test_category_E_PT2(self):
+        n_orb = 6
         psi_i, psi_j, _ = self.psi_and_integral_PT2
         # Will need hash to map yielding determinants to a particular index
         det_to_index_j = {det: i for i, det in enumerate(psi_j)}
@@ -684,11 +689,11 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         # Pass over constraints, pass over integrals
-        for con in Excitation(6).generate_all_constraints(3):
+        for con in Excitation(n_orb).generate_all_constraints(3):
             indices_PT2_con = []  # Reset list for each constraint
             for i, j, k, l in self.integral_by_category_PT2["E"]:
                 for (I, det_J), phase in Hamiltonian_two_electrons_integral_driven.category_E_pt2(
-                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, Excitation(6)
+                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, n_orb
                 ):
                     if det_J not in psi_i:
                         indices_PT2_con.append(((I, det_to_index_j[det_J]), (i, j, k, l), phase))
@@ -714,13 +719,14 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for i, j, k, l in self.integral_by_category["F"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_F(
-                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
+                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
             ):
                 indices.append(((a, b), (i, j, k, l), phase))
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["F"])
 
     def test_category_F_PT2(self):
+        n_orb = 6
         psi_i, psi_j, _ = self.psi_and_integral_PT2
         # Will need hash to map yielding determinants to a particular index
         det_to_index_j = {det: i for i, det in enumerate(psi_j)}
@@ -729,11 +735,11 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         # Pass over constraints, pass over integrals
-        for con in Excitation(6).generate_all_constraints(3):
+        for con in Excitation(n_orb).generate_all_constraints(3):
             indices_PT2_con = []  # Reset list for each constraint
             for i, j, k, l in self.integral_by_category_PT2["F"]:
                 for (I, det_J), phase in Hamiltonian_two_electrons_integral_driven.category_F_pt2(
-                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, Excitation(6)
+                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, n_orb
                 ):
                     if det_J not in psi_i:
                         indices_PT2_con.append(((I, det_to_index_j[det_J]), (i, j, k, l), phase))
@@ -759,13 +765,14 @@ class Test_Integral_Driven_Categories(Test_Minimal):
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi)
         for i, j, k, l in self.integral_by_category["G"]:
             for (a, b), phase in Hamiltonian_two_electrons_integral_driven.category_G(
-                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ, Excitation(4)
+                (i, j, k, l), psi, det_to_index, spindet_a_occ, spindet_b_occ
             ):
                 indices.append(((a, b), (i, j, k, l), phase))
         indices = self.simplify_indices(indices)
         self.assertListEqual(indices, self.reference_indices_by_category["G"])
 
     def test_category_G_PT2(self):
+        n_orb = 6
         psi_i, psi_j, _ = self.psi_and_integral_PT2
         # Will need hash to map yielding determinants to a particular index
         det_to_index_j = {det: i for i, det in enumerate(psi_j)}
@@ -774,11 +781,11 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             spindet_b_occ_i,
         ) = H_indices_generator.get_spindet_a_occ_spindet_b_occ(psi_i)
         # Pass over constraints, pass over integrals
-        for con in Excitation(6).generate_all_constraints(3):
+        for con in Excitation(n_orb).generate_all_constraints(3):
             indices_PT2_con = []  # Reset list for each constraint
             for i, j, k, l in self.integral_by_category_PT2["G"]:
                 for (I, det_J), phase in Hamiltonian_two_electrons_integral_driven.category_G_pt2(
-                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, Excitation(6)
+                    (i, j, k, l), psi_i, con, spindet_a_occ_i, spindet_b_occ_i, n_orb
                 ):
                     if det_J not in psi_i:
                         indices_PT2_con.append(((I, det_to_index_j[det_J]), (i, j, k, l), phase))

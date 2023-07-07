@@ -1690,7 +1690,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": unocc_orbitals},
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, 1, occ, h, p, psi, C, spin, n_orb
+                            det_indices, 1, occ, h, p, psi, C, spin
                         )
                     else:
                         # Here, occ is either \in C, or \not\in C and < a1
@@ -1737,7 +1737,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": unocc_orbitals},
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, 1, occ, h, p, psi, C, spin, n_orb
+                            det_indices, 1, occ, h, p, psi, C, spin
                         )
                     else:
                         # Here, occ is either \in C, or \not\in C and < a1
@@ -1762,7 +1762,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             ),
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, 1, occ, h, p, psi, C, spin, n_orb
+                            det_indices, 1, occ, h, p, psi, C, spin
                         )
             else:  # spin == "beta"
                 # All excitation pairs related by <ij|kl> must already satisfy C
@@ -1782,7 +1782,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         )
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, n_orb
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
                 else:  # Both cases apply here (occ can be alpha spin)
                     # Occ is necessarily either in C or < a1, so don't demand its unoccupied
@@ -1807,7 +1807,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         ),
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, n_orb
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
 
         if i == k:  # <ij|il> = <ji|li>, ja(b) <-> la(b), occ = ia or ib
@@ -1982,7 +1982,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         )
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, n_orb
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
                 else:
                     # By above -> p \in C in this instance
@@ -2003,7 +2003,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         )
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, n_orb
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
             else:  # spin == "beta"
                 # All excitation pairs related by <ij|kl> must already satisfy C
@@ -2027,7 +2027,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         )
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, n_orb
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
 
         if i == j:  # <ii|il>, ia(b) <-> la(b), occ = ib(a)
@@ -2241,7 +2241,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": unocc_orbitals},
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, -1, occ, h, p, psi, C, spin, n_orb
+                            det_indices, -1, occ, h, p, psi, C, spin
                         )
                 else:
                     # By above -> p \in C in this instance
@@ -2265,7 +2265,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": unocc_orbitals},
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, -1, occ, h, p, psi, C, spin, n_orb
+                            det_indices, -1, occ, h, p, psi, C, spin
                         )
             else:  # spin == "beta"
                 # All excitation pairs related by <ij|kl> must already satisfy C
@@ -2283,7 +2283,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                     )
                 )
                 yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                    det_indices, -1, occ, h, p, psi, C, spin, n_orb
+                    det_indices, -1, occ, h, p, psi, C, spin
                 )
 
         # doubles, ia(b) to ka(b) and jb(a) to lb(a)
@@ -2594,23 +2594,23 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             pass
         if category == "C":
             yield from self.category_C_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.n_orb
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         if category == "D":
             yield from self.category_D_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.n_orb
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         if category == "E":
             yield from self.category_E_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.exci
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         if category == "F":
             yield from self.category_F_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.n_orb
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         if category == "G":
             yield from self.category_G_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.n_orb
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
 
     def H(self, psi_i, psi_j) -> List[List[Energy]]:
@@ -3349,9 +3349,7 @@ class Powerplant_manager(object):
             for I, det_I in enumerate(self.psi_internal):
                 # Inner pass (for each |I⟩) generates all excitations satisfying constraint |C⟩ from |I⟩
                 # Triplet constrained singles
-                for det_J in Excitation(self.N_orb).triplet_constrained_single_excitations_from_det(
-                    det_I, C
-                ):
+                for det_J in det_I.triplet_constrained_single_excitations_from_det(C, self.N_orb):
                     for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
                         det_I, det_J
                     ):
@@ -3364,9 +3362,7 @@ class Powerplant_manager(object):
                         I
                     ] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(det_I, det_J)
                 # Triplet-constrained doubles
-                for det_J in Excitation(self.N_orb).triplet_constrained_double_excitations_from_det(
-                    det_I, C
-                ):
+                for det_J in det_I.triplet_constrained_double_excitations_from_det(C, self.N_orb):
                     for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
                         det_I, det_J
                     ):

@@ -214,11 +214,10 @@ class Determinant_tuple(Determinant):
         """
         return sum(Determinant_tuple.exc_degree(self, det_j)) in [1, 2]
 
-    @staticmethod
     def triplet_constrained_single_excitations_from_det(
-        det: Determinant, constraint: Spin_determinant, n_orb: int, spin="alpha"
+        self, constraint: Spin_determinant, n_orb: int, spin="alpha"
     ) -> Iterator[Determinant]:
-        """Compute all (single) excitations of a det subject to a triplet contraint T = [o1: |OrbitalIdx|, o2: |OrbitalIdx|, o3: |OrbitalIdx|]
+        """Compute all (single) excitations of a det (self) subject to a triplet contraint T = [o1: |OrbitalIdx|, o2: |OrbitalIdx|, o3: |OrbitalIdx|]
         By default: constraint T specifies 3 `most highly` occupied alpha spin orbitals allowed in the generated excitation
             e.g., if exciting |D> does not yield |J> such that o1, o2, o3 are the `largest` occupied alpha orbitals in |J> -> Excitation not generated
         Inputs:
@@ -239,12 +238,12 @@ class Determinant_tuple(Determinant):
         )  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1} # TODO: Maybe o1 inclusive...
         if spin == "alpha":
             det_a = getattr(
-                det, spin
+                self, spin
             )  # Get |Spin_determinant| of inputted |Determinant|, |D> (default is alpha)
-            det_b = getattr(det, "beta")
+            det_b = getattr(self, "beta")
         else:
-            det_a = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
-            det_b = getattr(det, "alpha")
+            det_a = getattr(self, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
+            det_b = getattr(self, "alpha")
 
         # Some things can be pre-computed:
         #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D_a>? (If any)
@@ -314,9 +313,9 @@ class Determinant_tuple(Determinant):
                 yield excited_det
 
     def triplet_constrained_double_excitations_from_det(
-        self, det: Determinant, constraint: Spin_determinant, n_orb: int, spin="alpha"
+        self, constraint: Spin_determinant, n_orb: int, spin="alpha"
     ) -> Iterator[Determinant]:
-        """Compute all (double) excitations of a det subject to a triplet contraint T = [a1: |OrbitalIdx|, a2: |OrbitalIdx|, a3: |OrbitalIdx|]
+        """Compute all (double) excitations of a det (self) subject to a triplet contraint T = [a1: |OrbitalIdx|, a2: |OrbitalIdx|, a3: |OrbitalIdx|]
         By default: constraint T specifies 3 `most highly` occupied alpha spin orbitals allowed in the generated excitation
             e.g., if exciting |D> does not yield |J> such that a1, a2, a3 are the `largest` occupied alpha orbitals in |J> -> Excitation not generated
         Inputs:
@@ -335,16 +334,17 @@ class Determinant_tuple(Determinant):
         hab = []
         pab = []
 
+        all_orbs = frozenset(range(n_orb))
         a1 = min(constraint)  # Index of `smallest` occupied alpha constraint orbital
         B = set(range(a1 + 1, n_orb))  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1}
         if spin == "alpha":
             det_a = getattr(
-                det, spin
+                self, spin
             )  # Get |Spin_determinant| of inputted |Determinant|, |D> (default is alpha)
-            det_b = getattr(det, "beta")
+            det_b = getattr(self, "beta")
         else:
-            det_a = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
-            det_b = getattr(det, "alpha")
+            det_a = getattr(self, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
+            det_b = getattr(self, "alpha")
 
         # Some things can be pre-computed:
         #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D>? (If any)
@@ -376,7 +376,7 @@ class Determinant_tuple(Determinant):
             (a_unocc,) = ((set(det_a) | set(constraint)) - (set(det_a) & set(constraint))) & set(
                 constraint
             )  # The 1 unoccupied constraint orbital
-            det_unocc_a_orbs = self.all_orbs - set(det_a)  # Unocc orbitals in |D_a>
+            det_unocc_a_orbs = all_orbs - set(det_a)  # Unocc orbitals in |D_a>
             for z_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
                 # z < a_unocc trivially, no need to check they are distinct
                 paa.append((z_a, a_unocc))
@@ -389,12 +389,12 @@ class Determinant_tuple(Determinant):
         elif len(constraint_orbitals_occupied) == 3:
             # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
             #   Any same-spin (aa) double (x_a, y_a) \in haa to (w_a, z_a), where w_a, z_a < a1
-            det_unocc_a_orbs = self.all_orbs - set(det_a)
+            det_unocc_a_orbs = all_orbs - set(det_a)
             for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
                 for z_a in takewhile(lambda z: z < w_a, det_unocc_a_orbs):
                     paa.append((w_a, z_a))
             # Any same-spin (bb) double (x_b, y_b) \in hbb to (w_b, z_b)
-            det_unocc_b_orbs = self.all_orbs - set(det_b)  # Unocc orbitals in |D_a>
+            det_unocc_b_orbs = all_orbs - set(det_b)  # Unocc orbitals in |D_a>
             for w_b in det_unocc_b_orbs:
                 for z_b in takewhile(lambda x: x < w_b, det_unocc_b_orbs):
                     pbb.append((w_b, z_b))

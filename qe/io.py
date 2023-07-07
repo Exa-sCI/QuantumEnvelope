@@ -2,6 +2,8 @@ from qe.fundamental_types import (
     Tuple,
     One_electron_integral,
     Two_electron_integral,
+    Determinant_tuple,
+    Determinant_bitstring,
     Determinant,
     Energy,
     List,
@@ -103,7 +105,7 @@ def load_integrals(
     return n_orb, E0, d_one_e_integral, d_two_e_integral
 
 
-def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
+def load_wf(path_wf, det_representation="tuple") -> Tuple[List[float], List[Determinant]]:
     """Read the input file :
     Representation of the Slater determinants (basis) and
     vector of coefficients in this basis (wave function)."""
@@ -133,10 +135,16 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
         with open(path_wf) as f:
             data = f.read().split()
 
-    def decode_det(str_):
+    def decode_det(str_, representation="tuple"):
         for i, v in enumerate(str_):
             if v == "+":
-                yield i
+                if representation == "tuple":
+                    yield i
+                elif representation == "bitstring":
+                    raise NotImplementedError
+                    yield 1
+                else:
+                    raise NotImplementedError
 
     def grouper(iterable, n):
         "Collect data into fixed-length chunks or blocks"
@@ -147,7 +155,22 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
     psi_coef = []
     for coef, det_i, det_j in grouper(data, 3):
         psi_coef.append(float(coef))
-        det.append(Determinant(tuple(decode_det(det_i)), tuple(decode_det(det_j))))
+        # Depending on representation specified, yield |Determinant| as |tuple| or |int| (bitstring)
+        if det_representation == "tuple":
+            det.append(
+                Determinant_tuple(
+                    tuple(decode_det(det_i, det_representation)),
+                    tuple(decode_det(det_j, det_representation)),
+                )
+            )
+        elif det_representation == "bitstring":
+            det.append(
+                Determinant_bitstring(
+                    (decode_det(det_i, det_representation)), (decode_det(det_j, det_representation))
+                )
+            )
+        else:
+            raise NotImplementedError
 
     # Normalize psi_coef
 

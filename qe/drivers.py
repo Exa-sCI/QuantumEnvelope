@@ -88,6 +88,7 @@ def integral_category(i, j, k, l):
 #  \____/_/\_\___|_|\__\__,_|\__|_|\___/|_| |_|
 #
 
+
 # TODO: Lots of this class getting moved elsewhere... Get rid of once we know tests are good
 class Excitation:
     def __init__(self, n_orb):

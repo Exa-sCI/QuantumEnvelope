@@ -81,7 +81,7 @@ class Determinant_tuple(Determinant):
     # All operations performed on |Determinant_tuple| objects handled via set operations
 
     @staticmethod
-    def apply_excitation(
+    def apply_excitation_to_spindet(
         sdet: Spin_determinant_tuple, exc: Tuple[Tuple[OrbitalIdx, ...], Tuple[OrbitalIdx, ...]]
     ) -> Tuple[OrbitalIdx, ...]:
         """Function to `apply' excitation to |Spin_determinant_tuple| object
@@ -89,15 +89,36 @@ class Determinant_tuple(Determinant):
 
         :param exc: variable length tuple containing [[holes], [particles]] that determine the excitation
 
-        >>> Determinant_tuple.apply_excitation((0, 1), ((1,), (2,)))
+        >>> Determinant_tuple.apply_excitation_to_spindet((0, 1), ((1,), (2,)))
         (0, 2)
-        >>> Determinant_tuple.apply_excitation((1, 3), ((1,), (2,)))
+        >>> Determinant_tuple.apply_excitation_to_spindet((1, 3), ((1,), (2,)))
         (2, 3)
-        >>> Determinant_tuple.apply_excitation((0, 1), ((), ()))
+        >>> Determinant_tuple.apply_excitation_to_spindet((0, 1), ((), ()))
         (0, 1)
         """
         lh, lp = exc  # Unpack
         return tuple(sorted(set(sdet) ^ (set(lh) | set(lp))))
+
+    def apply_excitation(
+        self,
+        alpha_exc: Tuple[Tuple[OrbitalIdx, ...], Tuple[OrbitalIdx, ...]],
+        beta_exc: Tuple[Tuple[OrbitalIdx, ...], Tuple[OrbitalIdx, ...]],
+    ) -> Determinant:
+        """Apply excitation to self, produce new |Determinant_tuple|
+        Input `alpha_exc` (`beta_exc`) specifies holes, particles involved in excitation of alpha (beta) |Spin_determinant|
+        If either argument is empty (), no excitation is applied
+        >>> Determinant_tuple((0, 1), (0, 1)).apply_excitation(((1,), (2,)), ((1,), (2,)))
+        Determinant_tuple(alpha=(0, 2), beta=(0, 2))
+        >>> Determinant_tuple((0, 1), (0, 1)).apply_excitation(((0, 1), (2, 3)), ((0, 1), (3, 4)))
+        Determinant_tuple(alpha=(2, 3), beta=(3, 4))
+        >>> Determinant_tuple((0, 1), (0, 1)).apply_excitation(((), ()), ((), ()))
+        Determinant_tuple(alpha=(0, 1), beta=(0, 1))
+        """
+
+        excited_sdet_a = Determinant_tuple.apply_excitation_to_spindet(self.alpha, alpha_exc)
+        excited_sdet_b = Determinant_tuple.apply_excitation_to_spindet(self.beta, beta_exc)
+        # Return excited det as instance of |Determinant_tuple|
+        return Determinant_tuple(excited_sdet_a, excited_sdet_b)
 
     def gen_all_connected_spindet(
         self, ed: int, n_orb: int, spin="alpha"
@@ -116,8 +137,8 @@ class Determinant_tuple(Determinant):
         holes = combinations(sdet, ed)
         particles = combinations(set(range(n_orb)) - set(sdet), ed)
         l_hp_pairs = product(holes, particles)
-        apply_excitation_to_spindet = partial(self.apply_excitation, sdet)
-        return map(apply_excitation_to_spindet, l_hp_pairs)
+        apply_excitation_fixed_sdet = partial(self.apply_excitation_to_spindet, sdet)
+        return map(apply_excitation_fixed_sdet, l_hp_pairs)
 
     def gen_all_connected_det(self, n_orb: int) -> Iterator[Determinant]:
         """Generate all determinants that are singly or doubly connected to self
@@ -166,39 +187,32 @@ class Determinant_tuple(Determinant):
         # Cache since many of these will be re-used in computation of exc_degree between two dets
         return len(set(sdet_i) ^ set(sdet_j)) // 2
 
-    @staticmethod
-    def exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
-        """Compute excitation degree; the number of orbitals which differ between two |Determinants| det_i, det_J
-        >>> Determinant_tuple.exc_degree(Determinant_tuple(alpha=(0, 1), beta=(0, 1)), Determinant_tuple(alpha=(0, 2), beta=(4, 6)))
+    def exc_degree(self, det_j: Determinant) -> Tuple[int, int]:
+        """Compute excitation degree; the number of orbitals which differ between two |Determinants| self, det_J
+        >>> Determinant_tuple(alpha=(0, 1), beta=(0, 1)).exc_degree(Determinant_tuple(alpha=(0, 2), beta=(4, 6)))
         (1, 2)
-        >>> Determinant_tuple.exc_degree(Determinant_tuple(alpha=(0, 1), beta=(0, 1)),Determinant_tuple(alpha=(0, 1), beta=(4, 6)))
+        >>> Determinant_tuple(alpha=(0, 1), beta=(0, 1)).exc_degree(Determinant_tuple(alpha=(0, 1), beta=(4, 6)))
         (0, 2)
         """
-        ed_up = Determinant_tuple.exc_degree_spindet(det_i.alpha, det_j.alpha)
-        ed_dn = Determinant_tuple.exc_degree_spindet(det_i.beta, det_j.beta)
+        ed_up = Determinant_tuple.exc_degree_spindet(self.alpha, det_j.alpha)
+        ed_dn = Determinant_tuple.exc_degree_spindet(self.beta, det_j.beta)
         return (ed_up, ed_dn)
 
-    @staticmethod
-    def is_connected(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
+    def is_connected(self, det_j: Determinant) -> Tuple[int, int]:
         """Compute the excitation degree, the number of orbitals which differ between the two determinants.
-        Return bool; `Are det_i and det_j (singley or doubley) connected?
-        >>> Determinant_tuple.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 1), beta=(0, 2)))
+        Return bool; `Is det_j (singley or doubley) connected to instance of self?
+        >>> Determinant_tuple(alpha=(0, 1), beta=(0, 1)).is_connected(Determinant_tuple(alpha=(0, 1), beta=(0, 2)))
         True
-        >>> Determinant_tuple.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 2), beta=(0, 2)))
+        >>> Determinant_tuple(alpha=(0, 1), beta=(0, 1)).is_connected(Determinant_tuple(alpha=(0, 2), beta=(0, 2)))
         True
-        >>> Determinant_tuple.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(2, 3), beta=(0, 1)))
+        >>> Determinant_tuple(alpha=(0, 1), beta=(0, 1)).is_connected(Determinant_tuple(alpha=(2, 3), beta=(0, 1)))
         True
-        >>> Determinant_tuple.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(2, 3), beta=(0, 2)))
+        >>> Determinant_tuple(alpha=(0, 1), beta=(0, 1)).is_connected(Determinant_tuple(alpha=(2, 3), beta=(0, 2)))
         False
-        >>> Determinant_tuple.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 1), beta=(0, 1)))
+        >>> Determinant_tuple(alpha=(0, 1), beta=(0, 1)).is_connected(Determinant_tuple(alpha=(0, 1), beta=(0, 1)))
         False
         """
-        return sum(Determinant_tuple.exc_degree(det_i, det_j)) in [1, 2]
+        return sum(Determinant_tuple.exc_degree(self, det_j)) in [1, 2]
 
     @staticmethod
     def triplet_constrained_single_excitations_from_det(
@@ -281,7 +295,7 @@ class Determinant_tuple(Determinant):
         # Finally, generate all excitations
         for h in ha:
             for p in pa:
-                excited_spindet = Determinant_tuple.apply_excitation(det_a, [[h], [p]])
+                excited_spindet = Determinant_tuple.apply_excitation_to_spindet(det_a, [[h], [p]])
                 if spin == "alpha":  # Then, det_b is beta spindet
                     excited_det = Determinant_tuple(excited_spindet, det_b)
                 else:  # Then, det_b is alpha spindet
@@ -291,7 +305,7 @@ class Determinant_tuple(Determinant):
 
         for h in hb:
             for p in pb:
-                excited_spindet = Determinant_tuple.apply_excitation(det_b, [[h], [p]])
+                excited_spindet = Determinant_tuple.apply_excitation_to_spindet(det_b, [[h], [p]])
                 if spin == "alpha":  # Then, det_b is beta spindet
                     excited_det = Determinant_tuple(det_a, excited_spindet)
                 else:  # Then, det_b is alpha spindet
@@ -321,7 +335,6 @@ class Determinant_tuple(Determinant):
         hab = []
         pab = []
 
-        all_orbs = frozenset(range(n_orb))
         a1 = min(constraint)  # Index of `smallest` occupied alpha constraint orbital
         B = set(range(a1 + 1, n_orb))  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1}
         if spin == "alpha":
@@ -426,7 +439,9 @@ class Determinant_tuple(Determinant):
 
         # Finally, generate all excitations
         for holes, particles in product(haa, paa):
-            excited_spindet = Determinant_tuple.apply_excitation(det_a, [holes, particles])
+            excited_spindet = Determinant_tuple.apply_excitation_to_spindet(
+                det_a, [holes, particles]
+            )
             if spin == "alpha":  # Then, det_b is beta spindet
                 excited_det = Determinant_tuple(excited_spindet, det_b)
             else:  # Then, det_b is alpha spindet
@@ -435,7 +450,9 @@ class Determinant_tuple(Determinant):
             yield excited_det
 
         for holes, particles in product(hbb, pbb):
-            excited_spindet = Determinant_tuple.apply_excitation(det_b, [holes, particles])
+            excited_spindet = Determinant_tuple.apply_excitation_to_spindet(
+                det_b, [holes, particles]
+            )
             if spin == "alpha":  # Then, det_b is beta spindet
                 excited_det = Determinant_tuple(det_a, excited_spindet)
             else:  # Then, det_b is alpha spindet
@@ -446,8 +463,8 @@ class Determinant_tuple(Determinant):
         for holes, particles in product(hab, pab):
             ha, hb = holes
             pa, pb = particles
-            excited_spindet_a = Determinant_tuple.apply_excitation(det_a, [[ha], [pa]])
-            excited_spindet_b = Determinant_tuple.apply_excitation(det_b, [[hb], [pb]])
+            excited_spindet_a = Determinant_tuple.apply_excitation_to_spindet(det_a, [[ha], [pa]])
+            excited_spindet_b = Determinant_tuple.apply_excitation_to_spindet(det_b, [[hb], [pb]])
             if spin == "alpha":  # Then, det_b is beta spindet
                 excited_det = Determinant_tuple(excited_spindet_a, excited_spindet_b)
             else:

@@ -526,9 +526,9 @@ class Determinant_tuple(Determinant):
            h is occupied only in I
            p is occupied only in J
 
-        >>> PhaseIdx.single_exc_no_phase((1, 5, 7), (1, 23, 7))
+        >>> Determinant_tuple.single_exc_no_phase((1, 5, 7), (1, 23, 7))
         (5, 23)
-        >>> PhaseIdx.single_exc_no_phase((1, 2, 9), (1, 9, 18))
+        >>> Determinant_tuple.single_exc_no_phase((1, 2, 9), (1, 9, 18))
         (2, 18)
         """
         (h,) = set(sdet_i) - set(sdet_j)
@@ -584,9 +584,9 @@ class Determinant_tuple(Determinant):
            h1, h2 are occupied only in I
            p1, p2 are occupied only in J
 
-        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
+        >>> Determinant_tuple.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
         (3, 4, 12, 13)
-        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
+        >>> Determinant_tuple.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
         (3, 9, 12, 18)
         """
 

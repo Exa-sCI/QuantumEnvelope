@@ -292,24 +292,28 @@ class Determinant_tuple(Determinant):
                 hb.append(x_b)
 
         # Finally, generate all excitations
+        # Excitations of argument `spin`
         for h in ha:
             for p in pa:
-                excited_spindet = Determinant_tuple.apply_excitation_to_spindet(det_a, [[h], [p]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant_tuple(excited_spindet, det_b)
-                else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant_tuple(det_b, excited_spindet)
-                assert excited_spindet[-3:] == constraint
+                if spin == "alpha":
+                    # Then, det_a is alpha spindet
+                    excited_det = self.apply_excitation(((h,), (p,)), ((), ()))
+                else:
+                    # det_a is beta spindet
+                    excited_det = self.apply_excitation(((), ()), ((h,), (p,)))
+                assert getattr(excited_det, spin)[-3:] == constraint
                 yield excited_det
 
+        # Generate opposite-spin excitations
         for h in hb:
             for p in pb:
-                excited_spindet = Determinant_tuple.apply_excitation_to_spindet(det_b, [[h], [p]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant_tuple(det_a, excited_spindet)
-                else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant_tuple(excited_spindet, det_a)
-                assert det_a[-3:] == constraint
+                if spin == "alpha":
+                    # Then, det_b is beta spindet
+                    excited_det = self.apply_excitation(((), ()), ((h,), (p,)))
+                else:
+                    # det_b is alpha spindet
+                    excited_det = self.apply_excitation(((h,), (p,))((), ()))
+                assert getattr(excited_det, spin)[-3:] == constraint
                 yield excited_det
 
     def triplet_constrained_double_excitations_from_det(
@@ -438,38 +442,39 @@ class Determinant_tuple(Determinant):
                     hab.append((x_a, y_b))
 
         # Finally, generate all excitations
+        # Same-spin doubles, for argument `spin`
         for holes, particles in product(haa, paa):
-            excited_spindet = Determinant_tuple.apply_excitation_to_spindet(
-                det_a, [holes, particles]
-            )
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant_tuple(excited_spindet, det_b)
-            else:  # Then, det_b is alpha spindet
-                excited_det = Determinant_tuple(det_b, excited_spindet)
-            assert excited_spindet[-3:] == constraint
+            if spin == "alpha":
+                # Then, det_a is alpha spindet
+                excited_det = self.apply_excitation((holes, particles), ((), ()))
+            else:
+                # det_a is beta spindet
+                excited_det = self.apply_excitation(((), ()), (holes, particles))
+            assert getattr(excited_det, spin)[-3:] == constraint
             yield excited_det
 
+        # Same-spin doubles, for opposite-spin to `spin`
         for holes, particles in product(hbb, pbb):
-            excited_spindet = Determinant_tuple.apply_excitation_to_spindet(
-                det_b, [holes, particles]
-            )
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant_tuple(det_a, excited_spindet)
-            else:  # Then, det_b is alpha spindet
-                excited_det = Determinant_tuple(excited_spindet, det_a)
-            assert det_a[-3:] == constraint
+            if spin == "alpha":
+                # Then, det_b is beta spindet
+                excited_det = self.apply_excitation(((), ()), (holes, particles))
+            else:
+                # det_b is alpha spindet
+                excited_det = self.apply_excitation((holes, particles), ((), ()))
+            assert getattr(excited_det, spin)[-3:] == constraint
             yield excited_det
 
+        # Opposite-spin doubles
         for holes, particles in product(hab, pab):
             ha, hb = holes
             pa, pb = particles
-            excited_spindet_a = Determinant_tuple.apply_excitation_to_spindet(det_a, [[ha], [pa]])
-            excited_spindet_b = Determinant_tuple.apply_excitation_to_spindet(det_b, [[hb], [pb]])
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant_tuple(excited_spindet_a, excited_spindet_b)
+            if spin == "alpha":
+                # det_a is alpha, det_b is beta
+                excited_det = self.apply_excitation(((ha,), (pa,)), ((hb,), (pb,)))
             else:
-                excited_det = Determinant_tuple(excited_spindet_b, excited_spindet_a)
-            assert excited_spindet_a[-3:] == constraint
+                # det_a is beta, det_b is beta
+                excited_det = self.apply_excitation(((hb,), (pb,)), ((ha,), (pa,)))
+            assert getattr(excited_det, spin)[-3:] == constraint
             yield excited_det
 
     #     _
@@ -480,6 +485,8 @@ class Determinant_tuple(Determinant):
     #    (_| | | (_|   |  (_| |   |_ | (_ | (/_
 
     # Driver functions for computing phase, hole and particle between determinant pairs
+    # TODO: All static methods for now... Feels weird to to pass self as an arg when we only do this for spindets
+    # So, might just keep as is
 
     @staticmethod
     def single_phase(
@@ -510,6 +517,24 @@ class Determinant_tuple(Determinant):
         (p,) = set(sdet_j) - set(sdet_i)
 
         return Determinant_tuple.single_phase(sdet_i, sdet_j, h, p), h, p
+
+    @staticmethod
+    def single_exc_no_phase(
+        sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]
+    ) -> Tuple[OrbitalIdx, OrbitalIdx]:
+        """hole, particle of <I|H|J> when I and J differ by exactly one orbital
+           h is occupied only in I
+           p is occupied only in J
+
+        >>> PhaseIdx.single_exc_no_phase((1, 5, 7), (1, 23, 7))
+        (5, 23)
+        >>> PhaseIdx.single_exc_no_phase((1, 2, 9), (1, 9, 18))
+        (2, 18)
+        """
+        (h,) = set(sdet_i) - set(sdet_j)
+        (p,) = set(sdet_j) - set(sdet_i)
+
+        return h, p
 
     @staticmethod
     def double_phase(
@@ -550,6 +575,28 @@ class Determinant_tuple(Determinant):
         p1, p2 = sorted(set(sdet_j) - set(sdet_i))
 
         return Determinant_tuple.double_phase(sdet_i, sdet_j, h1, h2, p1, p2), h1, h2, p1, p2
+
+    @staticmethod
+    def double_exc_no_phase(
+        sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]
+    ) -> Tuple[OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
+        """holes, particles of <I|H|J> when I and J differ by exactly two orbitals
+           h1, h2 are occupied only in I
+           p1, p2 are occupied only in J
+
+        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
+        (3, 4, 12, 13)
+        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
+        (3, 9, 12, 18)
+        """
+
+        # Holes
+        h1, h2 = sorted(set(sdet_i) - set(sdet_j))
+
+        # Particles
+        p1, p2 = sorted(set(sdet_j) - set(sdet_i))
+
+        return h1, h2, p1, p2
 
 
 class Determinant_bitstring(Determinant):

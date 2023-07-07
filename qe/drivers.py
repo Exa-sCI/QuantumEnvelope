@@ -80,687 +80,6 @@ def integral_category(i, j, k, l):
         return "G"
 
 
-#   _____         _ _        _   _
-#  |  ___|       (_) |      | | (_)
-#  | |____  _____ _| |_ __ _| |_ _  ___  _ __
-#  |  __\ \/ / __| | __/ _` | __| |/ _ \| '_ \
-#  | |___>  < (__| | || (_| | |_| | (_) | | | |
-#  \____/_/\_\___|_|\__\__,_|\__|_|\___/|_| |_|
-#
-
-
-# TODO: Lots of this class getting moved elsewhere... Get rid of once we know tests are good
-class Excitation:
-    def __init__(self, n_orb):
-        self.all_orbs = frozenset(range(n_orb))
-        self.n_orb = n_orb
-
-    def gen_all_excitation(self, spindet: Spin_determinant, ed: int) -> Iterator:
-        """
-        Generate list of pair -> hole from a determinant spin.
-
-        >>> sorted(Excitation(4).gen_all_excitation((0, 1),2))
-        [((0, 1), (2, 3))]
-        >>> sorted(Excitation(4).gen_all_excitation((0, 1),1))
-        [((0,), (2,)), ((0,), (3,)), ((1,), (2,)), ((1,), (3,))]
-        """
-        holes = combinations(spindet, ed)
-        not_spindet = self.all_orbs - set(spindet)
-        parts = combinations(not_spindet, ed)
-        return product(holes, parts)
-
-    @staticmethod
-    def apply_excitation(spindet, exc: Tuple[Tuple[int, ...], Tuple[int, ...]]):
-        lh, lp = exc
-        s = (set(spindet) - set(lh)) | set(lp)
-        return tuple(sorted(s))
-
-    def gen_all_connected_spindet(self, spindet: Spin_determinant, ed: int) -> Iterator:
-        """
-        Generate all the posible spin determinant relative to a excitation degree
-
-        >>> sorted(Excitation(4).gen_all_connected_spindet((0, 1), 1))
-        [(0, 2), (0, 3), (1, 2), (1, 3)]
-        """
-        l_exc = self.gen_all_excitation(spindet, ed)
-        apply_excitation_to_spindet = partial(Excitation.apply_excitation, spindet)
-        return map(apply_excitation_to_spindet, l_exc)
-
-    def gen_all_connected_det_from_det(self, det: Determinant) -> Iterator[Determinant]:
-        """
-        Generate all the determinant who are single or double exictation (aka connected) from the input determinant
-
-        >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant((0, 1), (0,))))
-        [Determinant(alpha=(0, 1), beta=(1,)),
-         Determinant(alpha=(0, 1), beta=(2,)),
-         Determinant(alpha=(0, 2), beta=(0,)),
-         Determinant(alpha=(0, 2), beta=(1,)),
-         Determinant(alpha=(0, 2), beta=(2,)),
-         Determinant(alpha=(1, 2), beta=(0,)),
-         Determinant(alpha=(1, 2), beta=(1,)),
-         Determinant(alpha=(1, 2), beta=(2,))]
-        """
-
-        # All single exitation from alpha or for beta determinant
-        # Then the production of the alpha, and beta (its a double)
-        # Then the double exitation form alpha or beta
-
-        # We use l_single_a, and l_single_b twice. So we store them.
-        l_single_a = set(self.gen_all_connected_spindet(det.alpha, 1))
-        l_double_aa = self.gen_all_connected_spindet(det.alpha, 2)
-
-        s_a = (Determinant(det_alpha, det.beta) for det_alpha in chain(l_single_a, l_double_aa))
-
-        l_single_b = set(self.gen_all_connected_spindet(det.beta, 1))
-        l_double_bb = self.gen_all_connected_spindet(det.beta, 2)
-
-        s_b = (Determinant(det.alpha, det_beta) for det_beta in chain(l_single_b, l_double_bb))
-
-        l_double_ab = product(l_single_a, l_single_b)
-
-        s_ab = (Determinant(det_alpha, det_beta) for det_alpha, det_beta in l_double_ab)
-
-        return chain(s_a, s_b, s_ab)
-
-    def get_chunk_of_connected_determinants(self, psi_det: Psi_det, L=None) -> Iterator[Psi_det]:
-        """
-        MPI function, generates chunks of connected determinants of size L
-
-        Inputs:
-        :param psi_det: list of determinants
-        :param L: integer, maximally allowed `chunk' of the conneceted space to yield at a time
-        default is L = None, if no chunk size specified, a chunk of the connected space is allocated to each rank
-
-        >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ] ):
-        ...     len(psi_chunk)
-        22
-        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ], 11 ):
-        ...     len(psi_chunk)
-        11
-        11
-        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ], 10 ):
-        ...     len(psi_chunk)
-        10
-        10
-        2
-        """
-
-        def gen_all_connected_determinant(exci: Excitation, psi_det: Psi_det) -> Psi_det:
-            """
-            >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-            >>> len(Excitation(4).gen_all_connected_determinant( [ d1,d2 ] ))
-            22
-
-            We remove the connected determinant who are already inside the wave function. Order doesn't matter
-            """
-            # Literal programing
-            # return set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det)))- set(psi_det)
-
-            # Naive algorithm 13
-            l_global = []
-            for i, det in enumerate(psi_det):
-                for det_connected in exci.gen_all_connected_det_from_det(det):
-                    # Remove determinant who are in psi_det
-                    if det_connected in psi_det:
-                        continue
-                    # If it's was already generated by an old determinant, just drop it
-                    if any(Excitation.is_connected(det_connected, d) for d in psi_det[:i]):
-                        continue
-
-                    l_global.append(det_connected)
-
-            # Return connected space
-            return l_global
-
-        # Naive: Each ranks generates all connected determinants, and takes what is theirs
-        psi_connected = gen_all_connected_determinant(self, psi_det)
-        world_size = MPI.COMM_WORLD.Get_size()
-        # TODO: len(psi_connected) will not scale, but is needed for this naive representation
-        full_idx = np.arange(len(psi_connected))
-        split_idx = np.array_split(full_idx, world_size)
-        # Part of connected space available to each rank
-        full_chunk = [psi_connected[i] for i in split_idx[MPI.COMM_WORLD.Get_rank()]]
-
-        if L is None:  # If no argument passed by the user
-            L = len(full_chunk)
-        number_of_chunks, leftovers = divmod(len(full_chunk), L)
-        # Yield chunks of size L one at a time
-        for i in np.arange(number_of_chunks):
-            yield full_chunk[i * L : (i + 1) * L]
-        # Yield `leftover' determinants (size of chunk < L)
-        if leftovers > 0:  # If there are leftover determinants to handle
-            yield full_chunk[number_of_chunks * L : number_of_chunks * L + leftovers]
-
-    @staticmethod
-    @cache
-    def exc_degree_spindet(spindet_i: Spin_determinant, spindet_j: Spin_determinant) -> int:
-        return len(set(spindet_i).symmetric_difference(set(spindet_j))) // 2
-
-    @staticmethod
-    def exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
-        """Compute the excitation degree, the number of orbitals which differ
-           between the two determinants.
-        >>> Excitation.exc_degree(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                     Determinant(alpha=(0, 2), beta=(4, 6)))
-        (1, 2)
-        """
-        ed_up = Excitation.exc_degree_spindet(det_i.alpha, det_j.alpha)
-        ed_dn = Excitation.exc_degree_spindet(det_i.beta, det_j.beta)
-        return (ed_up, ed_dn)
-
-    @staticmethod
-    def is_connected(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
-        """Compute the excitation degree, the number of orbitals which differ
-           between the two determinants.
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 1), beta=(0, 2)))
-        True
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 2), beta=(0, 2)))
-        True
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(2, 3), beta=(0, 1)))
-        True
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(2, 3), beta=(0, 2)))
-        False
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 1), beta=(0, 1)))
-        False
-        """
-        return sum(Excitation.exc_degree(det_i, det_j)) in [1, 2]
-
-    def generate_all_constraints(self, n_elec, m=3) -> List[Spin_determinant]:
-        """Generate all `m'-constraints, characterized by m most highly occupied (usually alpha) electrons
-        >>> Excitation(4).generate_all_constraints(3)
-        [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)]
-        >>> len(Excitation(6).generate_all_constraints(3))
-        20
-        """
-        # Problem of number of constraints reduces to binning m (= 3, usually) spin electrons into n_orb - (n_elec - m) orbitals...
-        # We assume the bottom n_elec - m alpha-electrons are at the lowest ON, since only the top three matter
-        # Then, just bin the last m among n_orb - (n_elec - m) remaining orbitals.
-        if n_elec < m:
-            raise NotImplementedError
-        unfilled_orbs = [i for i in range(n_elec - m, self.n_orb)]
-        return [constraint for constraint in combinations(unfilled_orbs, m)]
-
-    def triplet_constrained_single_excitations_from_det(
-        self, det: Determinant, constraint: Spin_determinant, spin="alpha"
-    ) -> Iterator[Determinant]:
-        """Compute all (single) excitations of a det subject to a triplet contraint T = [o1: |OrbitalIdx|, o2: |OrbitalIdx|, o3: |OrbitalIdx|]
-        By default: constraint T specifies 3 `most highly` occupied alpha spin orbitals allowed in the generated excitation
-            e.g., if exciting |D> does not yield |J> such that o1, o2, o3 are the `largest` occupied alpha orbitals in |J> -> Excitation not generated
-        Inputs:
-
-        Outputs:
-            Yield excitations of det |D> subject to specified constraint
-
-        """
-        ha = []  # `Occupied` orbitals to loop over
-        pa = []  # `Virtual`  "                   "
-        hb = []
-        pb = []
-
-        a1 = min(constraint)  # Index of `smallest` occupied constraint orbital
-        B = set(
-            range(a1 + 1, self.n_orb)
-        )  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1} # TODO: Maybe o1 inclusive...
-        if spin == "alpha":
-            det_a = getattr(
-                det, spin
-            )  # Get |Spin_determinant| of inputted |Determinant|, |D> (default is alpha)
-            det_b = getattr(det, "beta")
-        else:
-            det_a = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
-            det_b = getattr(det, "alpha")
-
-        # Some things can be pre-computed:
-        #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D_a>? (If any)
-        constraint_orbitals_occupied = set(det_a) & set(constraint)
-        #   Which `higher-order` (spin) orbitals o >= a1 that are not {a1, a2, a3} are occupied in |D_a>? (If any)
-        #   TODO: Different from Tubman paper, which has an error if I reada it correctly
-        nonconstrained_orbitals_occupied = (set(det_a) & B) - set(constraint)
-
-        # If no double excitation of |D> will produce |J> satisfying constraint
-        if len(constraint_orbitals_occupied) == 1 or len(nonconstrained_orbitals_occupied) > 1:
-            # No single excitations generated by the inputted |Determinant|: {det} satisfy given constraint: {constraint}
-            return None
-
-        # Create list of possible `particles` s.to constraint
-        if len(constraint_orbitals_occupied) == 2:
-            # (Two constraint orbitals occupied) e.g., a1, a2 \in |D_a> -> A single (a) x_a \in ha to a_unocc is necessary to satisfy the constraint
-            # A single (b) will still not satisfy constraint
-            (a_unocc,) = ((set(det_a) | set(constraint)) - (set(det_a) & set(constraint))) & set(
-                constraint
-            )  # The 1 unoccupied constraint orbital
-            pa.append(a_unocc)
-        elif len(constraint_orbitals_occupied) == 3:
-            # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
-            #   Any single x_a \in ha to w_a where w_a < a1 will satisfy constraint
-            det_unocc_a_orbs = self.all_orbs - set(det_a)
-            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                pa.append(w_a)
-            #   Any single x_b \in hb to w_b
-            det_unocc_b_orbs = self.all_orbs - set(det_b)
-            for w_b in det_unocc_b_orbs:
-                pb.append(w_b)
-
-        # Create list of possible `holes` s.to constraint
-        if len(nonconstrained_orbitals_occupied) == 1:
-            # x_a > a1 \in |D_a> with x_a \not\in {a1, a2, a3} -> A single (a) x_a to w_a \in pa is necessary to satisfy constraint
-            # A single (b) will not satisfy
-            (x_a,) = nonconstrained_orbitals_occupied  # Has length 1; unpack
-            ha.append(x_a)
-        elif len(nonconstrained_orbitals_occupied) == 0:
-            # No `higher` orbitals \not\in {a1, a2, a3} occupied in |D> ->
-            #   A single (a) x_a to w_a \in pa, where x_a < a1 (so as not to ruin constraint)
-            for x_a in takewhile(lambda x: x < a1, det_a):
-                ha.append(x_a)
-            #   A single (b) x_b to w_b \in pb
-            for x_b in det_b:
-                hb.append(x_b)
-
-        # Finally, generate all excitations
-        for h in ha:
-            for p in pa:
-                excited_spindet = self.apply_excitation(det_a, [[h], [p]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant(excited_spindet, det_b)
-                else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant(det_b, excited_spindet)
-                assert excited_spindet[-3:] == constraint
-                yield excited_det
-
-        for h in hb:
-            for p in pb:
-                excited_spindet = self.apply_excitation(det_b, [[h], [p]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant(det_a, excited_spindet)
-                else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant(excited_spindet, det_a)
-                assert det_a[-3:] == constraint
-                yield excited_det
-
-    def triplet_constrained_double_excitations_from_det(
-        self, det: Determinant, constraint: Spin_determinant, spin="alpha"
-    ) -> Iterator[Determinant]:
-        """Compute all (double) excitations of a det subject to a triplet contraint T = [a1: |OrbitalIdx|, a2: |OrbitalIdx|, a3: |OrbitalIdx|]
-        By default: constraint T specifies 3 `most highly` occupied alpha spin orbitals allowed in the generated excitation
-            e.g., if exciting |D> does not yield |J> such that a1, a2, a3 are the `largest` occupied alpha orbitals in |J> -> Excitation not generated
-        Inputs:
-
-        Outputs:
-            Yield excitations of det |D> subject to specified constraint
-
-        """
-        # Same-spin alpha
-        haa = []  # `Occupied` orbitals to loop over
-        paa = []  # `Virtual`  "                   "
-        # Same-spin beta
-        hbb = []
-        pbb = []
-        # Oppositive spin
-        hab = []
-        pab = []
-        a1 = min(constraint)  # Index of `smallest` occupied alpha constraint orbital
-        B = set(range(a1 + 1, self.n_orb))  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1}
-        if spin == "alpha":
-            det_a = getattr(
-                det, spin
-            )  # Get |Spin_determinant| of inputted |Determinant|, |D> (default is alpha)
-            det_b = getattr(det, "beta")
-        else:
-            det_a = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
-            det_b = getattr(det, "alpha")
-
-        # Some things can be pre-computed:
-        #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D>? (If any)
-        constraint_orbitals_occupied = set(det_a) & set(constraint)
-        #   Which `higher-order`(spin) orbitals o >= a1 that are not {a1, a2, a3} are occupied in |D>? (If any)
-        #   TODO: Different from Tubman paper, which has an error if I read it correctly...
-        nonconstrained_orbitals_occupied = (set(det_a) & B) - set(constraint)
-
-        # If this -> no double excitation of |D> will produce |J> satisfying constraint |T>
-        if len(constraint_orbitals_occupied) == 0 or len(nonconstrained_orbitals_occupied) > 2:
-            # No double excitations generated by the inputted |Determinant|: {det} satisfy given constraint: {constraint}
-            return None
-
-        # Create list of possible `particles` s.to constraint
-        if len(constraint_orbitals_occupied) == 1:
-            # (One constraint orbital occupied) e.g., a1 \in |D_a> -> A same-spin (aa) double to (x_a, y_a) \in haa to (a2, a3) is necessary
-            # No same-spin (bb) or opposite-spin (ab) excitations will satisfy constraint
-            # New particles -> a2, a3
-            a_unocc_1, a_unocc_2 = (
-                (set(det_a) | set(constraint)) - (set(det_a) & set(constraint))
-            ) & set(
-                constraint
-            )  # This set will have length 2; unpack
-            paa.append((a_unocc_1, a_unocc_2))
-
-        elif len(constraint_orbitals_occupied) == 2:
-            # (Two constraint orbitals occupied) e.g., a1, a2 \in |D_a> ->
-            #   A same-spin (aa) double (x_a, y_a) \in haa to (z_a, a_unocc), where z_a\not\in|D_a>, and z_a < a1 (if excited to z_a > a1, constraint ruined!)
-            (a_unocc,) = ((set(det_a) | set(constraint)) - (set(det_a) & set(constraint))) & set(
-                constraint
-            )  # The 1 unoccupied constraint orbital
-            det_unocc_a_orbs = self.all_orbs - set(det_a)  # Unocc orbitals in |D_a>
-            for z_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                # z < a_unocc trivially, no need to check they are distinct
-                paa.append((z_a, a_unocc))
-            #   No same spin (bb) excitations will satisfy constraint
-            #   An oppopsite spin (ab) double (x_a, y_b) \in \hab to (a_unocc, z_b), where z\not\in|D_b>
-            det_unocc_b_orbs = set(range(self.n_orb)) - set(det_b)  # Unocc orbitals in |D_b>
-            for z_b in det_unocc_b_orbs:
-                pab.append((a_unocc, z_b))
-
-        elif len(constraint_orbitals_occupied) == 3:
-            # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
-            #   Any same-spin (aa) double (x_a, y_a) \in haa to (w_a, z_a), where w_a, z_a < a1
-            det_unocc_a_orbs = self.all_orbs - set(det_a)
-            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                for z_a in takewhile(lambda z: z < w_a, det_unocc_a_orbs):
-                    paa.append((w_a, z_a))
-            # Any same-spin (bb) double (x_b, y_b) \in hbb to (w_b, z_b)
-            det_unocc_b_orbs = self.all_orbs - set(det_b)  # Unocc orbitals in |D_a>
-            for w_b in det_unocc_b_orbs:
-                for z_b in takewhile(lambda x: x < w_b, det_unocc_b_orbs):
-                    pbb.append((w_b, z_b))
-            #   Any oppospite-spin (ab) double (x_a, y_b) \in hab to (w_a, z_b), where w_a < a1
-            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                for z_b in det_unocc_b_orbs:
-                    pab.append((w_a, z_b))
-
-        # Create list of possible `holes` s.to constraint
-        if len(nonconstrained_orbitals_occupied) == 2:
-            # x_a, y_a \in |D_a> with x_a, y_a > a1 and \not\in {a1, a2, a3} -> A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa is necessary
-            # No same-spin (bb) or opposite-spin (ab) excitations will satisfy constraint
-            # New holes -> x, y
-            x_a, y_a = nonconstrained_orbitals_occupied  # This set will have length 2; unpack
-            haa.append((x_a, y_a))
-        elif len(nonconstrained_orbitals_occupied) == 1:
-            # x_a > a1 \in |D_a> with x_a \not\in {a1, a2, a3} ->
-            #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where y_a < a1 (exciting y_a < a1 doesn't remove constraint)
-            (x_a,) = nonconstrained_orbitals_occupied  # Has length 1; unpack
-            for y_a in takewhile(lambda x: x < a1, det_a):
-                if x_a != y_a:
-                    haa.append((x_a, y_a))
-            #   A same-spin (bb) double will not satisfy the constraint
-            #   A opposite-spin (ab) double (x_a, y_b) -> (w_a, z_b) \in pab where y_b \in |D_b>
-            for y_b in det_b:
-                hab.append((x_a, y_b))
-
-        elif len(nonconstrained_orbitals_occupied) == 0:
-            # No `higher` orbitals \not\in {a1, a2, a3} occupied in |D> ->
-            #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where x_a, y_a < a1
-            for x_a in takewhile(lambda x: x < a1, det_a):
-                for y_a in takewhile(lambda y: y < x_a, det_a):
-                    haa.append((x_a, y_a))
-            #   A same-spin (bb) double (x_b, y_b) to (w_b, z_b) \in pbb
-            for x_b in det_b:
-                for y_b in takewhile(lambda x: x < x_b, det_b):
-                    hbb.append((x_b, y_b))
-            #   A opposite-spin (ab) double (x_a, y_b) to (w_a, z_b) \in pab, where x_a < a1
-            for x_a in takewhile(lambda x: x < a1, det_a):
-                for y_b in det_b:
-                    hab.append((x_a, y_b))
-
-        # Finally, generate all excitations
-        for holes, particles in product(haa, paa):
-            excited_spindet = self.apply_excitation(det_a, [holes, particles])
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant(excited_spindet, det_b)
-            else:  # Then, det_b is alpha spindet
-                excited_det = Determinant(det_b, excited_spindet)
-            assert excited_spindet[-3:] == constraint
-            yield excited_det
-
-        for holes, particles in product(hbb, pbb):
-            excited_spindet = self.apply_excitation(det_b, [holes, particles])
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant(det_a, excited_spindet)
-            else:  # Then, det_b is alpha spindet
-                excited_det = Determinant(excited_spindet, det_a)
-            assert det_a[-3:] == constraint
-            yield excited_det
-
-        for holes, particles in product(hab, pab):
-            ha, hb = holes
-            pa, pb = particles
-            excited_spindet_a = self.apply_excitation(det_a, [[ha], [pa]])
-            excited_spindet_b = self.apply_excitation(det_b, [[hb], [pb]])
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant(excited_spindet_a, excited_spindet_b)
-            else:
-                excited_det = Determinant(excited_spindet_b, excited_spindet_a)
-            assert excited_spindet_a[-3:] == constraint
-            yield excited_det
-
-    @staticmethod
-    def check_constraint(det: Determinant, spin="alpha"):
-        # Give me a determinant. What constraint does it satisfy? (What are three most highly occupied alpha spin orbitas)
-        spindet = getattr(det, spin)
-        # Return constraint as |Spin_determinant|
-        return spindet[-3:]
-
-    def dispatch_local_constraints(
-        self, comm: MPI.COMM_WORLD, psi: Psi_det
-    ) -> List[Spin_determinant]:
-        """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
-        Work is roughly distributed based on the number of connected determinants satisfying a particular constraint
-
-        Inputs:
-        :param psi: List of internal determinants (global)
-
-        Outputs:
-        :param C_loc: Local constraints"""
-
-        rank = comm.Get_rank()
-        # Initialize array to track workload of each rank
-        W = np.zeros(shape=(comm.Get_size(),), dtype="i")
-        C_loc = []  # Pre-allocate space for local constraints
-        na = len(getattr(psi[0], "alpha"))  # No. of alpha electrons
-        nb = len(getattr(psi[0], "beta"))  # No. of beta electrons
-        # Pass through all triplet constraints to distribute
-        H = []  # Track work dist.
-        for C in self.generate_all_constraints(na):
-            B_upper = set(range(min(C) + 1, self.n_orb))  # Upper bitmask
-            B_lower = set(range(min(C)))  # Lower bitmask
-            h = 0  # Track work of this constraint
-            for det in psi:
-                det_a = getattr(det, "alpha")
-                constraint_orbitals_occupied = set(det_a) & set(C)
-                nonconstrained_orbitals_occupied = (set(det_a) & B_upper) - set(C)
-                # n_particles = [np_a, np_b, np_aa, np_bb, np_ab]
-                # Number of particles (or pairs) that (could possibly) involve an excitation satisfying C
-                if len(constraint_orbitals_occupied) == 0:
-                    # No excitations will satisfy C -> Pass
-                    n_particles = np.zeros(5, dtype="i")
-                elif len(constraint_orbitals_occupied) == 1:
-                    # To satisfy C, excitation must be aa (into empty constraint orbitals)
-                    n_particles = np.array([0, 0, 1, 0, 0], dtype="i")
-                elif len(constraint_orbitals_occupied) == 2:
-                    # To satisfy C, only possible single is a, must excite into empty constraint orbital
-                    na_orbs_unocc_lower = B_lower - set(det_a)
-                    # No bb; for ab doubles, a must excite into empty constraint orbital, so 1 * (self.n_orb - nb) ab pairs
-                    n_particles = np.array(
-                        [1, 0, len(na_orbs_unocc_lower), 0, (self.n_orb - nb)], dtype="i"
-                    )
-                elif len(constraint_orbitals_occupied) == 3:
-                    # To satisfy C, any a or aa excitaion into `lower` unoccupied alpha orbitals
-                    # All possible b or bb excitations satisfy C
-                    na_orbs_unocc_lower = B_lower - set(det_a)
-                    # Divide some things by 2 to avoid repeats due to permuation (e.g., (p1, p2) = (1, 2) <-> (p1, p2) = (2, 1))
-                    n_particles = np.array(
-                        [
-                            len(na_orbs_unocc_lower),
-                            self.n_orb - nb,
-                            len(na_orbs_unocc_lower) * (len(na_orbs_unocc_lower) - 1) / 2,
-                            (self.n_orb - nb) * (self.n_orb - nb - 1) / 2,
-                            (self.n_orb - nb) * len(na_orbs_unocc_lower),
-                        ],
-                        dtype="i",
-                    )
-
-                # n_holes = [nh_a, nh_b, nh_aa, nh_bb, nh_ab]
-                # Number of holes (or pairs) that (could possibly) involve an excitation satisfying C
-                if len(nonconstrained_orbitals_occupied) > 2:
-                    # No excitations will satisfy C -> Pass
-                    n_holes = np.zeros(5, dtype="i")
-                elif len(nonconstrained_orbitals_occupied) == 2:
-                    # To satisfy C, excitation must be aa (out of `higher` non-constraint orbitals)
-                    n_holes = np.array([0, 0, 1, 0, 0], dtype="i")
-                elif len(nonconstrained_orbitals_occupied) == 1:
-                    # To satisfy C, only possible single is a, must excite out of `higher` constraint orbitals
-                    na_orbs_occ_lower = set(det_a) & B_lower
-                    # No bb; for ab doubles, a must excite out of `higher` constraint orbital, so 1 * nb ab pairs
-                    n_holes = [1, 0, len(na_orbs_occ_lower), 0, nb]
-                elif len(nonconstrained_orbitals_occupied) == 0:
-                    # To satisfy C, can excite out of any `lower` occupied alpha orbitals
-                    # All possible b or bb excitations satisfy C
-                    na_orbs_occ_lower = set(det_a) & B_lower
-                    n_holes = [
-                        len(na_orbs_occ_lower),
-                        nb,
-                        len(na_orbs_occ_lower) * (len(na_orbs_occ_lower) - 1) / 2,
-                        nb * (nb - 1) / 2,
-                        len(na_orbs_occ_lower) * nb,
-                    ]
-
-                # Number of singly/doubly connected determinants to |det> satisfying constraint C
-                #   Simply (per spin type) number of holes * particles that will yield an excitation in C
-                h += np.dot(n_particles, n_holes)  # Add to work thus far
-
-            if h > 0:  # Handle case where no dets satisfy C.. No one will do it
-                _, loc = comm.allreduce(
-                    (W[rank], rank), MPI.MINLOC
-                )  # This is a tuple, so use python command
-                if loc == rank:  # Rank with lowest amount of work collects current constraint
-                    C_loc.append(C)
-                    H.append(h)
-                    W[rank] += h  # Add h to the amount of `work` rank has
-
-        # Return local constraints and distribution of work
-        return C_loc, H
-
-
-#  ______ _                        _   _       _
-#  | ___ \ |                      | | | |     | |
-#  | |_/ / |__   __ _ ___  ___    | |_| | ___ | | ___
-#  |  __/| '_ \ / _` / __|/ _ \   |  _  |/ _ \| |/ _ \
-#  | |   | | | | (_| \__ \  __/_  | | | | (_) | |  __/
-#  \_|   |_| |_|\__,_|___/\___( ) \_| |_/\___/|_|\___|
-#                             |/
-#
-#                   _  ______          _   _      _
-#                  | | | ___ \        | | (_)    | |
-#    __ _ _ __   __| | | |_/ /_ _ _ __| |_ _  ___| | ___  ___
-#   / _` | '_ \ / _` | |  __/ _` | '__| __| |/ __| |/ _ \/ __|
-#  | (_| | | | | (_| | | | | (_| | |  | |_| | (__| |  __/\__ \
-#   \__,_|_| |_|\__,_| \_|  \__,_|_|   \__|_|\___|_|\___||___/
-#
-#
-
-
-class PhaseIdx(object):
-    @staticmethod
-    def single_phase(sdet_i, sdet_j, h, p):
-        phase = 1
-        for det, idx in ((sdet_i, h), (sdet_j, p)):
-            for _ in takewhile(lambda x: x != idx, det):
-                phase = -phase
-        return phase
-
-    @staticmethod
-    def single_exc_no_phase(
-        sdet_i: Spin_determinant, sdet_j: Spin_determinant
-    ) -> Tuple[OrbitalIdx, OrbitalIdx]:
-        """hole, particle of <I|H|J> when I and J differ by exactly one orbital
-           h is occupied only in I
-           p is occupied only in J
-
-        >>> PhaseIdx.single_exc_no_phase((1, 5, 7), (1, 23, 7))
-        (5, 23)
-        >>> PhaseIdx.single_exc_no_phase((1, 2, 9), (1, 9, 18))
-        (2, 18)
-        """
-        (h,) = set(sdet_i) - set(sdet_j)
-        (p,) = set(sdet_j) - set(sdet_i)
-
-        return h, p
-
-    @staticmethod
-    def single_exc(
-        sdet_i: Spin_determinant, sdet_j: Spin_determinant
-    ) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
-        """phase, hole, particle of <I|H|J> when I and J differ by exactly one orbital
-           h is occupied only in I
-           p is occupied only in J
-
-        >>> PhaseIdx.single_exc((0, 4, 6), (0, 22, 6))
-        (1, 4, 22)
-        >>> PhaseIdx.single_exc((0, 1, 8), (0, 8, 17))
-        (-1, 1, 17)
-        """
-        h, p = PhaseIdx.single_exc_no_phase(sdet_i, sdet_j)
-
-        return PhaseIdx.single_phase(sdet_i, sdet_j, h, p), h, p
-
-    @staticmethod
-    def double_phase(sdet_i, sdet_j, h1, h2, p1, p2):
-        # Compute phase. See paper to have a loopless algorithm
-        # https://arxiv.org/abs/1311.6244
-        phase = PhaseIdx.single_phase(sdet_i, sdet_j, h1, p1) * PhaseIdx.single_phase(
-            sdet_j, sdet_i, p2, h2
-        )
-        if h2 < h1:
-            phase *= -1
-        if p2 < p1:
-            phase *= -1
-        return phase
-
-    @staticmethod
-    def double_exc_no_phase(
-        sdet_i: Spin_determinant, sdet_j: Spin_determinant
-    ) -> Tuple[OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
-        """holes, particles of <I|H|J> when I and J differ by exactly two orbitals
-           h1, h2 are occupied only in I
-           p1, p2 are occupied only in J
-
-        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
-        (3, 4, 12, 13)
-        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
-        (3, 9, 12, 18)
-        """
-
-        # Holes
-        h1, h2 = sorted(set(sdet_i) - set(sdet_j))
-
-        # Particles
-        p1, p2 = sorted(set(sdet_j) - set(sdet_i))
-
-        return h1, h2, p1, p2
-
-    @staticmethod
-    def double_exc(
-        sdet_i: Spin_determinant, sdet_j: Spin_determinant
-    ) -> Tuple[int, OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
-        """phase, holes, particles of <I|H|J> when I and J differ by exactly two orbitals
-           h1, h2 are occupied only in I
-           p1, p2 are occupied only in J
-
-        >>> PhaseIdx.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 4, 5, 6, 7, 8, 11, 12))
-        (1, 2, 3, 11, 12)
-        >>> PhaseIdx.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 3, 4, 5, 6, 7, 11, 17))
-        (-1, 2, 8, 11, 17)
-        """
-
-        h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(sdet_i, sdet_j)
-
-        return PhaseIdx.double_phase(sdet_i, sdet_j, h1, h2, p1, p2), h1, h2, p1, p2
-
-
 #   _   _                 _ _ _              _
 #  | | | |               (_) | |            (_)
 #  | |_| | __ _ _ __ ___  _| | |_ ___  _ __  _  __ _ _ __
@@ -800,7 +119,8 @@ class Hamiltonian_one_electron(object):
 
         def H_ij_spindet(sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Energy:
             """<I|H|J>, when I and J differ by exactly one orbital."""
-            phase, m, p = PhaseIdx.single_exc(sdet_i, sdet_j)
+            # det_i is accessible
+            phase, m, p = det_i.single_exc(sdet_i, sdet_j)
             return self.H_ij_orbital(m, p) * phase
 
         ed_up, ed_dn = det_i.exc_degree(det_j)
@@ -897,7 +217,7 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
             sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one orbital"""
-            phase, h, p = PhaseIdx.single_exc(sdet_i, sdet_j)
+            phase, h, p = det_i.single_exc(sdet_i, sdet_j)
             for i in sdet_i:
                 yield (h, i, p, i), phase
                 yield (h, i, i, p), -phase
@@ -909,7 +229,7 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly two orbitals within
             the same spin."""
-            phase, h1, h2, p1, p2 = PhaseIdx.double_exc(sdet_i, sdet_j)
+            phase, h1, h2, p1, p2 = det_i.double_exc(sdet_i, sdet_j)
             yield (h1, h2, p1, p2), phase
             yield (h1, h2, p2, p1), -phase
 
@@ -918,8 +238,8 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
             one beta spin-orbital."""
-            phaseA, h1, p1 = PhaseIdx.single_exc(det_i.alpha, det_j.alpha)
-            phaseB, h2, p2 = PhaseIdx.single_exc(det_i.beta, det_j.beta)
+            phaseA, h1, p1 = det_i.single_exc(det_i.alpha, det_j.alpha)
+            phaseB, h2, p2 = det_i.single_exc(det_i.beta, det_j.beta)
             yield (h1, h2, p1, p2), phaseA * phaseB
 
         ed_up, ed_dn = det_i.exc_degree(det_j)
@@ -1105,7 +425,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Hole, particle are beta spin orbitals
                 excited_det = det.apply_excitation(((), ()), ((h,), (p,)))
             # Assert the excited determinant satisfies the appropriate constraint C
-            assert Excitation.check_constraint(excited_det) == C
+            assert check_constraint(excited_det) == C
             # param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
             phase = phasemod * det.single_phase(
                 getattr(det, spin), getattr(excited_det, spin), h, p
@@ -1273,7 +593,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Holes, particles are beta spin orbitals
                 excited_det = det.apply_excitation(((), ()), ((h1, h2), (p1, p2)))
             # Assert the excited determinant satisfies the appropriate constraint C
-            assert Excitation.check_constraint(excited_det) == C
+            assert check_constraint(excited_det) == C
             phase = det.double_phase(getattr(det, spin), getattr(excited_det, spin), h1, h2, p1, p2)
             yield (I, excited_det), phase
 
@@ -1439,7 +759,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                     getattr(det, "alpha"), getattr(excited_det, "alpha"), h2, p2
                 )
             # Assert excited det satisfies constraint and yield
-            assert Excitation.check_constraint(excited_det) == C
+            assert check_constraint(excited_det) == C
             yield (I, excited_det), phaseA * phaseB
 
     @staticmethod
@@ -3309,7 +2629,7 @@ class Powerplant_manager(object):
     def gen_local_constraints(self) -> Iterator[Spin_determinant]:
         # Generate local constraints
         # Call to MPI function that yields local constraints
-        C_loc, _ = Excitation(self.N_orb).dispatch_local_constraints(self.comm, self.psi_internal)
+        C_loc, _ = dispatch_local_constraints(self.comm, self.psi_internal, self.N_orb)
         for C in C_loc:
             yield C
 
@@ -3384,9 +2704,7 @@ class Powerplant_manager(object):
                 # Inner pass (for each |I⟩) generates all excitations satisfying constraint |C⟩ from |I⟩
                 # Triplet constrained singles
                 # Each det_J will show up all connected to multiple I.. so have to do this outside of integral loop
-                for det_J in Excitation(self.N_orb).triplet_constrained_single_excitations_from_det(
-                    det_I, C
-                ):
+                for det_J in det_I.triplet_constrained_single_excitations_from_det(C, self.N_orb):
                     nominator_conts_table[det_J] += c[
                         I
                     ] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(det_I, det_J)
@@ -3559,3 +2877,205 @@ def global_sort_pt2_energies(comm, local_best_dets: Psi_det, local_best_energies
 
     # Return dets corresponding to globally `best' E_pt2 contributions
     return global_best_dets
+
+
+#   _____         _ _        _   _
+#  |  ___|       (_) |      | | (_)
+#  | |____  _____ _| |_ __ _| |_ _  ___  _ __
+#  |  __\ \/ / __| | __/ _` | __| |/ _ \| '_ \
+#  | |___>  < (__| | || (_| | |_| | (_) | | | |
+#  \____/_/\_\___|_|\__\__,_|\__|_|\___/|_| |_|
+#
+
+
+def get_chunk_of_connected_determinants(psi_det: Psi_det, n_orb: int, L=None) -> Iterator[Psi_det]:
+    """
+    MPI function, generates chunks of connected determinants of size L
+
+    Inputs:
+    :param psi_det: list of determinants
+    :param L: integer, maximally allowed `chunk' of the conneceted space to yield at a time
+    default is L = None, if no chunk size specified, a chunk of the connected space is allocated to each rank
+
+    >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
+    >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ] ):
+    ...     len(psi_chunk)
+    22
+    >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ], 11 ):
+    ...     len(psi_chunk)
+    11
+    11
+    >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ], 10 ):
+    ...     len(psi_chunk)
+    10
+    10
+    2
+    """
+
+    def gen_all_connected_determinant(psi_det: Psi_det, n_orb: int) -> Psi_det:
+        """
+        >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
+        >>> len(Excitation(4).gen_all_connected_determinant( [ d1,d2 ] ))
+        22
+
+        We remove the connected determinant who are already inside the wave function. Order doesn't matter
+        """
+        # Literal programing
+        # return set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det)))- set(psi_det)
+
+        # Naive algorithm 13
+        l_global = []
+        for i, det in enumerate(psi_det):
+            for det_connected in det.gen_all_connected_det(n_orb):
+                # Remove determinant who are in psi_det
+                if det_connected in psi_det:
+                    continue
+                # If it's was already generated by an old determinant, just drop it
+                if any(Excitation.is_connected(det_connected, d) for d in psi_det[:i]):
+                    continue
+
+                l_global.append(det_connected)
+
+        # Return connected space
+        return l_global
+
+    # Naive: Each ranks generates all connected determinants, and takes what is theirs
+    psi_connected = gen_all_connected_determinant(psi_det, n_orb)
+    world_size = MPI.COMM_WORLD.Get_size()
+    # TODO: len(psi_connected) will not scale, but is needed for this naive representation
+    full_idx = np.arange(len(psi_connected))
+    split_idx = np.array_split(full_idx, world_size)
+    # Part of connected space available to each rank
+    full_chunk = [psi_connected[i] for i in split_idx[MPI.COMM_WORLD.Get_rank()]]
+
+    if L is None:  # If no argument passed by the user
+        L = len(full_chunk)
+    number_of_chunks, leftovers = divmod(len(full_chunk), L)
+    # Yield chunks of size L one at a time
+    for i in np.arange(number_of_chunks):
+        yield full_chunk[i * L : (i + 1) * L]
+    # Yield `leftover' determinants (size of chunk < L)
+    if leftovers > 0:  # If there are leftover determinants to handle
+        yield full_chunk[number_of_chunks * L : number_of_chunks * L + leftovers]
+
+
+def generate_all_constraints(n_orb: int, n_elec: int, m=3) -> List[Tuple[OrbitalIdx, ...]]:
+    """Generate all `m'-constraints, characterized by m most highly occupied (usually alpha) electrons
+    >>> generate_all_constraints(3, 4)
+    [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)]
+    >>> len(generate_all_constraints(3, 4))
+    20
+    """
+    # Problem of number of constraints reduces to binning m (= 3, usually) spin electrons into n_orb - (n_elec - m) orbitals...
+    # We assume the bottom n_elec - m alpha-electrons are at the lowest ON, since only the top three matter
+    # Then, just bin the last m among n_orb - (n_elec - m) remaining orbitals.
+    if n_elec < m:
+        raise NotImplementedError
+    unfilled_orbs = [i for i in range(n_elec - m, n_orb)]
+    return [constraint for constraint in combinations(unfilled_orbs, m)]
+
+
+def check_constraint(det: Determinant, spin="alpha"):
+    # Give me a determinant. What constraint does it satisfy? (What are three most highly occupied alpha spin orbitas)
+    spindet = getattr(det, spin)
+    # Return constraint as |Spin_determinant|
+    return spindet[-3:]
+
+
+def dispatch_local_constraints(
+    comm: MPI.COMM_WORLD, psi: Psi_det, n_orb: int
+) -> List[Tuple[OrbitalIdx, ...]]:
+    """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
+    Work is roughly distributed based on the number of connected determinants satisfying a particular constraint
+
+    Inputs:
+    :param psi: List of internal determinants (global)
+
+    Outputs:
+    :param C_loc: Local constraints"""
+
+    rank = comm.Get_rank()
+    # Initialize array to track workload of each rank
+    W = np.zeros(shape=(comm.Get_size(),), dtype="i")
+    C_loc = []  # Pre-allocate space for local constraints
+    na = len(getattr(psi[0], "alpha"))  # No. of alpha electrons
+    nb = len(getattr(psi[0], "beta"))  # No. of beta electrons
+    # Pass through all triplet constraints to distribute
+    H = []  # Track work dist.
+    for C in generate_all_constraints(n_orb, na):
+        B_upper = set(range(min(C) + 1, n_orb))  # Upper bitmask
+        B_lower = set(range(min(C)))  # Lower bitmask
+        h = 0  # Track work of this constraint
+        for det in psi:
+            det_a = getattr(det, "alpha")
+            constraint_orbitals_occupied = set(det_a) & set(C)
+            nonconstrained_orbitals_occupied = (set(det_a) & B_upper) - set(C)
+            # n_particles = [np_a, np_b, np_aa, np_bb, np_ab]
+            # Number of particles (or pairs) that (could possibly) involve an excitation satisfying C
+            if len(constraint_orbitals_occupied) == 0:
+                # No excitations will satisfy C -> Pass
+                n_particles = np.zeros(5, dtype="i")
+            elif len(constraint_orbitals_occupied) == 1:
+                # To satisfy C, excitation must be aa (into empty constraint orbitals)
+                n_particles = np.array([0, 0, 1, 0, 0], dtype="i")
+            elif len(constraint_orbitals_occupied) == 2:
+                # To satisfy C, only possible single is a, must excite into empty constraint orbital
+                na_orbs_unocc_lower = B_lower - set(det_a)
+                # No bb; for ab doubles, a must excite into empty constraint orbital, so 1 * (self.n_orb - nb) ab pairs
+                n_particles = np.array([1, 0, len(na_orbs_unocc_lower), 0, (n_orb - nb)], dtype="i")
+            elif len(constraint_orbitals_occupied) == 3:
+                # To satisfy C, any a or aa excitaion into `lower` unoccupied alpha orbitals
+                # All possible b or bb excitations satisfy C
+                na_orbs_unocc_lower = B_lower - set(det_a)
+                # Divide some things by 2 to avoid repeats due to permuation (e.g., (p1, p2) = (1, 2) <-> (p1, p2) = (2, 1))
+                n_particles = np.array(
+                    [
+                        len(na_orbs_unocc_lower),
+                        n_orb - nb,
+                        len(na_orbs_unocc_lower) * (len(na_orbs_unocc_lower) - 1) / 2,
+                        (n_orb - nb) * (n_orb - nb - 1) / 2,
+                        (n_orb - nb) * len(na_orbs_unocc_lower),
+                    ],
+                    dtype="i",
+                )
+
+            # n_holes = [nh_a, nh_b, nh_aa, nh_bb, nh_ab]
+            # Number of holes (or pairs) that (could possibly) involve an excitation satisfying C
+            if len(nonconstrained_orbitals_occupied) > 2:
+                # No excitations will satisfy C -> Pass
+                n_holes = np.zeros(5, dtype="i")
+            elif len(nonconstrained_orbitals_occupied) == 2:
+                # To satisfy C, excitation must be aa (out of `higher` non-constraint orbitals)
+                n_holes = np.array([0, 0, 1, 0, 0], dtype="i")
+            elif len(nonconstrained_orbitals_occupied) == 1:
+                # To satisfy C, only possible single is a, must excite out of `higher` constraint orbitals
+                na_orbs_occ_lower = set(det_a) & B_lower
+                # No bb; for ab doubles, a must excite out of `higher` constraint orbital, so 1 * nb ab pairs
+                n_holes = [1, 0, len(na_orbs_occ_lower), 0, nb]
+            elif len(nonconstrained_orbitals_occupied) == 0:
+                # To satisfy C, can excite out of any `lower` occupied alpha orbitals
+                # All possible b or bb excitations satisfy C
+                na_orbs_occ_lower = set(det_a) & B_lower
+                n_holes = [
+                    len(na_orbs_occ_lower),
+                    nb,
+                    len(na_orbs_occ_lower) * (len(na_orbs_occ_lower) - 1) / 2,
+                    nb * (nb - 1) / 2,
+                    len(na_orbs_occ_lower) * nb,
+                ]
+
+            # Number of singly/doubly connected determinants to |det> satisfying constraint C
+            #   Simply (per spin type) number of holes * particles that will yield an excitation in C
+            h += np.dot(n_particles, n_holes)  # Add to work thus far
+
+        if h > 0:  # Handle case where no dets satisfy C.. No one will do it
+            _, loc = comm.allreduce(
+                (W[rank], rank), MPI.MINLOC
+            )  # This is a tuple, so use python command
+            if loc == rank:  # Rank with lowest amount of work collects current constraint
+                C_loc.append(C)
+                H.append(h)
+                W[rank] += h  # Add h to the amount of `work` rank has
+
+    # Return local constraints and distribution of work
+    return C_loc, H

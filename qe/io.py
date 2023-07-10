@@ -141,12 +141,12 @@ def load_wf(path_wf, det_representation="tuple") -> Tuple[List[float], List[Dete
                 if representation == "tuple":
                     yield i
                 elif representation == "bitstring":
-                    yield 1
+                    yield "1"
                 else:
                     raise NotImplementedError
             else:
                 if representation == "bitstring":
-                    yield 0
+                    yield "0"
 
     def grouper(iterable, n):
         "Collect data into fixed-length chunks or blocks"
@@ -166,10 +166,10 @@ def load_wf(path_wf, det_representation="tuple") -> Tuple[List[float], List[Dete
                 )
             )
         elif det_representation == "bitstring":
+            alpha_str = ["0", "b"] + [bit for bit in decode_det(det_i, det_representation)][::-1]
+            beta_str = ["0", "b"] + [bit for bit in decode_det(det_j, det_representation)][::-1]
             det.append(
-                Determinant_bitstring(
-                    (decode_det(det_i, det_representation)), (decode_det(det_j, det_representation))
-                )
+                Determinant_bitstring(int(("".join(alpha_str)), 2), int(("".join(beta_str)), 2))
             )
         else:
             raise NotImplementedError

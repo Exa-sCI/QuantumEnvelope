@@ -141,10 +141,12 @@ def load_wf(path_wf, det_representation="tuple") -> Tuple[List[float], List[Dete
                 if representation == "tuple":
                     yield i
                 elif representation == "bitstring":
-                    raise NotImplementedError
                     yield 1
                 else:
                     raise NotImplementedError
+            else:
+                if representation == "bitstring":
+                    yield 0
 
     def grouper(iterable, n):
         "Collect data into fixed-length chunks or blocks"

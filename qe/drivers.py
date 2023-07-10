@@ -194,6 +194,9 @@ class Hamiltonian_two_electrons(object):
         key = max(self.d_two_e_integral)
         return max(compound_idx4_reverse(key)) + 1
 
+    def H_ii(self, det_i: Determinant):
+        return sum(phase * self.H_ijkl_orbital(*idx) for idx, phase in self.H_ii_indices(det_i))
+
 
 #   ___            _
 #    |       _    |_ |  _   _ _|_ ._ _  ._   _
@@ -273,18 +276,11 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
                     yield (a, b), idx, phase
 
     def H(self, psi_internal: Psi_det, psi_external: Psi_det) -> List[List[Energy]]:
-        # det_external_to_index = {d: i for i, d in enumerate(psi_external)}
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_internal), len(psi_external)))
         for (a, b), (i, j, k, l), phase in self.H_indices(psi_internal, psi_external):
             h[a, b] += phase * self.H_ijkl_orbital(i, j, k, l)
         return h
-
-    def H_ii(self, det_i: Determinant):
-        return sum(
-            phase * self.H_ijkl_orbital(i, j, k, l)
-            for (i, j, k, l), phase in self.H_ii_indices(det_i)
-        )
 
 
 #   ___            _
@@ -352,7 +348,9 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         return det_indices
 
     @staticmethod
-    def do_diagonal(det_indices, psi_i, det_to_index_j, phase):
+    def do_diagonal(
+        det_indices: List[int], psi_i: Psi_det, det_to_index_j: Dict[Determinant, int], phase: int
+    ):
         # contribution from integrals to diagonal elements
         for a in det_indices:
             # Handle PT2 case when psi_i != psi_j. In this case, psi_i[a] won't be in the external space and so error will be thrown
@@ -392,7 +390,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             # If the excited determinant is in the internal wave function ->
             #   Compute phase of (single) excitation pair and yield (I, J), phase
             if excited_det in det_to_index:
-                # param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
+                # :param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
                 phase = phasemod * det.single_phase(
                     getattr(det, spin), getattr(excited_det, spin), h, p
                 )
@@ -1949,9 +1947,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             ) in self.H_indices_idx(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i):
                 h[a, b] += phase * integral_values
         return h
-
-    def H_ii(self, det_i: Determinant):
-        return sum(phase * self.H_ijkl_orbital(*idx) for idx, phase in self.H_ii_indices(det_i))
 
 
 class H_indices_generator(object):

@@ -166,7 +166,7 @@ class Determinant(NamedTuple):
         # |Determinant_tuple| and |Determinant_bitstring| each have this method
         ha, pa, hb, pb = self.get_holes_particles_for_constrained_singles(constraint, n_orb, spin)
         # Excitations of argument `spin`
-        for (h, p) in product(ha, pa):
+        for h, p in product(ha, pa):
             if spin == "alpha":
                 # Then, det_a is alpha spindet
                 excited_det = self.apply_excitation(((h,), (p,)), ((), ()))
@@ -177,7 +177,7 @@ class Determinant(NamedTuple):
             yield excited_det
 
         # Generate opposite-spin excitations
-        for (h, p) in product(hb, pb):
+        for h, p in product(hb, pb):
             if spin == "alpha":
                 # Then, det_b is beta spindet
                 excited_det = self.apply_excitation(((), ()), ((h,), (p,)))
@@ -726,7 +726,7 @@ class Determinant_bitstring(Determinant):
         lh, lp = exc  # Unpack
         # Iterate through list of tuples and holes simultaneously
         mask = 0
-        for (h, p) in zip(lh, lp):
+        for h, p in zip(lh, lp):
             # Create mask with bits in lh, lp set to 1
             mask = mask | (1 << h | 1 << p)
         return sdet ^ mask

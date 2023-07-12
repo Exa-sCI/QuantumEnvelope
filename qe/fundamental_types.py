@@ -259,23 +259,33 @@ class Determinant(tuple):
 
     _fields = ("alpha", "beta")
 
-    def __new__(_cls, *sdets):
+    def __new__(_cls, *args, **kwargs):
         """Create new |Determinant| instance
         If type of alpha, beta are |int| -> Return as is
         '                        ' |tuple| -> Convert to |Spin_determinant_tuple|, then return"""
-        try:
-            alpha, beta = sdets
-        except:
-            # Arg passed might be tuple of sdets; (alpha, beta)
-            try:
-                # Unpack length-1 tuple
-                (_sdets,) = sdets
-                alpha, beta = _sdets
-            except:
-                raise TypeError(
-                    f"Determinant expects arguments as 'alpha, beta' or '(alpha, beta)', got {sdets}"
-                )
 
+        # Can either...
+        #   Pass arguments in alpha, beta order as unnamed objects; e.g., Determinant(alpha_sdet, beta_sdet)
+        if len(args) > 0:
+            try:
+                alpha, beta = args
+            except:
+                # Arg passed might be tuple of sdets; (alpha, beta)
+                try:
+                    # Unpack length-1 tuple
+                    (_sdets,) = args
+                    alpha, beta = _sdets
+                except:
+                    raise TypeError(
+                        f"Determinant expects arguments as 'alpha, beta' or '(alpha, beta)', got {args}"
+                    )
+        # Or...
+        #   Pass arguments with keywords; e.g., Determinant(alpha=alpha_sdet, beta=beta_sdet)
+        elif len(kwargs) > 0:
+            alpha = kwargs["alpha"]
+            beta = kwargs["beta"]
+
+        # Once arguments are parsed, determine data representation
         if isinstance(alpha, tuple):
             _alpha = Spin_determinant_tuple(alpha)
         elif isinstance(alpha, int):
@@ -784,9 +794,9 @@ class Determinant(tuple):
            h is occupied only in I
            p is occupied only in J
 
-        >>> Determinant_tuple.single_exc((0, 4, 6), (0, 22, 6))
+        >>> Determinant.single_exc((0, 4, 6), (0, 22, 6))
         (1, 4, 22)
-        >>> Determinant_tuple.single_exc((0, 1, 8), (0, 8, 17))
+        >>> Determinant.single_exc((0, 1, 8), (0, 8, 17))
         (-1, 1, 17)
         """
         # Get holes, particle in exc
@@ -803,9 +813,9 @@ class Determinant(tuple):
            h is occupied only in I
            p is occupied only in J
 
-        >>> Determinant_tuple.single_exc_no_phase((1, 5, 7), (1, 23, 7))
+        >>> Determinant.single_exc_no_phase((1, 5, 7), (1, 23, 7))
         (5, 23)
-        >>> Determinant_tuple.single_exc_no_phase((1, 2, 9), (1, 9, 18))
+        >>> Determinant.single_exc_no_phase((1, 2, 9), (1, 9, 18))
         (2, 18)
         """
         (h,) = set(sdet_i) - set(sdet_j)
@@ -841,9 +851,9 @@ class Determinant(tuple):
            h1, h2 are occupied only in I
            p1, p2 are occupied only in J
 
-        >>> Determinant_tuple.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 4, 5, 6, 7, 8, 11, 12))
+        >>> Determinant.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 4, 5, 6, 7, 8, 11, 12))
         (1, 2, 3, 11, 12)
-        >>> Determinant_tuple.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 3, 4, 5, 6, 7, 11, 17))
+        >>> Determinant.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 3, 4, 5, 6, 7, 11, 17))
         (-1, 2, 8, 11, 17)
         """
         # Holes
@@ -861,9 +871,9 @@ class Determinant(tuple):
            h1, h2 are occupied only in I
            p1, p2 are occupied only in J
 
-        >>> Determinant_tuple.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
+        >>> Determinant.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
         (3, 4, 12, 13)
-        >>> Determinant_tuple.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
+        >>> Determinant.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
         (3, 9, 12, 18)
         """
 

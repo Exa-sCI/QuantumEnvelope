@@ -267,23 +267,26 @@ class Determinant(tuple):
         # Can either...
         #   Pass arguments in alpha, beta order as unnamed objects; e.g., Determinant(alpha_sdet, beta_sdet)
         if len(args) > 0:
-            try:
+            if (
+                len(args) == 2
+            ):  # Most often, Determinants will be created via Determinant(alpha_sdet, beta_sdet)
                 alpha, beta = args
-            except:
-                # Arg passed might be tuple of sdets; (alpha, beta)
+            elif len(args) == 1:
+                # Arg passed might be tuple of sdets; Determinant(((alpha_sdet, beta_sdet))
+                # Note: For some reason, mpi4py does this sometime when performing collectives
                 try:
                     # Unpack length-1 tuple
                     (_sdets,) = args
                     alpha, beta = _sdets
                 except:
-                    raise TypeError(
-                        f"Determinant expects arguments as 'alpha, beta' or '(alpha, beta)', got {args}"
-                    )
+                    raise TypeError(f"Expected 2 arguments, got {args}")
         # Or...
         #   Pass arguments with keywords; e.g., Determinant(alpha=alpha_sdet, beta=beta_sdet)
         elif len(kwargs) > 0:
             alpha = kwargs["alpha"]
             beta = kwargs["beta"]
+        else:
+            raise TypeError(f"Expected keyword arguments for 'alpha', 'beta', got {kwargs}")
 
         # Once arguments are parsed, determine data representation
         if isinstance(alpha, tuple):
@@ -291,13 +294,17 @@ class Determinant(tuple):
         elif isinstance(alpha, int):
             _alpha = Spin_determinant_bitstring(alpha)
         else:
-            _alpha = alpha
+            raise TypeError(
+                f"Expected 'alpha' argument of type <class 'tuple'> or <class 'int'>, got {type(alpha)}"
+            )
         if isinstance(beta, tuple):
             _beta = Spin_determinant_tuple(beta)
         elif isinstance(beta, int):
             _beta = Spin_determinant_bitstring(beta)
         else:
-            _beta = beta
+            raise TypeError(
+                f"Expected 'beta' argument of type <class 'tuple'> or <class 'int'>, got {type(beta)}"
+            )
         return tuple.__new__(_cls, (_alpha, _beta))
 
     @classmethod

@@ -62,25 +62,6 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         """
         return self.__and__(s_tuple)
 
-    def __xor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
-        """Overload `^` operator to perform symmetric set difference
-        Return type |Spin_determinant_tuple|
-        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((0, 2))
-        (1, 2)
-        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((0, 1))
-        ()
-        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
-        (0, 1, 2, 3)
-        """
-        return Spin_determinant_tuple(tuple(sorted(set(self) ^ set(s_tuple))))
-
-    def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
-        """Reverse overloaded __xor__
-        >>> (0, 1) ^  Spin_determinant_tuple((0, 2))
-        (1, 2)
-        """
-        return self.__xor__(s_tuple)
-
     def __or__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
         """Overload `|` operator to perform set union
         Return type |Spin_determinant_tuple|
@@ -100,6 +81,25 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         """
         return self.__or__(s_tuple)
 
+    def __xor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
+        """Overload `^` operator to perform symmetric set difference
+        Return type |Spin_determinant_tuple|
+        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((0, 2))
+        (1, 2)
+        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((0, 1))
+        ()
+        >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
+        (0, 1, 2, 3)
+        """
+        return Spin_determinant_tuple(tuple(sorted(set(self) ^ set(s_tuple))))
+
+    def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
+        """Reverse overloaded __xor__
+        >>> (0, 1) ^  Spin_determinant_tuple((0, 2))
+        (1, 2)
+        """
+        return self.__xor__(s_tuple)
+
     def __sub__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
         """Overload `-` operator to perform set difference
         Return type |Spin_determinant_tuple|
@@ -114,6 +114,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
 
     def __rsub__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __sub__
+        Convert arg `s_tuple' to |Spin_determinant_tuple|, then perform __sub__ since operation is not communative
         >>> (0, 1, 2, 3) - Spin_determinant_tuple((0, 2))
         (1, 3)
         """
@@ -171,17 +172,85 @@ class Spin_determinant_bitstring(int):
         # Return |Spin_determinant_tuple| representation of |Spin_determinant_bitstring|
         return Spin_determinant_tuple(tuple_rep)
 
-    def __sub__(self, spin_bs: int) -> int:
-        """Overload `-` operator to perform logical bitwise comparison
-        Remove common bits between `self` and `spin_bs` -> (self) & ~(spin_bs)
-        >>> bin(Spin_determinant_bitstring(0b1010) - Spin_determinant_bitstring(0b0011))
-        '0b1000'
-        >>> bin(Spin_determinant_bitstring(0b0101) - Spin_determinant_bitstring(0b0101))
-        '0b0'
-        >>> bin(Spin_determinant_bitstring(0b1010) - Spin_determinant_bitstring(0b0101))
-        '0b1010'
+    @staticmethod
+    def create_bitmask(tuple_mask: Tuple[OrbitalIdx, ...]) -> int:
+        """Create bitmask from tuple of integers `tuple_mask'
+        >>> bin(Spin_determinant_bitstring.create_bitmask((0, 1, 7, 8)))
+        '0b110000011'
         """
-        return Spin_determinant_bitstring(self & ~(spin_bs))
+        bitstring_mask = 0b0
+        for indice in tuple_mask:
+            # Create mask with bits in lh, lp set to 1
+            bitstring_mask = bitstring_mask | (1 << indice)
+        return bitstring_mask
+
+    def __and__(self, mask: int or Tuple[OrbitalIdx, ...]) -> int:
+        """Overload `&` operator to hole-particle mask as |tuple| or |int| and return |int|
+        >>> bin(Spin_determinant_bitstring(0b1010) & 0b0110)
+        '0b10'
+        >>> bin(Spin_determinant_bitstring(0b0101) & 0b1111)
+        '0b101'
+        >>> bin(Spin_determinant_bitstring(0b1010) & 0b0)
+        '0b0'
+
+        >>> bin(Spin_determinant_bitstring(0b1010) & (1, 2))
+        '0b10'
+        >>> bin(Spin_determinant_bitstring(0b0101) & (0, 1, 2, 3))
+        '0b101'
+        >>> bin(Spin_determinant_bitstring(0b1010) & ())
+        '0b0'
+
+        >>> isinstance((Spin_determinant_bitstring(0b1010) & 0b0110), int)
+        True
+        >>> isinstance((Spin_determinant_bitstring(0b1010) & 0b0110), Spin_determinant_bitstring)
+        True
+        """
+        # Perform correct operation based on input
+        if isinstance(mask, int):
+            # Operator overloaded function on first operand
+            # In case that first argument is also |Spin_determinant bitstring|, convert to int
+            # Else, infinite recursion
+            return Spin_determinant_bitstring(int(mask) & self)
+        elif isinstance(mask, tuple):
+            # Create mask with bits in lh, lp set to 1
+            bitstring_mask = self.create_bitmask(mask)
+            return Spin_determinant_bitstring(self & bitstring_mask)
+        else:
+            raise TypeError(f"Unsupported operand type(s) for &: '{type(self)}' and '{type(mask)}'")
+
+    def __or__(self, mask: int or Tuple[OrbitalIdx, ...]) -> int:
+        """Overload `|` operator to hole-particle mask as |tuple| or |int| and return |int|
+        >>> bin(Spin_determinant_bitstring(0b1010) | 0b0110)
+        '0b1110'
+        >>> bin(Spin_determinant_bitstring(0b0101) | 0b1111)
+        '0b1111'
+        >>> bin(Spin_determinant_bitstring(0b1010) | 0b0)
+        '0b1010'
+
+        >>> bin(Spin_determinant_bitstring(0b1010) | (1, 2))
+        '0b1110'
+        >>> bin(Spin_determinant_bitstring(0b0101) | (0, 1, 2, 3))
+        '0b1111'
+        >>> bin(Spin_determinant_bitstring(0b1010) | ())
+        '0b1010'
+
+        >>> isinstance((Spin_determinant_bitstring(0b1010) | 0b0110), int)
+        True
+        >>> isinstance((Spin_determinant_bitstring(0b1010) | 0b0110), Spin_determinant_bitstring)
+        True
+        """
+        # Perform correct operation based on input
+        if isinstance(mask, int):
+            # Operator overloaded function on first operand
+            # In case that first argument is also |Spin_determinant bitstring|, convert to int
+            # Else, infinite recursion
+            return Spin_determinant_bitstring(int(mask) | self)
+        elif isinstance(mask, tuple):
+            # Create mask with bits in lh, lp set to 1
+            bitstring_mask = self.create_bitmask(mask)
+            return Spin_determinant_bitstring(self | bitstring_mask)
+        else:
+            raise TypeError(f"Unsupported operand type(s) for |: '{type(self)}' and '{type(mask)}'")
 
     def __xor__(self, mask: int or Tuple[OrbitalIdx, ...]) -> int:
         """Overload `^` operator to hole-particle mask as |tuple| or |int| and return |int|
@@ -211,13 +280,47 @@ class Spin_determinant_bitstring(int):
             # Else, infinite recursion
             return Spin_determinant_bitstring(int(mask) ^ self)
         elif isinstance(mask, tuple):
-            bitstring_mask = 0b0
-            for indice in mask:
-                # Create mask with bits in lh, lp set to 1
-                bitstring_mask = bitstring_mask | (1 << indice)
+            # Create mask with bits in lh, lp set to 1
+            bitstring_mask = self.create_bitmask(mask)
             return Spin_determinant_bitstring(self ^ bitstring_mask)
         else:
             raise TypeError(f"Unsupported operand type(s) for ^: '{type(self)}' and '{type(mask)}'")
+
+    def __sub__(self, spin_bs: int) -> int:
+        """Overload `-` operator to perform logical bitwise comparison
+        Remove common bits between `self` and `spin_bs` -> (self) & ~(spin_bs)
+        >>> bin(Spin_determinant_bitstring(0b1010) - Spin_determinant_bitstring(0b0011))
+        '0b1000'
+        >>> bin(Spin_determinant_bitstring(0b0101) - Spin_determinant_bitstring(0b0101))
+        '0b0'
+        >>> bin(Spin_determinant_bitstring(0b1010) - Spin_determinant_bitstring(0b0101))
+        '0b1010'
+        """
+        return Spin_determinant_bitstring(self & ~(spin_bs))
+
+    def __rsub__(self, mask: int or Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
+        """Reverse overloaded __sub__
+        Convert arg `mask', then perform __sub__ since operation is not communative
+        Take hole-particle mask as |tuple| or |int| and return |int|
+        >>> bin(0b1111 - Spin_determinant_bitstring(0b0101))
+        '0b1010'
+        >>> bin((0, 1, 2, 3) -  Spin_determinant_bitstring(0b0101))
+        '0b1010'
+        >>> bin(0b1010 - Spin_determinant_bitstring(0b0101))
+        '0b1010'
+        >>> bin((0, 1, 2, 3) - Spin_determinant_bitstring(0b0101))
+        '0b1010'
+        """
+        # Perform correct operation based on input
+        if isinstance(mask, int):
+            # Operator overloaded function on first operand
+            return Spin_determinant_bitstring(mask) - self
+        elif isinstance(mask, tuple):
+            # Create mask with bits in lh, lp set to 1
+            bitstring_mask = self.create_bitmask(mask)
+            return Spin_determinant_bitstring(bitstring_mask) - self
+        else:
+            raise TypeError(f"Unsupported operand type(s) for -: '{type(self)}' and '{type(mask)}'")
 
     def popcnt(self) -> int:
         """Perform a `popcount'; number of bits set to True in self"""

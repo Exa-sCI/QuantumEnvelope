@@ -9,9 +9,7 @@ import numpy as np
 from mpi4py import MPI  # Note this initializes and finalizes MPI session automatically
 
 from qe.fundamental_types import (
-    Spin_determinant,
     Determinant,
-    Determinant_tuple,
     Psi_det,
     OrbitalIdx,
     Energy,
@@ -118,7 +116,7 @@ class Hamiltonian_one_electron(object):
     def H_ij(self, det_i: Determinant, det_j: Determinant) -> Energy:
         """General function to dispatch the evaluation of H_ij"""
 
-        def H_ij_spindet(sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Energy:
+        def H_ij_spindet(sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]) -> Energy:
             """<I|H|J>, when I and J differ by exactly one orbital."""
             # det_i is accessible
             phase, m, p = det_i.single_exc(sdet_i, sdet_j)
@@ -218,7 +216,9 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
         """General function to dispatch the evaluation of H_ij"""
 
         def H_ij_single_indices(
-            sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant
+            sdet_i: Tuple[OrbitalIdx, ...],
+            sdet_j: Tuple[OrbitalIdx, ...],
+            sdet_k: Tuple[OrbitalIdx, ...],
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one orbital"""
             phase, h, p = det_i.single_exc(sdet_i, sdet_j)
@@ -229,7 +229,7 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
                 yield (h, i, p, i), phase
 
         def H_ij_doubleAA_indices(
-            sdet_i: Spin_determinant, sdet_j: Spin_determinant
+            sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly two orbitals within
             the same spin."""
@@ -1884,7 +1884,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from self.category_G(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
 
     def H_indices_pt2(
-        self, psi_i: Psi_det, C: Spin_determinant
+        self, psi_i: Psi_det, C: Tuple[OrbitalIdx, ...]
     ) -> Iterator[Two_electron_integral_index_phase]:
         # Returns H_indices, and idx of associated integral
         # For pt2 selection!
@@ -1902,7 +1902,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         self,
         idx: Two_electron_integral_index,
         psi_i: Psi_det,
-        C: Spin_determinant,
+        C: Tuple[OrbitalIdx, ...],
         spindet_a_occ_i,
         spindet_b_occ_i,
     ) -> Iterator[Two_electron_integral_index_phase]:
@@ -1976,6 +1976,7 @@ class H_indices_generator(object):
         set()
         """
 
+        # TODO: Implement bitstring rep
         # Can generate det_to_indices hash in here
         def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
             ds = defaultdict(set)
@@ -2615,7 +2616,7 @@ class Powerplant_manager(object):
         # TODO: Fix this if there's a more efficient way to convert to a float
         return E.item()
 
-    def gen_local_constraints(self) -> Iterator[Spin_determinant]:
+    def gen_local_constraints(self) -> Iterator[Tuple[OrbitalIdx, ...]]:
         # Generate local constraints
         # Call to MPI function that yields local constraints
         C_loc, _ = dispatch_local_constraints(self.comm, self.psi_internal, self.N_orb)
@@ -2623,7 +2624,7 @@ class Powerplant_manager(object):
             yield C
 
     def psi_external_pt2(
-        self, C: Spin_determinant, psi_coef: Psi_coef, E_var: Energy
+        self, C: Tuple[OrbitalIdx, ...], psi_coef: Psi_coef, E_var: Energy
     ) -> List[Energy]:
         """
         Compute the E_pt2 contributions of a subset of the connected space determined by given constraiant C
@@ -2758,6 +2759,8 @@ class Powerplant_manager(object):
 # __) (/_ | (/_ (_  |_ | (_) | |
 #
 
+# First, we have functions that do the selection
+
 
 def selection_step(
     comm,
@@ -2869,13 +2872,7 @@ def global_sort_pt2_energies(comm, local_best_dets: Psi_det, local_best_energies
     return global_best_dets
 
 
-#   _____         _ _        _   _
-#  |  ___|       (_) |      | | (_)
-#  | |____  _____ _| |_ __ _| |_ _  ___  _ __
-#  |  __\ \/ / __| | __/ _` | __| |/ _ \| '_ \
-#  | |___>  < (__| | || (_| | |_| | (_) | | | |
-#  \____/_/\_\___|_|\__\__,_|\__|_|\___/|_| |_|
-#
+# Next, we have functions that split the connected space
 
 
 def get_chunk_of_connected_determinants(psi_det: Psi_det, n_orb: int, L=None) -> Iterator[Psi_det]:
@@ -2887,7 +2884,7 @@ def get_chunk_of_connected_determinants(psi_det: Psi_det, n_orb: int, L=None) ->
     :param L: integer, maximally allowed `chunk' of the conneceted space to yield at a time
     default is L = None, if no chunk size specified, a chunk of the connected space is allocated to each rank
 
-    >>> d1 = Determinant_tuple((0, 1), (0,) ) ; d2 = Determinant_tuple((0, 2), (0,) )
+    >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
     >>> for psi_chunk in get_chunk_of_connected_determinants( [ d1,d2 ], 4):
     ...     len(psi_chunk)
     22
@@ -2904,7 +2901,7 @@ def get_chunk_of_connected_determinants(psi_det: Psi_det, n_orb: int, L=None) ->
 
     def gen_all_connected_determinant(psi_det: Psi_det, n_orb: int) -> Psi_det:
         """
-        >>> d1 = Determinant_tuple((0, 1), (0,) ) ; d2 = Determinant_tuple((0, 2), (0,) )
+        >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
         >>> len(gen_all_connected_determinant( [ d1,d2 ], 4 ))
         22
 

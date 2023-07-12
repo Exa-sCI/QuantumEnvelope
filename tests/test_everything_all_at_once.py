@@ -30,7 +30,7 @@ from qe.io import load_eref, load_integrals, load_wf
 from collections import defaultdict
 from itertools import product, chain
 from functools import cached_property
-from qe.fundamental_types import Determinant, Determinant_tuple, Determinant_bitstring
+from qe.fundamental_types import Determinant
 from mpi4py import MPI
 
 
@@ -268,8 +268,8 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         n_orb = 4
-        psi = [Determinant_tuple((0, 1), (0, 1))]
-        for det in Determinant_tuple((0, 1), (0, 1)).gen_all_connected_det(n_orb):
+        psi = [Determinant((0, 1), (0, 1))]
+        for det in Determinant((0, 1), (0, 1)).gen_all_connected_det(n_orb):
             psi.append(det)
         d_two_e_integral = {}
         for i, j, k, l in product(range(n_orb), repeat=4):
@@ -281,7 +281,7 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         # minimal psi_and_integral, psi_i != psi_j
         # Na = 3, Nb = 3, Norb = 6 to account for triplet constraints
         n_orb = 6
-        psi_i = [Determinant_tuple((0, 1, 2), (0, 1, 2)), Determinant_tuple((1, 2, 3), (1, 2, 3))]
+        psi_i = [Determinant((0, 1, 2), (0, 1, 2)), Determinant((1, 2, 3), (1, 2, 3))]
         psi_j = []
         for i, det in enumerate(psi_i):
             for det_connected in det.gen_all_connected_det(n_orb):
@@ -340,8 +340,8 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
     def psi_and_norb_2det(self):
         # Do 5 e, 10 orb
         return 10, [
-            Determinant_tuple((0, 1, 2, 3, 4), (0, 1, 2, 3, 4)),
-            Determinant_tuple((1, 2, 3, 4, 5), (1, 2, 3, 4, 5)),
+            Determinant((0, 1, 2, 3, 4), (0, 1, 2, 3, 4)),
+            Determinant((1, 2, 3, 4, 5), (1, 2, 3, 4, 5)),
         ]
 
     @cached_property
@@ -393,7 +393,7 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
             d[con].append(det)
         return d
 
-    def check_constraint(self, det: Determinant_tuple, spin="alpha"):
+    def check_constraint(self, det: Determinant, spin="alpha"):
         # Give me a determinant. What constraint does it satisfy? (What are three most highly occupied alpha spin orbitas)
         spindet = getattr(det, spin)
         # Return constraint as |Spin_determinant|

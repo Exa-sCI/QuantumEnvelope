@@ -55,6 +55,13 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         """
         return Spin_determinant_tuple(tuple(sorted(set(self) & set(s_tuple))))
 
+    def __rand__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
+        """Reverse overloaded __and__
+        >>> (0, 1) & Spin_determinant_tuple((0, 2))
+        (0,)
+        """
+        return self.__and__(s_tuple)
+
     def __xor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
         """Overload `^` operator to perform symmetric set difference
         Return type |Spin_determinant_tuple|
@@ -66,6 +73,13 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         (0, 1, 2, 3)
         """
         return Spin_determinant_tuple(tuple(sorted(set(self) ^ set(s_tuple))))
+
+    def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
+        """Reverse overloaded __xor__
+        >>> (0, 1) ^  Spin_determinant_tuple((0, 2))
+        (1, 2)
+        """
+        return self.__xor__(s_tuple)
 
     def __or__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
         """Overload `|` operator to perform set union
@@ -79,6 +93,13 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         """
         return Spin_determinant_tuple(tuple(sorted(set(self) | set(s_tuple))))
 
+    def __ror__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
+        """Reverse overloaded __or__
+        >>> (0, 1) | Spin_determinant_tuple((0, 2))
+        (0, 1, 2)
+        """
+        return self.__or__(s_tuple)
+
     def __sub__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx, ...]:
         """Overload `-` operator to perform set difference
         Return type |Spin_determinant_tuple|
@@ -90,6 +111,13 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         ()
         """
         return Spin_determinant_tuple(tuple(sorted(set(self) - set(s_tuple))))
+
+    def __rsub__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
+        """Reverse overloaded __sub__
+        >>> (0, 1, 2, 3) - Spin_determinant_tuple((0, 2))
+        (1, 3)
+        """
+        return Spin_determinant_tuple(s_tuple).__sub__(self)
 
     def popcnt(self) -> int:
         """Perform a `popcount'; return length of the tuple"""
@@ -572,8 +600,7 @@ class Determinant(tuple):
         hb = []  # `Occupied` beta orbitals to loop over
         pb = []  # `Virtual`  "                         "
 
-        # Need all_orbs to be |Spin_determinant_tuple| when doing overloaded __sub__
-        all_orbs = Spin_determinant_tuple(range(n_orb))
+        all_orbs = tuple(range(n_orb))
         a1 = min(constraint)  # Index of `smallest` occupied constraint orbital
         B = tuple(range(a1 + 1, n_orb))  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1}
         if spin == "alpha":
@@ -667,7 +694,7 @@ class Determinant(tuple):
         hab = []
         pab = []
 
-        all_orbs = Spin_determinant_tuple(range(n_orb))
+        all_orbs = tuple(range(n_orb))
         a1 = min(constraint)  # Index of `smallest` occupied alpha constraint orbital
         B = tuple(range(a1 + 1, n_orb))  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1}
         if spin == "alpha":

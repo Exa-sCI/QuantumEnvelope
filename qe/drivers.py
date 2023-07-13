@@ -878,9 +878,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "C"
 
-        # Hopefully, can remove hashes (det_to_index_i,j, psi_i,j, spindets... ) and call them as properties of the class (self. ...)
         def do_single_C(i, j, k, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin):
-            # Get indices of determinants that are possibly related by excitations from internal --> external space
+            # One way: Indices of determinants related by excitations from psi_i -> psi_j
             # phasemod, occ, h, p = 1, j, i, k
             det_indices_1 = chain(
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -893,7 +892,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
                 det_indices_1, 1, j, i, k, psi_i, det_to_index_j, spin
             )
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+            # Other way: Indices of determinants related by excitations from psi_j -> psi_i
             # phasemod, occ, h, p = 1, j, k, i
             det_indices_2 = chain(
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -908,7 +907,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 det_indices_2, 1, j, k, i, psi_i, det_to_index_j, spin
             )
 
-        if i == k:  # <ij|il> = <ji|li>, ja(b) to la(b) where ia or ib is occupied
+        if i == k:  # <ij|il> = <ji|li>, ja(b) <-> la(b), occ = ia or ib
             yield from do_single_C(
                 j,
                 i,
@@ -929,7 +928,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 "beta",
             )
-        else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b) where ja or jb or is occupied
+        else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b), occ = ja or jb
             yield from do_single_C(
                 i,
                 j,
@@ -1178,7 +1177,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         assert integral_category(i, j, k, l) == "D"
 
         def do_single_D(i, j, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin):
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+            # One way: Indices of determinants related by excitations from psi_i -> psi_j
             # phasemod, occ, h, p = 1, i, j, l
             det_indices_1 = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1188,7 +1187,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
                 det_indices_1, 1, i, j, l, psi_i, det_to_index_j, spin
             )
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+            # Other way: Indices of determinants related by excitations from psi_j -> psi_i
             # phasemod, occ, h, p = 1, i, l, j
             det_indices_2 = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1200,7 +1199,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 det_indices_2, 1, i, l, j, psi_i, det_to_index_j, spin
             )
 
-        if i == j:  # <ii|il>, ia(b) to la(b) while ib(a) is occupied
+        if i == j:  # <ii|il>, ia(b) <-> la(b), occ = ib(a)
             yield from do_single_D(
                 i,
                 i,
@@ -1221,7 +1220,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 "beta",
             )
-        else:  # i < j == k == l, <ij|jj> = <jj|ij> = <jj|ji>, ja(b) to ia(b) where jb(a) is occupied
+        else:  # i < j == k == l, <ij|jj> = <jj|ij> = <jj|ji>, ja(b) <-> ia(b) occ = jb(a)
             yield from do_single_D(
                 j,
                 j,
@@ -1398,7 +1397,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         assert integral_category(i, j, k, l) == "E"
 
         def do_single_E(i, k, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin):
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+            # One way: Indices of determinants related by excitations from psi_i -> psi_j
             # phasemod, occ, h, p = -1, i, k, l
             det_indices_1 = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1408,7 +1407,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
                 det_indices_1, -1, i, k, l, psi_i, det_to_index_j, spin
             )
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+            # Other way: Indices of determinants related by excitations from psi_j -> psi_i
             # phasemod, occ, h, p = -1, i, l, k
             det_indices_2 = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(

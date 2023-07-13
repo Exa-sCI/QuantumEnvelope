@@ -53,11 +53,13 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((2, 3))
         ()
         """
-        return Spin_determinant_tuple(tuple(sorted(set(self) & set(s_tuple))))
+        return Spin_determinant_tuple(set(self) & set(s_tuple))
 
     def __rand__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __and__
         >>> (0, 1) & Spin_determinant_tuple((0, 2))
+        (0,)
+        >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((0, 2))
         (0,)
         """
         return self.__and__(s_tuple)
@@ -72,7 +74,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(tuple(sorted(set(self) | set(s_tuple))))
+        return Spin_determinant_tuple(set(self) | set(s_tuple))
 
     def __ror__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __or__
@@ -91,7 +93,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(tuple(sorted(set(self) ^ set(s_tuple))))
+        return Spin_determinant_tuple(set(self) ^ set(s_tuple))
 
     def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __xor__
@@ -110,7 +112,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) - Spin_determinant_tuple((0, 1))
         ()
         """
-        return Spin_determinant_tuple(tuple(sorted(set(self) - set(s_tuple))))
+        return Spin_determinant_tuple(set(self) - set(s_tuple))
 
     def __rsub__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __sub__
@@ -139,7 +141,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         particles = combinations(Spin_determinant_tuple(range(n_orb)) - self, ed)
         l_hp_pairs = product(holes, particles)
 
-        return [self ^ tuple(sorted(set(h) | set(p))) for h, p in l_hp_pairs]
+        return [self ^ tuple((set(h) | set(p))) for h, p in l_hp_pairs]
 
 
 #     _
@@ -414,10 +416,13 @@ class Determinant(tuple):
         # Or...
         #   Pass arguments with keywords; e.g., Determinant(alpha=alpha_sdet, beta=beta_sdet)
         elif len(kwargs) > 0:
-            alpha = kwargs["alpha"]
-            beta = kwargs["beta"]
+            try:
+                alpha = kwargs["alpha"]
+                beta = kwargs["beta"]
+            except:
+                raise KeyError(f"Expected keyword arguments for 'alpha', 'beta', got {kwargs}")
         else:
-            raise TypeError(f"Expected keyword arguments for 'alpha', 'beta', got {kwargs}")
+            raise TypeError(f"Expected two keyword arguments for 'alpha', 'beta', got {kwargs}")
 
         # Once arguments are parsed, determine data representation
         if isinstance(alpha, tuple):
@@ -613,7 +618,6 @@ class Determinant(tuple):
     ) -> Iterator[NamedTuple]:
         """Called by inherited classes; Generate singlet excitations from constraint"""
 
-        # |Determinant_tuple| and |Determinant_bitstring| each have this method
         ha, pa, hb, pb = self.get_holes_particles_for_constrained_singles(constraint, n_orb, spin)
         # Excitations of argument `spin`
         for h, p in product(ha, pa):
@@ -909,7 +913,7 @@ class Determinant(tuple):
     #    (_| | | (_|   |  (_| |   |_ | (_ | (/_
 
     # Driver functions for computing phase, hole and particle between determinant pairs
-    # TODO: All static methods for now... AND only for tuples ... Feels weird to to pass self as an arg when we only do this for spindets
+    # TODO: These are ONLY implemented for |Spin_determinant_tuple| at the moment.
     # So, might just keep as is
 
     @staticmethod

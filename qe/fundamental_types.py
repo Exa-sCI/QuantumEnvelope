@@ -913,7 +913,7 @@ class Determinant(tuple):
     #    (_| | | (_|   |  (_| |   |_ | (_ | (/_
 
     # Driver functions for computing phase, hole and particle between determinant pairs
-    # TODO: These are ONLY implemented for |Spin_determinant_tuple| at the moment.
+    # TODO: These are ONLY implemented for |Spin_determinant_tuple| at the moment;
     # So, might just keep as is
 
     @staticmethod

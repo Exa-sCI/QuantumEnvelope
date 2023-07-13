@@ -103,7 +103,7 @@ def load_integrals(
     return n_orb, E0, d_one_e_integral, d_two_e_integral
 
 
-def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
+def load_wf(path_wf, det_representation="tuple") -> Tuple[List[float], List[Determinant]]:
     """Read the input file :
     Representation of the Slater determinants (basis) and
     vector of coefficients in this basis (wave function)."""
@@ -133,10 +133,16 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
         with open(path_wf) as f:
             data = f.read().split()
 
-    def decode_det(str_):
+    def decode_det(str_, representation="tuple"):
         for i, v in enumerate(str_):
             if v == "+":
-                yield i
+                if representation == "tuple":
+                    yield i
+                elif representation == "bitstring":
+                    yield "1"
+            else:
+                if representation == "bitstring":
+                    yield "0"
 
     def grouper(iterable, n):
         "Collect data into fixed-length chunks or blocks"
@@ -147,7 +153,20 @@ def load_wf(path_wf) -> Tuple[List[float], List[Determinant]]:
     psi_coef = []
     for coef, det_i, det_j in grouper(data, 3):
         psi_coef.append(float(coef))
-        det.append(Determinant(tuple(decode_det(det_i)), tuple(decode_det(det_j))))
+        # Depending on representation specified, yield |Determinant| as |tuple| or |int| (bitstring)
+        if det_representation == "tuple":
+            det.append(
+                Determinant(
+                    tuple(decode_det(det_i, det_representation)),
+                    tuple(decode_det(det_j, det_representation)),
+                )
+            )
+        elif det_representation == "bitstring":
+            alpha_str = ["0", "b"] + [bit for bit in decode_det(det_i, det_representation)][::-1]
+            beta_str = ["0", "b"] + [bit for bit in decode_det(det_j, det_representation)][::-1]
+            det.append(Determinant(int(("".join(alpha_str)), 2), int(("".join(beta_str)), 2)))
+        else:
+            raise NotImplementedError
 
     # Normalize psi_coef
 

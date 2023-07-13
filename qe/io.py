@@ -140,8 +140,6 @@ def load_wf(path_wf, det_representation="tuple") -> Tuple[List[float], List[Dete
                     yield i
                 elif representation == "bitstring":
                     yield "1"
-                else:
-                    raise NotImplementedError
             else:
                 if representation == "bitstring":
                     yield "0"

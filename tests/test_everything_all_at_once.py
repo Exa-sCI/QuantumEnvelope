@@ -244,7 +244,7 @@ class Test_Category:
                 (dsa, _), (dsb, _) = da, db
             elif exc == (0, 2):
                 (_, dsa), (_, dsb) = da, db
-            h1, h2, p1, p2 = da.double_exc_no_phase(dsa, dsb)
+            h1, h2, p1, p2 = Determinant.double_exc_no_phase(dsa, dsb)
             self.assertIn(
                 sorted((sorted((h1, h2)), sorted((p1, p2)))),
                 (
@@ -453,7 +453,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             d[cat].append((i, j, k, l))
         return d
 
-    @property
+    @cached_property
     def integral_by_category_PT2(self):
         # Bin each integral (with the 'idx4' representation) by integrals category
         _, _, d_two_e_integral = self.psi_and_integral_PT2
@@ -464,7 +464,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             d[cat].append((i, j, k, l))
         return d
 
-    @property
+    @cached_property
     def reference_indices_by_category(self):
         # Bin the indices (ab, idx4, phase) of the reference determinant implemetation by integrals category
         """
@@ -764,6 +764,13 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             ):
                 indices.append(((a, b), (i, j, k, l), phase))
         indices = self.simplify_indices(indices)
+        for i in range(len(indices)):
+            (I_int, J_int), idx4_int, phase_int = indices[i]  # Unpack
+            (I_det, J_det), idx4_det, phase_det = self.reference_indices_by_category["G"][i]
+            if phase_int != phase_det:
+                print(
+                    f"Int: {psi[I_int], psi[J_int]}, {compound_idx4_reverse(idx4_int)}, {phase_int}, Det: {psi[I_det], psi[J_det]}, {compound_idx4_reverse(idx4_det)}, {phase_det}"
+                )
         self.assertListEqual(indices, self.reference_indices_by_category["G"])
 
     def test_category_G_PT2(self):

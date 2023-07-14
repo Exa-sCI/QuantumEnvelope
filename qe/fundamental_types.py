@@ -916,35 +916,111 @@ class Determinant(tuple):
     # TODO: These are ONLY implemented for |Spin_determinant_tuple| at the moment;
     # So, might just keep as is
 
-    @staticmethod
     def single_phase(
-        sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...], h: OrbitalIdx, p: OrbitalIdx
+        self,
+        h: OrbitalIdx,
+        p: OrbitalIdx,
+        spin: str,
     ):
+        """Function to compute phase for <I|H|J> when I and J differ by exactly one orbital h <-> p
+        h is occupied in sdet = getattr(self, spin), p is unoccupied
+
+        >>> Determinant((0, 4, 6), ()).single_phase(4, 5, "alpha")
+        1
+        >>> Determinant((), (0, 1, 8)).single_phase(1, 17, "beta")
+        -1
+        >>> Determinant((0, 1, 4, 8), ()).single_phase(1, 17, "alpha")
+        1
+        >>> Determinant((0, 1, 4, 7, 8), ()).single_phase(1, 17, "alpha")
+        -1
+
+        >>> Determinant(0b1010001, 0b0).single_phase(4, 6, "alpha")
+        1
+        >>> Determinant(0b0, 0b100000011).single_phase(1, 17, "beta")
+        -1
+        >>> Determinant(0b100010011, 0b0).single_phase(1, 17, "alpha")
+        1
+        >>> Determinant(0b110010011, 0b0).single_phase(1, 17, "alpha")
+        -1
+        """
         # Naive; compute phase for |Spin_determinant| pairs related by excitataion from h <-> p
-        phase = 1
-        for det, idx in ((sdet_i, h), (sdet_j, p)):
-            for _ in takewhile(lambda x: x != idx, det):
-                phase = -phase
+        sdet = getattr(self, spin)
+        j, k = min(h, p), max(h, p)
+
+        if isinstance(sdet, tuple):
+            pmask = tuple((i for i in range(j + 1, k)))
+        elif isinstance(sdet, int):
+            # Strings immutable -> Work with lists for ON assignment, convert to |str| -> |int| when done
+            pmask = ["0", "b"]
+            pmask.extend(["0"] * k)
+            for i in range(j + 1, k):
+                pmask[-(i + 1)] = "1"
+            pmask = int(("".join(pmask)), 2)
+
+        parity = (sdet & pmask).popcnt() % 2
+        return -1 if parity else 1
+
+    def double_phase(self, holes: Tuple[OrbitalIdx, ...], particles: Tuple[OrbitalIdx, ...], spin):
+        """Function to compute phase for <I|H|J> when I and J differ by exactly two orbitals h1, h2 <-> p1, p2
+        Only for same spin double excitations
+        h1, h2 is occupied in sdet = getattr(self, spin), p1, p2 is unoccupied
+        >>> Determinant((0, 1, 2, 3, 4, 5, 6, 7, 8), ()).double_phase((2, 3), (11, 12), "alpha")
+        1
+        >>> Determinant((0, 1, 2, 3, 4, 5, 6, 7, 8), ()).double_phase((2, 8), (11, 17), "alpha")
+        -1
+        """
+        # Compute phase. Loopless as in https://arxiv.org/abs/1311.6244
+        h1, h2 = holes
+        p1, p2 = particles
+        phase = self.single_phase(h1, p1, spin) * self.single_phase(h2, p2, spin)
+        # if max(h1, p1) > min(h2, p2):
+        #     return -phase
+        # else:
+        #     return phase
+        if h2 < p1:
+            phase *= -1
+        if p2 < h1:
+            phase *= -1
         return phase
 
-    @staticmethod
-    def single_exc(
-        sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]
-    ) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
+    def single_exc(self, sdet_j, spin: str) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
         """phase, hole, particle of <I|H|J> when I and J differ by exactly one orbital
            h is occupied only in I
            p is occupied only in J
 
-        >>> Determinant.single_exc((0, 4, 6), (0, 22, 6))
-        (1, 4, 22)
-        >>> Determinant.single_exc((0, 1, 8), (0, 8, 17))
+        >>> Determinant((0, 4, 6), ()).single_exc((0, 5, 6), "alpha")
+        (1, 4, 5)
+        >>> Determinant((0, 4, 6), ()).single_exc((0, 22, 6), "alpha")
+        (-1, 4, 22)
+        >>> Determinant((), (0, 1, 8)).single_exc((0, 8, 17), "beta")
         (-1, 1, 17)
         """
         # Get holes, particle in exc
-        (h,) = set(sdet_i) - set(sdet_j)
-        (p,) = set(sdet_j) - set(sdet_i)
+        sdet_i = getattr(self, spin)
+        (h,) = sdet_i - sdet_j
+        (p,) = sdet_j - sdet_i
 
-        return Determinant.single_phase(sdet_i, sdet_j, h, p), h, p
+        return self.single_phase(h, p, spin), h, p
+
+    def double_exc(
+        self, sdet_j: Tuple[OrbitalIdx, ...], spin: str
+    ) -> Tuple[int, OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
+        """phase, holes, particles of <I|H|J> when I and J differ by exactly two orbitals
+           h1, h2 are occupied only in I
+           p1, p2 are occupied only in J
+
+        >>> Determinant((0, 1, 2, 3, 4, 5, 6, 7, 8), ()).double_exc((0, 1, 4, 5, 6, 7, 8, 11, 12), "alpha")
+        (1, 2, 3, 11, 12)
+        >>> Determinant((), (0, 1, 2, 3, 4, 5, 6, 7, 8)).double_exc((0, 1, 3, 4, 5, 6, 7, 11, 17), "beta")
+        (-1, 2, 8, 11, 17)
+        """
+        sdet_i = getattr(self, spin)
+        # Holes
+        h1, h2 = sorted(sdet_i - sdet_j)
+        # Particles
+        p1, p2 = sorted(sdet_j - sdet_i)
+
+        return self.double_phase((h1, h2), (p1, p2), spin), h1, h2, p1, p2
 
     @staticmethod
     def single_exc_no_phase(
@@ -963,46 +1039,6 @@ class Determinant(tuple):
         (p,) = set(sdet_j) - set(sdet_i)
 
         return h, p
-
-    @staticmethod
-    def double_phase(
-        sdet_i: Tuple[OrbitalIdx, ...],
-        sdet_j: Tuple[OrbitalIdx, ...],
-        h1: OrbitalIdx,
-        h2: OrbitalIdx,
-        p1: OrbitalIdx,
-        p2: OrbitalIdx,
-    ):
-        # Compute phase. See paper to have a loopless algorithm
-        # https://arxiv.org/abs/1311.6244
-        phase = Determinant.single_phase(sdet_i, sdet_j, h1, p1) * Determinant.single_phase(
-            sdet_j, sdet_i, p2, h2
-        )
-        if h2 < h1:
-            phase *= -1
-        if p2 < p1:
-            phase *= -1
-        return phase
-
-    @staticmethod
-    def double_exc(
-        sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]
-    ) -> Tuple[int, OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
-        """phase, holes, particles of <I|H|J> when I and J differ by exactly two orbitals
-           h1, h2 are occupied only in I
-           p1, p2 are occupied only in J
-
-        >>> Determinant.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 4, 5, 6, 7, 8, 11, 12))
-        (1, 2, 3, 11, 12)
-        >>> Determinant.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 3, 4, 5, 6, 7, 11, 17))
-        (-1, 2, 8, 11, 17)
-        """
-        # Holes
-        h1, h2 = sorted(set(sdet_i) - set(sdet_j))
-        # Particles
-        p1, p2 = sorted(set(sdet_j) - set(sdet_i))
-
-        return Determinant.double_phase(sdet_i, sdet_j, h1, h2, p1, p2), h1, h2, p1, p2
 
     @staticmethod
     def double_exc_no_phase(

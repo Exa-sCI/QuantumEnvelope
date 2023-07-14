@@ -116,10 +116,10 @@ class Hamiltonian_one_electron(object):
     def H_ij(self, det_i: Determinant, det_j: Determinant) -> Energy:
         """General function to dispatch the evaluation of H_ij"""
 
-        def H_ij_spindet(sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]) -> Energy:
+        def H_ij_spindet(sdet_j, spin: str) -> Energy:
             """<I|H|J>, when I and J differ by exactly one orbital."""
             # det_i is accessible
-            phase, m, p = det_i.single_exc(sdet_i, sdet_j)
+            phase, m, p = det_i.single_exc(sdet_j, spin)
             return self.H_ij_orbital(m, p) * phase
 
         ed_up, ed_dn = det_i.exc_degree(det_j)
@@ -128,9 +128,9 @@ class Hamiltonian_one_electron(object):
             return self.H_ii(det_i)
         # Single excitation
         elif (ed_up, ed_dn) == (1, 0):
-            return H_ij_spindet(det_i.alpha, det_j.alpha)
+            return H_ij_spindet(det_j.alpha, "alpha")
         elif (ed_up, ed_dn) == (0, 1):
-            return H_ij_spindet(det_i.beta, det_j.beta)
+            return H_ij_spindet(det_j.beta, "beta")
         else:
             return 0.0
 
@@ -219,9 +219,10 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
             sdet_i: Tuple[OrbitalIdx, ...],
             sdet_j: Tuple[OrbitalIdx, ...],
             sdet_k: Tuple[OrbitalIdx, ...],
+            spin: str,
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one orbital"""
-            phase, h, p = det_i.single_exc(sdet_i, sdet_j)
+            phase, h, p = det_i.single_exc(sdet_j, spin)
             for i in sdet_i:
                 yield (h, i, p, i), phase
                 yield (h, i, i, p), -phase
@@ -229,21 +230,21 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
                 yield (h, i, p, i), phase
 
         def H_ij_doubleAA_indices(
-            sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]
+            sdet_j: Tuple[OrbitalIdx, ...], spin
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly two orbitals within
             the same spin."""
-            phase, h1, h2, p1, p2 = det_i.double_exc(sdet_i, sdet_j)
+            phase, h1, h2, p1, p2 = det_i.double_exc(sdet_j, spin)
             yield (h1, h2, p1, p2), phase
             yield (h1, h2, p2, p1), -phase
 
         def H_ij_doubleAB_2e_index(
-            det_i: Determinant, det_j: Determinant
+            det_j: Determinant,
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
             one beta spin-orbital."""
-            phaseA, h1, p1 = det_i.single_exc(det_i.alpha, det_j.alpha)
-            phaseB, h2, p2 = det_i.single_exc(det_i.beta, det_j.beta)
+            phaseA, h1, p1 = det_i.single_exc(det_j.alpha, "alpha")
+            phaseB, h2, p2 = det_i.single_exc(det_j.beta, "beta")
             yield (h1, h2, p1, p2), phaseA * phaseB
 
         ed_up, ed_dn = det_i.exc_degree(det_j)
@@ -252,17 +253,17 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
             yield from Hamiltonian_two_electrons_determinant_driven.H_ii_indices(det_i)
         # Single excitation
         elif (ed_up, ed_dn) == (1, 0):
-            yield from H_ij_single_indices(det_i.alpha, det_j.alpha, det_i.beta)
+            yield from H_ij_single_indices(det_i.alpha, det_j.alpha, det_i.beta, "alpha")
         elif (ed_up, ed_dn) == (0, 1):
-            yield from H_ij_single_indices(det_i.beta, det_j.beta, det_i.alpha)
+            yield from H_ij_single_indices(det_i.beta, det_j.beta, det_i.alpha, "beta")
         # Double excitation of same spin
         elif (ed_up, ed_dn) == (2, 0):
-            yield from H_ij_doubleAA_indices(det_i.alpha, det_j.alpha)
+            yield from H_ij_doubleAA_indices(det_j.alpha, "alpha")
         elif (ed_up, ed_dn) == (0, 2):
-            yield from H_ij_doubleAA_indices(det_i.beta, det_j.beta)
+            yield from H_ij_doubleAA_indices(det_j.beta, "beta")
         # Double excitation of opposite spins
         elif (ed_up, ed_dn) == (1, 1):
-            yield from H_ij_doubleAB_2e_index(det_i, det_j)
+            yield from H_ij_doubleAB_2e_index(det_j)
 
     @staticmethod
     def H_indices(
@@ -391,9 +392,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             #   Compute phase of (single) excitation pair and yield (I, J), phase
             if excited_det in det_to_index:
                 # :param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
-                phase = phasemod * det.single_phase(
-                    getattr(det, spin), getattr(excited_det, spin), h, p
-                )
+                phase = phasemod * det.single_phase(h, p, spin)
                 yield (I, det_to_index[excited_det]), phase
             else:
                 pass
@@ -426,9 +425,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             # Assert the excited determinant satisfies the appropriate constraint C
             assert check_constraint(excited_det) == C
             # param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
-            phase = phasemod * det.single_phase(
-                getattr(det, spin), getattr(excited_det, spin), h, p
-            )
+            phase = phasemod * det.single_phase(h, p, spin)
             # excited_det is in the connected space by default; yield (I, det_J) phase
             # Cannot yield index of excited_det since this requires storing (knowing) connected space a priori
             yield (I, excited_det), phase
@@ -465,9 +462,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             # If the excited determinant is in the internal wave function ->
             #   Compute phase of (double) excitation pair and yield (I, J), phase
             if excited_det in det_to_index:
-                phase = det.double_phase(
-                    getattr(det, spin), getattr(excited_det, spin), h1, h2, p1, p2
-                )
+                phase = det.double_phase((h1, h2), (p1, p2), spin)
                 yield (I, det_to_index[excited_det]), phase
             else:
                 pass
@@ -593,7 +588,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 excited_det = det.apply_excitation(((), ()), ((h1, h2), (p1, p2)))
             # Assert the excited determinant satisfies the appropriate constraint C
             assert check_constraint(excited_det) == C
-            phase = det.double_phase(getattr(det, spin), getattr(excited_det, spin), h1, h2, p1, p2)
+            phase = det.double_phase((h1, h2), (p1, p2), spin)
             yield (I, excited_det), phase
 
     @staticmethod
@@ -626,17 +621,13 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # h1, p1 -> alpha spin-orbitals, h2, p2 -> beta
                 excited_det = det.apply_excitation(((h1,), (p1,)), ((h2,), (p2,)))
                 # Phase is computed from both spindets
-                phaseA = det.single_phase(getattr(det, spin), getattr(excited_det, spin), h1, p1)
-                phaseB = det.single_phase(
-                    getattr(det, "beta"), getattr(excited_det, "beta"), h2, p2
-                )
+                phaseA = det.single_phase(h1, p1, spin)
+                phaseB = det.single_phase(h2, p2, "beta")
             else:
                 # h1, p1 -> beta spin-orbitals, h2, p2 -> alpha
                 excited_det = det.apply_excitation(((h2,), (p2,)), ((h1,), (p1,)))
-                phaseA = det.single_phase(getattr(det, spin), getattr(excited_det, spin), h1, p1)
-                phaseB = det.single_phase(
-                    getattr(det, "alpha"), getattr(excited_det, "alpha"), h2, p2
-                )
+                phaseA = det.single_phase(h1, p1, spin)
+                phaseB = det.single_phase(h2, p2, "alpha")
             # If the excited determinant is in the internal wave function ->
             #   Compute phase of (double) excitation pair and yield (I, J), phase
             if excited_det in det_to_index:
@@ -746,17 +737,13 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # h1, p1 -> alpha spin-orbitals, h2, p2 -> beta
                 excited_det = det.apply_excitation(((h1,), (p1,)), ((h2,), (p2,)))
                 # Phase is computed from both spindets
-                phaseA = det.single_phase(getattr(det, spin), getattr(excited_det, spin), h1, p1)
-                phaseB = det.single_phase(
-                    getattr(det, "beta"), getattr(excited_det, "beta"), h2, p2
-                )
+                phaseA = det.single_phase(h1, p1, spin)
+                phaseB = det.single_phase(h2, p2, "beta")
             else:
                 # h1, p1 -> beta spin-orbitals, h2, p2 -> alpha
                 excited_det = det.apply_excitation(((h2,), (p2,)), ((h1,), (p1,)))
-                phaseA = det.single_phase(getattr(det, spin), getattr(excited_det, spin), h1, p1)
-                phaseB = det.single_phase(
-                    getattr(det, "alpha"), getattr(excited_det, "alpha"), h2, p2
-                )
+                phaseA = det.single_phase(h1, p1, spin)
+                phaseB = det.single_phase(h2, p2, "alpha")
             # Assert excited det satisfies constraint and yield
             assert check_constraint(excited_det) == C
             yield (I, excited_det), phaseA * phaseB

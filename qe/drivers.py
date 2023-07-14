@@ -463,6 +463,10 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             #   Compute phase of (double) excitation pair and yield (I, J), phase
             if excited_det in det_to_index:
                 phase = det.double_phase((h1, h2), (p1, p2), spin)
+                if h2 < h1:
+                    phase = -phase
+                if p2 < p1:
+                    phase = -phase
                 yield (I, det_to_index[excited_det]), phase
             else:
                 pass
@@ -589,6 +593,10 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             # Assert the excited determinant satisfies the appropriate constraint C
             assert check_constraint(excited_det) == C
             phase = det.double_phase((h1, h2), (p1, p2), spin)
+            if h2 < h1:
+                phase = -phase
+            if p2 < p1:
+                phase = -phase
             yield (I, excited_det), phase
 
     @staticmethod
@@ -3041,7 +3049,7 @@ def dispatch_local_constraints(
             #   Simply (per spin type) number of holes * particles that will yield an excitation in C
             h += np.dot(n_particles, n_holes)  # Add to work thus far
 
-        if h > 0:  # Handle case where no dets satisfy C.. No one will do it
+        if h:  # Handle case where no dets satisfy C.. No one will do it
             _, loc = comm.allreduce(
                 (W[rank], rank), MPI.MINLOC
             )  # This is a tuple, so use python command

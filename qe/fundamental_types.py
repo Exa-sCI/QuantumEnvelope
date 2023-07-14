@@ -973,6 +973,10 @@ class Determinant(tuple):
         h1, h2 = holes
         p1, p2 = particles
         phase = self.single_phase(h1, p1, spin) * self.single_phase(h2, p2, spin)
+        # if max(h1, p1) > min(h2, p2):
+        #     return -phase
+        # else:
+        #     return phase
         if h2 < p1:
             phase *= -1
         if p2 < h1:

@@ -135,7 +135,7 @@ class Test_Category:
             (dsa, _), (dsb, _) = da, db
         elif exc == (0, 1):
             (_, dsa), (_, dsb) = da, db
-        h, p = da.single_exc_no_phase(dsa, dsb)
+        h, p = Determinant.single_exc_no_phase(dsa, dsb)
         self.assertTrue(j == l or i == k)
         if j == l:
             self.assertEqual(sorted((h, p)), sorted((i, k)))
@@ -156,7 +156,7 @@ class Test_Category:
             (dsa, dta), (dsb, dtb) = da, db
         elif exc == (0, 1):
             (dta, dsa), (dtb, dsb) = da, db
-        h, p = da.single_exc_no_phase(dsa, dsb)
+        h, p = Determinant.single_exc_no_phase(dsa, dsb)
         self.assertTrue(j == l or i == k)
         if j == l:
             self.assertEqual(sorted((h, p)), sorted((i, k)))
@@ -182,8 +182,8 @@ class Test_Category:
                 p, r, s = j, i, l
             elif k == l:
                 p, r, s = k, j, i
-            hs, ps = da.single_exc_no_phase(dsa, dsb)
-            ht, pt = da.single_exc_no_phase(dta, dtb)
+            hs, ps = Determinant.single_exc_no_phase(dsa, dsb)
+            ht, pt = Determinant.single_exc_no_phase(dta, dtb)
             self.assertEqual(
                 sorted((sorted((hs, ps)), sorted((ht, pt)))),
                 sorted((sorted((p, r)), sorted((p, s)))),
@@ -193,7 +193,7 @@ class Test_Category:
                 (dsa, _), (dsb, _) = da, db
             elif exc == (0, 1):
                 (_, dsa), (_, dsb) = da, db
-            h, p = da.single_exc_no_phase(dsa, dsb)
+            h, p = Determinant.single_exc_no_phase(dsa, dsb)
             if i == j:
                 self.assertEqual(sorted((h, p)), sorted((k, l)))
                 self.assertIn(i, dsa)
@@ -220,8 +220,8 @@ class Test_Category:
             )
         elif exc == (1, 1):
             (dsa, dta), (dsb, dtb) = da, db
-            hs, ps = da.single_exc_no_phase(dsa, dsb)
-            ht, pt = da.single_exc_no_phase(dta, dtb)
+            hs, ps = Determinant.single_exc_no_phase(dsa, dsb)
+            ht, pt = Determinant.single_exc_no_phase(dta, dtb)
             self.assertEqual(sorted((hs, ps)), sorted((i, k)))
             self.assertEqual(sorted((ht, pt)), sorted((i, k)))
 
@@ -233,8 +233,8 @@ class Test_Category:
         self.assertIn(exc, ((1, 1), (2, 0), (0, 2)))
         if exc == (1, 1):
             (dsa, dta), (dsb, dtb) = da, db
-            hs, ps = da.single_exc_no_phase(dsa, dsb)
-            ht, pt = da.single_exc_no_phase(dta, dtb)
+            hs, ps = Determinant.single_exc_no_phase(dsa, dsb)
+            ht, pt = Determinant.single_exc_no_phase(dta, dtb)
             self.assertEqual(
                 sorted((sorted((hs, ps)), sorted((ht, pt)))),
                 sorted((sorted((i, k)), sorted((j, l)))),
@@ -244,7 +244,7 @@ class Test_Category:
                 (dsa, _), (dsb, _) = da, db
             elif exc == (0, 2):
                 (_, dsa), (_, dsb) = da, db
-            h1, h2, p1, p2 = da.double_exc_no_phase(dsa, dsb)
+            h1, h2, p1, p2 = Determinant.double_exc_no_phase(dsa, dsb)
             self.assertIn(
                 sorted((sorted((h1, h2)), sorted((p1, p2)))),
                 (
@@ -453,7 +453,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             d[cat].append((i, j, k, l))
         return d
 
-    @property
+    @cached_property
     def integral_by_category_PT2(self):
         # Bin each integral (with the 'idx4' representation) by integrals category
         _, _, d_two_e_integral = self.psi_and_integral_PT2
@@ -464,7 +464,7 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             d[cat].append((i, j, k, l))
         return d
 
-    @property
+    @cached_property
     def reference_indices_by_category(self):
         # Bin the indices (ab, idx4, phase) of the reference determinant implemetation by integrals category
         """
@@ -764,7 +764,6 @@ class Test_Integral_Driven_Categories(Test_Minimal):
             ):
                 indices.append(((a, b), (i, j, k, l), phase))
         indices = self.simplify_indices(indices)
-        print(compound_idx4_reverse(25), psi[0], psi[5])
         for i in range(len(indices)):
             (I_int, J_int), idx4_int, phase_int = indices[i]  # Unpack
             (I_det, J_det), idx4_det, phase_det = self.reference_indices_by_category["G"][i]

@@ -2835,8 +2835,9 @@ def local_sort_pt2_energies(
         else:
             # TODO: Maybe a bit hacky, but working fix for now... Argpartition throws error if no dets are generated in this constraint
             working_energies = np.r_[1, local_best_energies]
-            # Add dummy
-            working_dets = local_best_dets + [Determinant(alpha=(), beta=())]
+            working_dets = local_best_dets
+        if not (working_dets):
+            working_dets = [Determinant(alpha=(), beta=())]
         # Update `local' n largest magnitude E_pt2 contributions from working chunk -> indices of top n determinants
         # E_pt2 < 0, so n `smallest' are actually the largest magnitude contributors
         local_idx = np.argpartition(working_energies, n)[:n]
@@ -3054,7 +3055,7 @@ def dispatch_local_constraints(
             #   Simply (per spin type) number of holes * particles that will yield an excitation in C
             h += np.dot(n_particles, n_holes)  # Add to work thus far
 
-        if h > 0:  # Handle case where no dets satisfy C.. No one will do it
+        if h:  # Handle case where no dets satisfy C.. No one will do it
             _, loc = comm.allreduce(
                 (W[rank], rank), MPI.MINLOC
             )  # This is a tuple, so use python command

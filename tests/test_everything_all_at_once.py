@@ -135,7 +135,7 @@ class Test_Category:
             (dsa, _), (dsb, _) = da, db
         elif exc == (0, 1):
             (_, dsa), (_, dsb) = da, db
-        h, p = da.single_exc_no_phase(dsa, dsb)
+        h, p = Determinant.single_exc_no_phase(dsa, dsb)
         self.assertTrue(j == l or i == k)
         if j == l:
             self.assertEqual(sorted((h, p)), sorted((i, k)))
@@ -156,7 +156,7 @@ class Test_Category:
             (dsa, dta), (dsb, dtb) = da, db
         elif exc == (0, 1):
             (dta, dsa), (dtb, dsb) = da, db
-        h, p = da.single_exc_no_phase(dsa, dsb)
+        h, p = Determinant.single_exc_no_phase(dsa, dsb)
         self.assertTrue(j == l or i == k)
         if j == l:
             self.assertEqual(sorted((h, p)), sorted((i, k)))
@@ -182,8 +182,8 @@ class Test_Category:
                 p, r, s = j, i, l
             elif k == l:
                 p, r, s = k, j, i
-            hs, ps = da.single_exc_no_phase(dsa, dsb)
-            ht, pt = da.single_exc_no_phase(dta, dtb)
+            hs, ps = Determinant.single_exc_no_phase(dsa, dsb)
+            ht, pt = Determinant.single_exc_no_phase(dta, dtb)
             self.assertEqual(
                 sorted((sorted((hs, ps)), sorted((ht, pt)))),
                 sorted((sorted((p, r)), sorted((p, s)))),
@@ -193,7 +193,7 @@ class Test_Category:
                 (dsa, _), (dsb, _) = da, db
             elif exc == (0, 1):
                 (_, dsa), (_, dsb) = da, db
-            h, p = da.single_exc_no_phase(dsa, dsb)
+            h, p = Determinant.single_exc_no_phase(dsa, dsb)
             if i == j:
                 self.assertEqual(sorted((h, p)), sorted((k, l)))
                 self.assertIn(i, dsa)
@@ -220,8 +220,8 @@ class Test_Category:
             )
         elif exc == (1, 1):
             (dsa, dta), (dsb, dtb) = da, db
-            hs, ps = da.single_exc_no_phase(dsa, dsb)
-            ht, pt = da.single_exc_no_phase(dta, dtb)
+            hs, ps = Determinant.single_exc_no_phase(dsa, dsb)
+            ht, pt = Determinant.single_exc_no_phase(dta, dtb)
             self.assertEqual(sorted((hs, ps)), sorted((i, k)))
             self.assertEqual(sorted((ht, pt)), sorted((i, k)))
 
@@ -233,8 +233,8 @@ class Test_Category:
         self.assertIn(exc, ((1, 1), (2, 0), (0, 2)))
         if exc == (1, 1):
             (dsa, dta), (dsb, dtb) = da, db
-            hs, ps = da.single_exc_no_phase(dsa, dsb)
-            ht, pt = da.single_exc_no_phase(dta, dtb)
+            hs, ps = Determinant.single_exc_no_phase(dsa, dsb)
+            ht, pt = Determinant.single_exc_no_phase(dta, dtb)
             self.assertEqual(
                 sorted((sorted((hs, ps)), sorted((ht, pt)))),
                 sorted((sorted((i, k)), sorted((j, l)))),

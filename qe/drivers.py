@@ -9,7 +9,6 @@ import numpy as np
 from mpi4py import MPI  # Note this initializes and finalizes MPI session automatically
 
 from qe.fundamental_types import (
-    Spin_determinant,
     Determinant,
     Psi_det,
     OrbitalIdx,
@@ -80,684 +79,6 @@ def integral_category(i, j, k, l):
         return "G"
 
 
-#   _____         _ _        _   _
-#  |  ___|       (_) |      | | (_)
-#  | |____  _____ _| |_ __ _| |_ _  ___  _ __
-#  |  __\ \/ / __| | __/ _` | __| |/ _ \| '_ \
-#  | |___>  < (__| | || (_| | |_| | (_) | | | |
-#  \____/_/\_\___|_|\__\__,_|\__|_|\___/|_| |_|
-#
-class Excitation:
-    def __init__(self, n_orb):
-        self.all_orbs = frozenset(range(n_orb))
-        self.n_orb = n_orb
-
-    def gen_all_excitation(self, spindet: Spin_determinant, ed: int) -> Iterator:
-        """
-        Generate list of pair -> hole from a determinant spin.
-
-        >>> sorted(Excitation(4).gen_all_excitation((0, 1),2))
-        [((0, 1), (2, 3))]
-        >>> sorted(Excitation(4).gen_all_excitation((0, 1),1))
-        [((0,), (2,)), ((0,), (3,)), ((1,), (2,)), ((1,), (3,))]
-        """
-        holes = combinations(spindet, ed)
-        not_spindet = self.all_orbs - set(spindet)
-        parts = combinations(not_spindet, ed)
-        return product(holes, parts)
-
-    @staticmethod
-    def apply_excitation(spindet, exc: Tuple[Tuple[int, ...], Tuple[int, ...]]):
-        lh, lp = exc
-        s = (set(spindet) - set(lh)) | set(lp)
-        return tuple(sorted(s))
-
-    def gen_all_connected_spindet(self, spindet: Spin_determinant, ed: int) -> Iterator:
-        """
-        Generate all the posible spin determinant relative to a excitation degree
-
-        >>> sorted(Excitation(4).gen_all_connected_spindet((0, 1), 1))
-        [(0, 2), (0, 3), (1, 2), (1, 3)]
-        """
-        l_exc = self.gen_all_excitation(spindet, ed)
-        apply_excitation_to_spindet = partial(Excitation.apply_excitation, spindet)
-        return map(apply_excitation_to_spindet, l_exc)
-
-    def gen_all_connected_det_from_det(self, det: Determinant) -> Iterator[Determinant]:
-        """
-        Generate all the determinant who are single or double exictation (aka connected) from the input determinant
-
-        >>> sorted(Excitation(3).gen_all_connected_det_from_det( Determinant((0, 1), (0,))))
-        [Determinant(alpha=(0, 1), beta=(1,)),
-         Determinant(alpha=(0, 1), beta=(2,)),
-         Determinant(alpha=(0, 2), beta=(0,)),
-         Determinant(alpha=(0, 2), beta=(1,)),
-         Determinant(alpha=(0, 2), beta=(2,)),
-         Determinant(alpha=(1, 2), beta=(0,)),
-         Determinant(alpha=(1, 2), beta=(1,)),
-         Determinant(alpha=(1, 2), beta=(2,))]
-        """
-
-        # All single exitation from alpha or for beta determinant
-        # Then the production of the alpha, and beta (its a double)
-        # Then the double exitation form alpha or beta
-
-        # We use l_single_a, and l_single_b twice. So we store them.
-        l_single_a = set(self.gen_all_connected_spindet(det.alpha, 1))
-        l_double_aa = self.gen_all_connected_spindet(det.alpha, 2)
-
-        s_a = (Determinant(det_alpha, det.beta) for det_alpha in chain(l_single_a, l_double_aa))
-
-        l_single_b = set(self.gen_all_connected_spindet(det.beta, 1))
-        l_double_bb = self.gen_all_connected_spindet(det.beta, 2)
-
-        s_b = (Determinant(det.alpha, det_beta) for det_beta in chain(l_single_b, l_double_bb))
-
-        l_double_ab = product(l_single_a, l_single_b)
-
-        s_ab = (Determinant(det_alpha, det_beta) for det_alpha, det_beta in l_double_ab)
-
-        return chain(s_a, s_b, s_ab)
-
-    def get_chunk_of_connected_determinants(self, psi_det: Psi_det, L=None) -> Iterator[Psi_det]:
-        """
-        MPI function, generates chunks of connected determinants of size L
-
-        Inputs:
-        :param psi_det: list of determinants
-        :param L: integer, maximally allowed `chunk' of the conneceted space to yield at a time
-        default is L = None, if no chunk size specified, a chunk of the connected space is allocated to each rank
-
-        >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ] ):
-        ...     len(psi_chunk)
-        22
-        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ], 11 ):
-        ...     len(psi_chunk)
-        11
-        11
-        >>> for psi_chunk in Excitation(4).get_chunk_of_connected_determinants( [ d1,d2 ], 10 ):
-        ...     len(psi_chunk)
-        10
-        10
-        2
-        """
-
-        def gen_all_connected_determinant(exci: Excitation, psi_det: Psi_det) -> Psi_det:
-            """
-            >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
-            >>> len(Excitation(4).gen_all_connected_determinant( [ d1,d2 ] ))
-            22
-
-            We remove the connected determinant who are already inside the wave function. Order doesn't matter
-            """
-            # Literal programing
-            # return set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det)))- set(psi_det)
-
-            # Naive algorithm 13
-            l_global = []
-            for i, det in enumerate(psi_det):
-                for det_connected in exci.gen_all_connected_det_from_det(det):
-                    # Remove determinant who are in psi_det
-                    if det_connected in psi_det:
-                        continue
-                    # If it's was already generated by an old determinant, just drop it
-                    if any(Excitation.is_connected(det_connected, d) for d in psi_det[:i]):
-                        continue
-
-                    l_global.append(det_connected)
-
-            # Return connected space
-            return l_global
-
-        # Naive: Each ranks generates all connected determinants, and takes what is theirs
-        psi_connected = gen_all_connected_determinant(self, psi_det)
-        world_size = MPI.COMM_WORLD.Get_size()
-        # TODO: len(psi_connected) will not scale, but is needed for this naive representation
-        full_idx = np.arange(len(psi_connected))
-        split_idx = np.array_split(full_idx, world_size)
-        # Part of connected space available to each rank
-        full_chunk = [psi_connected[i] for i in split_idx[MPI.COMM_WORLD.Get_rank()]]
-
-        if L is None:  # If no argument passed by the user
-            L = len(full_chunk)
-        number_of_chunks, leftovers = divmod(len(full_chunk), L)
-        # Yield chunks of size L one at a time
-        for i in np.arange(number_of_chunks):
-            yield full_chunk[i * L : (i + 1) * L]
-        # Yield `leftover' determinants (size of chunk < L)
-        if leftovers > 0:  # If there are leftover determinants to handle
-            yield full_chunk[number_of_chunks * L : number_of_chunks * L + leftovers]
-
-    @staticmethod
-    @cache
-    def exc_degree_spindet(spindet_i: Spin_determinant, spindet_j: Spin_determinant) -> int:
-        return len(set(spindet_i).symmetric_difference(set(spindet_j))) // 2
-
-    @staticmethod
-    def exc_degree(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
-        """Compute the excitation degree, the number of orbitals which differ
-           between the two determinants.
-        >>> Excitation.exc_degree(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                     Determinant(alpha=(0, 2), beta=(4, 6)))
-        (1, 2)
-        """
-        ed_up = Excitation.exc_degree_spindet(det_i.alpha, det_j.alpha)
-        ed_dn = Excitation.exc_degree_spindet(det_i.beta, det_j.beta)
-        return (ed_up, ed_dn)
-
-    @staticmethod
-    def is_connected(det_i: Determinant, det_j: Determinant) -> Tuple[int, int]:
-        """Compute the excitation degree, the number of orbitals which differ
-           between the two determinants.
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 1), beta=(0, 2)))
-        True
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 2), beta=(0, 2)))
-        True
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(2, 3), beta=(0, 1)))
-        True
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(2, 3), beta=(0, 2)))
-        False
-        >>> Excitation.is_connected(Determinant(alpha=(0, 1), beta=(0, 1)),
-        ...                         Determinant(alpha=(0, 1), beta=(0, 1)))
-        False
-        """
-        return sum(Excitation.exc_degree(det_i, det_j)) in [1, 2]
-
-    def generate_all_constraints(self, n_elec, m=3) -> List[Spin_determinant]:
-        """Generate all `m'-constraints, characterized by m most highly occupied (usually alpha) electrons
-        >>> Excitation(4).generate_all_constraints(3)
-        [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)]
-        >>> len(Excitation(6).generate_all_constraints(3))
-        20
-        """
-        # Problem of number of constraints reduces to binning m (= 3, usually) spin electrons into n_orb - (n_elec - m) orbitals...
-        # We assume the bottom n_elec - m alpha-electrons are at the lowest ON, since only the top three matter
-        # Then, just bin the last m among n_orb - (n_elec - m) remaining orbitals.
-        if n_elec < m:
-            raise NotImplementedError
-        unfilled_orbs = [i for i in range(n_elec - m, self.n_orb)]
-        return [constraint for constraint in combinations(unfilled_orbs, m)]
-
-    def triplet_constrained_single_excitations_from_det(
-        self, det: Determinant, constraint: Spin_determinant, spin="alpha"
-    ) -> Iterator[Determinant]:
-        """Compute all (single) excitations of a det subject to a triplet contraint T = [o1: |OrbitalIdx|, o2: |OrbitalIdx|, o3: |OrbitalIdx|]
-        By default: constraint T specifies 3 `most highly` occupied alpha spin orbitals allowed in the generated excitation
-            e.g., if exciting |D> does not yield |J> such that o1, o2, o3 are the `largest` occupied alpha orbitals in |J> -> Excitation not generated
-        Inputs:
-
-        Outputs:
-            Yield excitations of det |D> subject to specified constraint
-
-        """
-        ha = []  # `Occupied` orbitals to loop over
-        pa = []  # `Virtual`  "                   "
-        hb = []
-        pb = []
-
-        a1 = min(constraint)  # Index of `smallest` occupied constraint orbital
-        B = set(
-            range(a1 + 1, self.n_orb)
-        )  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1} # TODO: Maybe o1 inclusive...
-        if spin == "alpha":
-            det_a = getattr(
-                det, spin
-            )  # Get |Spin_determinant| of inputted |Determinant|, |D> (default is alpha)
-            det_b = getattr(det, "beta")
-        else:
-            det_a = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
-            det_b = getattr(det, "alpha")
-
-        # Some things can be pre-computed:
-        #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D_a>? (If any)
-        constraint_orbitals_occupied = set(det_a) & set(constraint)
-        #   Which `higher-order` (spin) orbitals o >= a1 that are not {a1, a2, a3} are occupied in |D_a>? (If any)
-        #   TODO: Different from Tubman paper, which has an error if I reada it correctly
-        nonconstrained_orbitals_occupied = (set(det_a) & B) - set(constraint)
-
-        # If no double excitation of |D> will produce |J> satisfying constraint
-        if len(constraint_orbitals_occupied) == 1 or len(nonconstrained_orbitals_occupied) > 1:
-            # No single excitations generated by the inputted |Determinant|: {det} satisfy given constraint: {constraint}
-            return None
-
-        # Create list of possible `particles` s.to constraint
-        if len(constraint_orbitals_occupied) == 2:
-            # (Two constraint orbitals occupied) e.g., a1, a2 \in |D_a> -> A single (a) x_a \in ha to a_unocc is necessary to satisfy the constraint
-            # A single (b) will still not satisfy constraint
-            (a_unocc,) = ((set(det_a) | set(constraint)) - (set(det_a) & set(constraint))) & set(
-                constraint
-            )  # The 1 unoccupied constraint orbital
-            pa.append(a_unocc)
-        elif len(constraint_orbitals_occupied) == 3:
-            # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
-            #   Any single x_a \in ha to w_a where w_a < a1 will satisfy constraint
-            det_unocc_a_orbs = self.all_orbs - set(det_a)
-            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                pa.append(w_a)
-            #   Any single x_b \in hb to w_b
-            det_unocc_b_orbs = self.all_orbs - set(det_b)
-            for w_b in det_unocc_b_orbs:
-                pb.append(w_b)
-
-        # Create list of possible `holes` s.to constraint
-        if len(nonconstrained_orbitals_occupied) == 1:
-            # x_a > a1 \in |D_a> with x_a \not\in {a1, a2, a3} -> A single (a) x_a to w_a \in pa is necessary to satisfy constraint
-            # A single (b) will not satisfy
-            (x_a,) = nonconstrained_orbitals_occupied  # Has length 1; unpack
-            ha.append(x_a)
-        elif len(nonconstrained_orbitals_occupied) == 0:
-            # No `higher` orbitals \not\in {a1, a2, a3} occupied in |D> ->
-            #   A single (a) x_a to w_a \in pa, where x_a < a1 (so as not to ruin constraint)
-            for x_a in takewhile(lambda x: x < a1, det_a):
-                ha.append(x_a)
-            #   A single (b) x_b to w_b \in pb
-            for x_b in det_b:
-                hb.append(x_b)
-
-        # Finally, generate all excitations
-        for h in ha:
-            for p in pa:
-                excited_spindet = self.apply_excitation(det_a, [[h], [p]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant(excited_spindet, det_b)
-                else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant(det_b, excited_spindet)
-                assert excited_spindet[-3:] == constraint
-                yield excited_det
-
-        for h in hb:
-            for p in pb:
-                excited_spindet = self.apply_excitation(det_b, [[h], [p]])
-                if spin == "alpha":  # Then, det_b is beta spindet
-                    excited_det = Determinant(det_a, excited_spindet)
-                else:  # Then, det_b is alpha spindet
-                    excited_det = Determinant(excited_spindet, det_a)
-                assert det_a[-3:] == constraint
-                yield excited_det
-
-    def triplet_constrained_double_excitations_from_det(
-        self, det: Determinant, constraint: Spin_determinant, spin="alpha"
-    ) -> Iterator[Determinant]:
-        """Compute all (double) excitations of a det subject to a triplet contraint T = [a1: |OrbitalIdx|, a2: |OrbitalIdx|, a3: |OrbitalIdx|]
-        By default: constraint T specifies 3 `most highly` occupied alpha spin orbitals allowed in the generated excitation
-            e.g., if exciting |D> does not yield |J> such that a1, a2, a3 are the `largest` occupied alpha orbitals in |J> -> Excitation not generated
-        Inputs:
-
-        Outputs:
-            Yield excitations of det |D> subject to specified constraint
-
-        """
-        # Same-spin alpha
-        haa = []  # `Occupied` orbitals to loop over
-        paa = []  # `Virtual`  "                   "
-        # Same-spin beta
-        hbb = []
-        pbb = []
-        # Oppositive spin
-        hab = []
-        pab = []
-        a1 = min(constraint)  # Index of `smallest` occupied alpha constraint orbital
-        B = set(range(a1 + 1, self.n_orb))  # B: `Bitmask' -> |Determinant| {a1 + 1, ..., Norb - 1}
-        if spin == "alpha":
-            det_a = getattr(
-                det, spin
-            )  # Get |Spin_determinant| of inputted |Determinant|, |D> (default is alpha)
-            det_b = getattr(det, "beta")
-        else:
-            det_a = getattr(det, spin)  # Get |Spin_determinant| of inputted |Determinant|, |D>
-            det_b = getattr(det, "alpha")
-
-        # Some things can be pre-computed:
-        #   Which of the `constraint` (spin) orbitals {a1, a2, a3} are occupied in |D>? (If any)
-        constraint_orbitals_occupied = set(det_a) & set(constraint)
-        #   Which `higher-order`(spin) orbitals o >= a1 that are not {a1, a2, a3} are occupied in |D>? (If any)
-        #   TODO: Different from Tubman paper, which has an error if I read it correctly...
-        nonconstrained_orbitals_occupied = (set(det_a) & B) - set(constraint)
-
-        # If this -> no double excitation of |D> will produce |J> satisfying constraint |T>
-        if len(constraint_orbitals_occupied) == 0 or len(nonconstrained_orbitals_occupied) > 2:
-            # No double excitations generated by the inputted |Determinant|: {det} satisfy given constraint: {constraint}
-            return None
-
-        # Create list of possible `particles` s.to constraint
-        if len(constraint_orbitals_occupied) == 1:
-            # (One constraint orbital occupied) e.g., a1 \in |D_a> -> A same-spin (aa) double to (x_a, y_a) \in haa to (a2, a3) is necessary
-            # No same-spin (bb) or opposite-spin (ab) excitations will satisfy constraint
-            # New particles -> a2, a3
-            a_unocc_1, a_unocc_2 = (
-                (set(det_a) | set(constraint)) - (set(det_a) & set(constraint))
-            ) & set(
-                constraint
-            )  # This set will have length 2; unpack
-            paa.append((a_unocc_1, a_unocc_2))
-
-        elif len(constraint_orbitals_occupied) == 2:
-            # (Two constraint orbitals occupied) e.g., a1, a2 \in |D_a> ->
-            #   A same-spin (aa) double (x_a, y_a) \in haa to (z_a, a_unocc), where z_a\not\in|D_a>, and z_a < a1 (if excited to z_a > a1, constraint ruined!)
-            (a_unocc,) = ((set(det_a) | set(constraint)) - (set(det_a) & set(constraint))) & set(
-                constraint
-            )  # The 1 unoccupied constraint orbital
-            det_unocc_a_orbs = self.all_orbs - set(det_a)  # Unocc orbitals in |D_a>
-            for z_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                # z < a_unocc trivially, no need to check they are distinct
-                paa.append((z_a, a_unocc))
-            #   No same spin (bb) excitations will satisfy constraint
-            #   An oppopsite spin (ab) double (x_a, y_b) \in \hab to (a_unocc, z_b), where z\not\in|D_b>
-            det_unocc_b_orbs = set(range(self.n_orb)) - set(det_b)  # Unocc orbitals in |D_b>
-            for z_b in det_unocc_b_orbs:
-                pab.append((a_unocc, z_b))
-
-        elif len(constraint_orbitals_occupied) == 3:
-            # a1, a2, a3 \in |D_a> -> |D> satisfies constraint! ->
-            #   Any same-spin (aa) double (x_a, y_a) \in haa to (w_a, z_a), where w_a, z_a < a1
-            det_unocc_a_orbs = self.all_orbs - set(det_a)
-            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                for z_a in takewhile(lambda z: z < w_a, det_unocc_a_orbs):
-                    paa.append((w_a, z_a))
-            # Any same-spin (bb) double (x_b, y_b) \in hbb to (w_b, z_b)
-            det_unocc_b_orbs = self.all_orbs - set(det_b)  # Unocc orbitals in |D_a>
-            for w_b in det_unocc_b_orbs:
-                for z_b in takewhile(lambda x: x < w_b, det_unocc_b_orbs):
-                    pbb.append((w_b, z_b))
-            #   Any oppospite-spin (ab) double (x_a, y_b) \in hab to (w_a, z_b), where w_a < a1
-            for w_a in takewhile(lambda x: x < a1, det_unocc_a_orbs):
-                for z_b in det_unocc_b_orbs:
-                    pab.append((w_a, z_b))
-
-        # Create list of possible `holes` s.to constraint
-        if len(nonconstrained_orbitals_occupied) == 2:
-            # x_a, y_a \in |D_a> with x_a, y_a > a1 and \not\in {a1, a2, a3} -> A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa is necessary
-            # No same-spin (bb) or opposite-spin (ab) excitations will satisfy constraint
-            # New holes -> x, y
-            x_a, y_a = nonconstrained_orbitals_occupied  # This set will have length 2; unpack
-            haa.append((x_a, y_a))
-        elif len(nonconstrained_orbitals_occupied) == 1:
-            # x_a > a1 \in |D_a> with x_a \not\in {a1, a2, a3} ->
-            #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where y_a < a1 (exciting y_a < a1 doesn't remove constraint)
-            (x_a,) = nonconstrained_orbitals_occupied  # Has length 1; unpack
-            for y_a in takewhile(lambda x: x < a1, det_a):
-                if x_a != y_a:
-                    haa.append((x_a, y_a))
-            #   A same-spin (bb) double will not satisfy the constraint
-            #   A opposite-spin (ab) double (x_a, y_b) -> (w_a, z_b) \in pab where y_b \in |D_b>
-            for y_b in det_b:
-                hab.append((x_a, y_b))
-
-        elif len(nonconstrained_orbitals_occupied) == 0:
-            # No `higher` orbitals \not\in {a1, a2, a3} occupied in |D> ->
-            #   A same-spin (aa) double (x_a, y_a) to (w_a, z_a) \in paa, where x_a, y_a < a1
-            for x_a in takewhile(lambda x: x < a1, det_a):
-                for y_a in takewhile(lambda y: y < x_a, det_a):
-                    haa.append((x_a, y_a))
-            #   A same-spin (bb) double (x_b, y_b) to (w_b, z_b) \in pbb
-            for x_b in det_b:
-                for y_b in takewhile(lambda x: x < x_b, det_b):
-                    hbb.append((x_b, y_b))
-            #   A opposite-spin (ab) double (x_a, y_b) to (w_a, z_b) \in pab, where x_a < a1
-            for x_a in takewhile(lambda x: x < a1, det_a):
-                for y_b in det_b:
-                    hab.append((x_a, y_b))
-
-        # Finally, generate all excitations
-        for holes, particles in product(haa, paa):
-            excited_spindet = self.apply_excitation(det_a, [holes, particles])
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant(excited_spindet, det_b)
-            else:  # Then, det_b is alpha spindet
-                excited_det = Determinant(det_b, excited_spindet)
-            assert excited_spindet[-3:] == constraint
-            yield excited_det
-
-        for holes, particles in product(hbb, pbb):
-            excited_spindet = self.apply_excitation(det_b, [holes, particles])
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant(det_a, excited_spindet)
-            else:  # Then, det_b is alpha spindet
-                excited_det = Determinant(excited_spindet, det_a)
-            assert det_a[-3:] == constraint
-            yield excited_det
-
-        for holes, particles in product(hab, pab):
-            ha, hb = holes
-            pa, pb = particles
-            excited_spindet_a = self.apply_excitation(det_a, [[ha], [pa]])
-            excited_spindet_b = self.apply_excitation(det_b, [[hb], [pb]])
-            if spin == "alpha":  # Then, det_b is beta spindet
-                excited_det = Determinant(excited_spindet_a, excited_spindet_b)
-            else:
-                excited_det = Determinant(excited_spindet_b, excited_spindet_a)
-            assert excited_spindet_a[-3:] == constraint
-            yield excited_det
-
-    @staticmethod
-    def check_constraint(det: Determinant, spin="alpha"):
-        # Give me a determinant. What constraint does it satisfy? (What are three most highly occupied alpha spin orbitas)
-        spindet = getattr(det, spin)
-        # Return constraint as |Spin_determinant|
-        return spindet[-3:]
-
-    def dispatch_local_constraints(
-        self, comm: MPI.COMM_WORLD, psi: Psi_det
-    ) -> List[Spin_determinant]:
-        """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
-        Work is roughly distributed based on the number of connected determinants satisfying a particular constraint
-
-        Inputs:
-        :param psi: List of internal determinants (global)
-
-        Outputs:
-        :param C_loc: Local constraints"""
-
-        rank = comm.Get_rank()
-        # Initialize array to track workload of each rank
-        W = np.zeros(shape=(comm.Get_size(),), dtype="i")
-        C_loc = []  # Pre-allocate space for local constraints
-        na = len(getattr(psi[0], "alpha"))  # No. of alpha electrons
-        nb = len(getattr(psi[0], "beta"))  # No. of beta electrons
-        # Pass through all triplet constraints to distribute
-        H = []  # Track work dist.
-        for C in self.generate_all_constraints(na):
-            B_upper = set(range(min(C) + 1, self.n_orb))  # Upper bitmask
-            B_lower = set(range(min(C)))  # Lower bitmask
-            h = 0  # Track work of this constraint
-            for det in psi:
-                det_a = getattr(det, "alpha")
-                constraint_orbitals_occupied = set(det_a) & set(C)
-                nonconstrained_orbitals_occupied = (set(det_a) & B_upper) - set(C)
-                # n_particles = [np_a, np_b, np_aa, np_bb, np_ab]
-                # Number of particles (or pairs) that (could possibly) involve an excitation satisfying C
-                if len(constraint_orbitals_occupied) == 0:
-                    # No excitations will satisfy C -> Pass
-                    n_particles = np.zeros(5, dtype="i")
-                elif len(constraint_orbitals_occupied) == 1:
-                    # To satisfy C, excitation must be aa (into empty constraint orbitals)
-                    n_particles = np.array([0, 0, 1, 0, 0], dtype="i")
-                elif len(constraint_orbitals_occupied) == 2:
-                    # To satisfy C, only possible single is a, must excite into empty constraint orbital
-                    na_orbs_unocc_lower = B_lower - set(det_a)
-                    # No bb; for ab doubles, a must excite into empty constraint orbital, so 1 * (self.n_orb - nb) ab pairs
-                    n_particles = np.array(
-                        [1, 0, len(na_orbs_unocc_lower), 0, (self.n_orb - nb)], dtype="i"
-                    )
-                elif len(constraint_orbitals_occupied) == 3:
-                    # To satisfy C, any a or aa excitaion into `lower` unoccupied alpha orbitals
-                    # All possible b or bb excitations satisfy C
-                    na_orbs_unocc_lower = B_lower - set(det_a)
-                    # Divide some things by 2 to avoid repeats due to permuation (e.g., (p1, p2) = (1, 2) <-> (p1, p2) = (2, 1))
-                    n_particles = np.array(
-                        [
-                            len(na_orbs_unocc_lower),
-                            self.n_orb - nb,
-                            len(na_orbs_unocc_lower) * (len(na_orbs_unocc_lower) - 1) / 2,
-                            (self.n_orb - nb) * (self.n_orb - nb - 1) / 2,
-                            (self.n_orb - nb) * len(na_orbs_unocc_lower),
-                        ],
-                        dtype="i",
-                    )
-
-                # n_holes = [nh_a, nh_b, nh_aa, nh_bb, nh_ab]
-                # Number of holes (or pairs) that (could possibly) involve an excitation satisfying C
-                if len(nonconstrained_orbitals_occupied) > 2:
-                    # No excitations will satisfy C -> Pass
-                    n_holes = np.zeros(5, dtype="i")
-                elif len(nonconstrained_orbitals_occupied) == 2:
-                    # To satisfy C, excitation must be aa (out of `higher` non-constraint orbitals)
-                    n_holes = np.array([0, 0, 1, 0, 0], dtype="i")
-                elif len(nonconstrained_orbitals_occupied) == 1:
-                    # To satisfy C, only possible single is a, must excite out of `higher` constraint orbitals
-                    na_orbs_occ_lower = set(det_a) & B_lower
-                    # No bb; for ab doubles, a must excite out of `higher` constraint orbital, so 1 * nb ab pairs
-                    n_holes = [1, 0, len(na_orbs_occ_lower), 0, nb]
-                elif len(nonconstrained_orbitals_occupied) == 0:
-                    # To satisfy C, can excite out of any `lower` occupied alpha orbitals
-                    # All possible b or bb excitations satisfy C
-                    na_orbs_occ_lower = set(det_a) & B_lower
-                    n_holes = [
-                        len(na_orbs_occ_lower),
-                        nb,
-                        len(na_orbs_occ_lower) * (len(na_orbs_occ_lower) - 1) / 2,
-                        nb * (nb - 1) / 2,
-                        len(na_orbs_occ_lower) * nb,
-                    ]
-
-                # Number of singly/doubly connected determinants to |det> satisfying constraint C
-                #   Simply (per spin type) number of holes * particles that will yield an excitation in C
-                h += np.dot(n_particles, n_holes)  # Add to work thus far
-
-            if h > 0:  # Handle case where no dets satisfy C.. No one will do it
-                _, loc = comm.allreduce(
-                    (W[rank], rank), MPI.MINLOC
-                )  # This is a tuple, so use python command
-                if loc == rank:  # Rank with lowest amount of work collects current constraint
-                    C_loc.append(C)
-                    H.append(h)
-                    W[rank] += h  # Add h to the amount of `work` rank has
-
-        # Return local constraints and distribution of work
-        return C_loc, H
-
-
-#  ______ _                        _   _       _
-#  | ___ \ |                      | | | |     | |
-#  | |_/ / |__   __ _ ___  ___    | |_| | ___ | | ___
-#  |  __/| '_ \ / _` / __|/ _ \   |  _  |/ _ \| |/ _ \
-#  | |   | | | | (_| \__ \  __/_  | | | | (_) | |  __/
-#  \_|   |_| |_|\__,_|___/\___( ) \_| |_/\___/|_|\___|
-#                             |/
-#
-#                   _  ______          _   _      _
-#                  | | | ___ \        | | (_)    | |
-#    __ _ _ __   __| | | |_/ /_ _ _ __| |_ _  ___| | ___  ___
-#   / _` | '_ \ / _` | |  __/ _` | '__| __| |/ __| |/ _ \/ __|
-#  | (_| | | | | (_| | | | | (_| | |  | |_| | (__| |  __/\__ \
-#   \__,_|_| |_|\__,_| \_|  \__,_|_|   \__|_|\___|_|\___||___/
-#
-#
-
-
-class PhaseIdx(object):
-    @staticmethod
-    def single_phase(sdet_i, sdet_j, h, p):
-        phase = 1
-        for det, idx in ((sdet_i, h), (sdet_j, p)):
-            for _ in takewhile(lambda x: x != idx, det):
-                phase = -phase
-        return phase
-
-    @staticmethod
-    def single_exc_no_phase(
-        sdet_i: Spin_determinant, sdet_j: Spin_determinant
-    ) -> Tuple[OrbitalIdx, OrbitalIdx]:
-        """hole, particle of <I|H|J> when I and J differ by exactly one orbital
-           h is occupied only in I
-           p is occupied only in J
-
-        >>> PhaseIdx.single_exc_no_phase((1, 5, 7), (1, 23, 7))
-        (5, 23)
-        >>> PhaseIdx.single_exc_no_phase((1, 2, 9), (1, 9, 18))
-        (2, 18)
-        """
-        (h,) = set(sdet_i) - set(sdet_j)
-        (p,) = set(sdet_j) - set(sdet_i)
-
-        return h, p
-
-    @staticmethod
-    def single_exc(
-        sdet_i: Spin_determinant, sdet_j: Spin_determinant
-    ) -> Tuple[int, OrbitalIdx, OrbitalIdx]:
-        """phase, hole, particle of <I|H|J> when I and J differ by exactly one orbital
-           h is occupied only in I
-           p is occupied only in J
-
-        >>> PhaseIdx.single_exc((0, 4, 6), (0, 22, 6))
-        (1, 4, 22)
-        >>> PhaseIdx.single_exc((0, 1, 8), (0, 8, 17))
-        (-1, 1, 17)
-        """
-        h, p = PhaseIdx.single_exc_no_phase(sdet_i, sdet_j)
-
-        return PhaseIdx.single_phase(sdet_i, sdet_j, h, p), h, p
-
-    @staticmethod
-    def double_phase(sdet_i, sdet_j, h1, h2, p1, p2):
-        # Compute phase. See paper to have a loopless algorithm
-        # https://arxiv.org/abs/1311.6244
-        phase = PhaseIdx.single_phase(sdet_i, sdet_j, h1, p1) * PhaseIdx.single_phase(
-            sdet_j, sdet_i, p2, h2
-        )
-        if h2 < h1:
-            phase *= -1
-        if p2 < p1:
-            phase *= -1
-        return phase
-
-    @staticmethod
-    def double_exc_no_phase(
-        sdet_i: Spin_determinant, sdet_j: Spin_determinant
-    ) -> Tuple[OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
-        """holes, particles of <I|H|J> when I and J differ by exactly two orbitals
-           h1, h2 are occupied only in I
-           p1, p2 are occupied only in J
-
-        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 5, 6, 7, 8, 9, 12, 13))
-        (3, 4, 12, 13)
-        >>> PhaseIdx.double_exc_no_phase((1, 2, 3, 4, 5, 6, 7, 8, 9), (1, 2, 4, 5, 6, 7, 8, 12, 18))
-        (3, 9, 12, 18)
-        """
-
-        # Holes
-        h1, h2 = sorted(set(sdet_i) - set(sdet_j))
-
-        # Particles
-        p1, p2 = sorted(set(sdet_j) - set(sdet_i))
-
-        return h1, h2, p1, p2
-
-    @staticmethod
-    def double_exc(
-        sdet_i: Spin_determinant, sdet_j: Spin_determinant
-    ) -> Tuple[int, OrbitalIdx, OrbitalIdx, OrbitalIdx, OrbitalIdx]:
-        """phase, holes, particles of <I|H|J> when I and J differ by exactly two orbitals
-           h1, h2 are occupied only in I
-           p1, p2 are occupied only in J
-
-        >>> PhaseIdx.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 4, 5, 6, 7, 8, 11, 12))
-        (1, 2, 3, 11, 12)
-        >>> PhaseIdx.double_exc((0, 1, 2, 3, 4, 5, 6, 7, 8), (0, 1, 3, 4, 5, 6, 7, 11, 17))
-        (-1, 2, 8, 11, 17)
-        """
-
-        h1, h2, p1, p2 = PhaseIdx.double_exc_no_phase(sdet_i, sdet_j)
-
-        return PhaseIdx.double_phase(sdet_i, sdet_j, h1, h2, p1, p2), h1, h2, p1, p2
-
-
 #   _   _                 _ _ _              _
 #  | | | |               (_) | |            (_)
 #  | |_| | __ _ _ __ ___  _| | |_ ___  _ __  _  __ _ _ __
@@ -795,20 +116,21 @@ class Hamiltonian_one_electron(object):
     def H_ij(self, det_i: Determinant, det_j: Determinant) -> Energy:
         """General function to dispatch the evaluation of H_ij"""
 
-        def H_ij_spindet(sdet_i: Spin_determinant, sdet_j: Spin_determinant) -> Energy:
+        def H_ij_spindet(sdet_j, spin: str) -> Energy:
             """<I|H|J>, when I and J differ by exactly one orbital."""
-            phase, m, p = PhaseIdx.single_exc(sdet_i, sdet_j)
+            # det_i is accessible
+            phase, m, p = det_i.single_exc(sdet_j, spin)
             return self.H_ij_orbital(m, p) * phase
 
-        ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+        ed_up, ed_dn = det_i.exc_degree(det_j)
         # Same determinant -> Diagonal element
         if (ed_up, ed_dn) == (0, 0):
             return self.H_ii(det_i)
         # Single excitation
         elif (ed_up, ed_dn) == (1, 0):
-            return H_ij_spindet(det_i.alpha, det_j.alpha)
+            return H_ij_spindet(det_j.alpha, "alpha")
         elif (ed_up, ed_dn) == (0, 1):
-            return H_ij_spindet(det_i.beta, det_j.beta)
+            return H_ij_spindet(det_j.beta, "beta")
         else:
             return 0.0
 
@@ -870,10 +192,8 @@ class Hamiltonian_two_electrons(object):
         key = max(self.d_two_e_integral)
         return max(compound_idx4_reverse(key)) + 1
 
-    @cached_property
-    def exci(self):
-        # Create single instance of excitation class=
-        return Excitation(self.N_orb)
+    def H_ii(self, det_i: Determinant):
+        return sum(phase * self.H_ijkl_orbital(*idx) for idx, phase in self.H_ii_indices(det_i))
 
 
 #   ___            _
@@ -896,10 +216,14 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
         """General function to dispatch the evaluation of H_ij"""
 
         def H_ij_single_indices(
-            sdet_i: Spin_determinant, sdet_j: Spin_determinant, sdet_k: Spin_determinant
+            sdet_i: Tuple[OrbitalIdx, ...],
+            sdet_j: Tuple[OrbitalIdx, ...],
+            sdet_k: Tuple[OrbitalIdx, ...],
+            spin: str,
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one orbital"""
-            phase, h, p = PhaseIdx.single_exc(sdet_i, sdet_j)
+            phase, h, p = det_i.single_exc(sdet_j, spin)
+
             for i in sdet_i:
                 yield (h, i, p, i), phase
                 yield (h, i, i, p), -phase
@@ -907,40 +231,43 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
                 yield (h, i, p, i), phase
 
         def H_ij_doubleAA_indices(
-            sdet_i: Spin_determinant, sdet_j: Spin_determinant
+            sdet_j: Tuple[OrbitalIdx, ...], spin
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly two orbitals within
             the same spin."""
-            phase, h1, h2, p1, p2 = PhaseIdx.double_exc(sdet_i, sdet_j)
+            phase, h1, h2, p1, p2 = det_i.double_exc(sdet_j, spin)
+
             yield (h1, h2, p1, p2), phase
             yield (h1, h2, p2, p1), -phase
 
         def H_ij_doubleAB_2e_index(
-            det_i: Determinant, det_j: Determinant
+            det_j: Determinant,
         ) -> Iterator[Two_electron_integral_index_phase]:
             """<I|H|J>, when I and J differ by exactly one alpha spin-orbital and
             one beta spin-orbital."""
-            phaseA, h1, p1 = PhaseIdx.single_exc(det_i.alpha, det_j.alpha)
-            phaseB, h2, p2 = PhaseIdx.single_exc(det_i.beta, det_j.beta)
+
+            phaseA, h1, p1 = det_i.single_exc(det_j.alpha, "alpha")
+            phaseB, h2, p2 = det_i.single_exc(det_j.beta, "beta")
+
             yield (h1, h2, p1, p2), phaseA * phaseB
 
-        ed_up, ed_dn = Excitation.exc_degree(det_i, det_j)
+        ed_up, ed_dn = det_i.exc_degree(det_j)
         # Same determinant -> Diagonal element
         if (ed_up, ed_dn) == (0, 0):
             yield from Hamiltonian_two_electrons_determinant_driven.H_ii_indices(det_i)
         # Single excitation
         elif (ed_up, ed_dn) == (1, 0):
-            yield from H_ij_single_indices(det_i.alpha, det_j.alpha, det_i.beta)
+            yield from H_ij_single_indices(det_i.alpha, det_j.alpha, det_i.beta, "alpha")
         elif (ed_up, ed_dn) == (0, 1):
-            yield from H_ij_single_indices(det_i.beta, det_j.beta, det_i.alpha)
+            yield from H_ij_single_indices(det_i.beta, det_j.beta, det_i.alpha, "beta")
         # Double excitation of same spin
         elif (ed_up, ed_dn) == (2, 0):
-            yield from H_ij_doubleAA_indices(det_i.alpha, det_j.alpha)
+            yield from H_ij_doubleAA_indices(det_j.alpha, "alpha")
         elif (ed_up, ed_dn) == (0, 2):
-            yield from H_ij_doubleAA_indices(det_i.beta, det_j.beta)
+            yield from H_ij_doubleAA_indices(det_j.beta, "beta")
         # Double excitation of opposite spins
         elif (ed_up, ed_dn) == (1, 1):
-            yield from H_ij_doubleAB_2e_index(det_i, det_j)
+            yield from H_ij_doubleAB_2e_index(det_j)
 
     @staticmethod
     def H_indices(
@@ -954,18 +281,11 @@ class Hamiltonian_two_electrons_determinant_driven(Hamiltonian_two_electrons, ob
                     yield (a, b), idx, phase
 
     def H(self, psi_internal: Psi_det, psi_external: Psi_det) -> List[List[Energy]]:
-        # det_external_to_index = {d: i for i, d in enumerate(psi_external)}
         # This is the function who will take foreever
         h = np.zeros(shape=(len(psi_internal), len(psi_external)))
         for (a, b), (i, j, k, l), phase in self.H_indices(psi_internal, psi_external):
             h[a, b] += phase * self.H_ijkl_orbital(i, j, k, l)
         return h
-
-    def H_ii(self, det_i: Determinant):
-        return sum(
-            phase * self.H_ijkl_orbital(i, j, k, l)
-            for (i, j, k, l), phase in self.H_ii_indices(det_i)
-        )
 
 
 #   ___            _
@@ -1033,7 +353,9 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         return det_indices
 
     @staticmethod
-    def do_diagonal(det_indices, psi_i, det_to_index_j, phase):
+    def do_diagonal(
+        det_indices: List[int], psi_i: Psi_det, det_to_index_j: Dict[Determinant, int], phase: int
+    ):
         # contribution from integrals to diagonal elements
         for a in det_indices:
             # Handle PT2 case when psi_i != psi_j. In this case, psi_i[a] won't be in the external space and so error will be thrown
@@ -1046,71 +368,115 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 pass
 
     @staticmethod
-    def do_single(det_indices_i, phasemod, occ, h, p, psi_i, det_to_index_j, spin, exci):
-        # Single excitation from h to p, occ is index of orbital occupied
-        # Excitation is from internal to external space
-        # TODO: Some sort of additional pre-filtering based on constraints?
-        for a in det_indices_i:  # Loop through candidate determinants in internal space
-            det = psi_i[a]
-            excited_spindet = exci.apply_excitation(getattr(det, spin), [[h], [p]])
+    def do_single(
+        det_indices: List[int],
+        phasemod: int,
+        occ: OrbitalIdx,
+        h: OrbitalIdx,
+        p: OrbitalIdx,
+        psi_internal: Psi_det,
+        det_to_index: Dict[Determinant, int],
+        spin: str,
+    ):
+        """Do all single excitations from hole h -> particle p; occ is index of orbital that is necessarily occupied
+        Excitations from pre-filtered list of candidate |Determinant|s indicated by `det_indices`
+        Called by category functions corresponding to single excitations
+
+        For use in building the Hamiltonian in the variational step"""
+        for I in det_indices:
+            det = psi_internal[I]  # Grab |Determinant| I from w.f.
             if spin == "alpha":
-                excited_det = Determinant(excited_spindet, getattr(det, "beta"))
-            else:
-                excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
-            if excited_det in det_to_index_j:  # Check if excited det is in external space
-                phase = phasemod * PhaseIdx.single_phase(getattr(det, spin), excited_spindet, h, p)
-                yield (a, det_to_index_j[excited_det]), phase
+                # Create new |Determinant| via excitation from h -> p
+                # Hole, particle are alpha spin orbitals
+                excited_det = det.apply_excitation(((h,), (p,)), ((), ()))
+            else:  # Spin is "beta"
+                # Hole, particle are beta spin orbitals
+                excited_det = det.apply_excitation(((), ()), ((h,), (p,)))
+            # If the excited determinant is in the internal wave function ->
+            #   Compute phase of (single) excitation pair and yield (I, J), phase
+            if excited_det in det_to_index:
+                # :param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
+
+                phase = phasemod * det.single_phase(h, p, spin)
+
+                yield (I, det_to_index[excited_det]), phase
             else:
                 pass
 
     @staticmethod
     def do_single_pt2(
-        det_indices,
-        phasemod,
+        det_indices: List[int],
+        phasemod: int,
         occ: OrbitalIdx,
         h: OrbitalIdx,
         p: OrbitalIdx,
-        psi: Determinant,
-        C: Spin_determinant,
-        spin,
-        exci,
+        psi_internal: Psi_det,
+        C: Tuple[OrbitalIdx, ...],
+        spin: str,
     ):
-        # Single excitation from h to p, occ is index of orbital occupied (for the pt2 selection)
-        # Excitation is from internal to external space
-        # TODO: What if det_indcies is empty?
-        for I in det_indices:  # Loop through candidate determinants in internal space
-            det = psi[I]
-            excited_spindet = exci.apply_excitation(getattr(det, spin), [[h], [p]])
+        """Do all single excitations from hole h -> particle p; occ is index of orbital that is necessarily occupied
+        Excitations from pre-filtered list of candidate |Determinant|s indicated by `det_indices`
+        Called by category functions corresponding to single excitations
+
+        For use in computing E_pt2 and subsequent selection"""
+        for I in det_indices:
+            det = psi_internal[I]  # Grab |Determinant| I from w.f.
             if spin == "alpha":
-                excited_det = Determinant(excited_spindet, getattr(det, "beta"))
-            else:
-                excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
-            # Assert excited det satisfies constraint and yield
-            assert exci.check_constraint(excited_det) == C
-            phase = phasemod * PhaseIdx.single_phase(getattr(det, spin), excited_spindet, h, p)
+                # Create new |Determinant| via excitation from h -> p
+                # Hole, particle are alpha spin orbitals
+                excited_det = det.apply_excitation(((h,), (p,)), ((), ()))
+            else:  # Spin is "beta"
+                # Hole, particle are beta spin orbitals
+                excited_det = det.apply_excitation(((), ()), ((h,), (p,)))
+            # Assert the excited determinant satisfies the appropriate constraint C
+            assert check_constraint(excited_det) == C
+            # param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
+
+            phase = phasemod * det.single_phase(h, p, spin)
+
+            # excited_det is in the connected space by default; yield (I, det_J) phase
+            # Cannot yield index of excited_det since this requires storing (knowing) connected space a priori
             yield (I, excited_det), phase
 
     @staticmethod
     def do_double_samespin(
-        hp1, hp2, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, exci
+        hp1: Tuple[OrbitalIdx, OrbitalIdx],
+        hp2: Tuple[OrbitalIdx, OrbitalIdx],
+        psi_internal: Psi_det,
+        det_to_index: Dict[Determinant, int],
+        spindet_occ_i: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_i: Dict[OrbitalIdx, Set[int]],
+        spin: str,
     ):
-        # hp1 = i, j or j, i, hp2 = k, l or l, k, particle-hole pairs
-        # double excitation from i to j and k to l, electrons are of the same spin
-        i, k = hp1
-        j, l = hp2
+        """Do double excitations from i <-> j, k <-> l; hp1 = i, j or j, i, hp2 = k, l or l, k, particle-hole pairs
+        Electrons involved are of the same spin
+
+        For use in building the Hamiltonian in the variational step"""
+        # Unpack hole-particle pairs
+        h1, p1 = hp1
+        h2, p2 = hp2
+        # Pre-filter; get list of candidate determinants thaat are possibly related via (same-spin) excitations h1 -> p1, h2 -> p2
         det_indices_AA = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-            spindet_occ_i, {}, {"same": {i, j}}, {"same": {k, l}}
+            spindet_occ_i, {}, {"same": {h1, h2}}, {"same": {p1, p1}}
         )
-        for a in det_indices_AA:  # Loop through candidate determinants in internal space
-            det = psi_i[a]
-            excited_spindet = exci.apply_excitation(getattr(det, spin), [[i, j], [k, l]])
+        for I in det_indices_AA:
+            det = psi_internal[I]
             if spin == "alpha":
-                excited_det = Determinant(excited_spindet, getattr(det, "beta"))
+                # Create new |Determinant| via excitation from h1 -> p1, h2 -> p1
+                excited_det = det.apply_excitation(((h1, h2), (p1, p2)), ((), ()))
             else:
-                excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
-            if excited_det in det_to_index_j:  # Check if excited det is in external space
-                phase = PhaseIdx.double_phase(getattr(det, spin), excited_spindet, i, j, k, l)
-                yield (a, det_to_index_j[excited_det]), phase
+                # Holes, particles are beta spin orbitals
+                excited_det = det.apply_excitation(((), ()), ((h1, h2), (p1, p2)))
+            # If the excited determinant is in the internal wave function ->
+            #   Compute phase of (double) excitation pair and yield (I, J), phase
+            if excited_det in det_to_index:
+                phase = det.double_phase((h1, h2), (p1, p2), spin)
+                if h2 < h1:
+                    phase = -phase
+                if p2 < p1:
+                    phase = -phase
+
+                yield (I, det_to_index[excited_det]), phase
             else:
                 pass
 
@@ -1118,13 +484,17 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
     def do_double_samespin_pt2(
         hp1: Tuple[OrbitalIdx, OrbitalIdx],
         hp2: Tuple[OrbitalIdx, OrbitalIdx],
-        psi: Determinant,
-        C: Spin_determinant,
-        spindet_occ,
-        oppspindet_occ,
-        spin,
-        exci,
+        psi: Psi_det,
+        C: Tuple[OrbitalIdx, ...],
+        spindet_occ: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ: Dict[OrbitalIdx, Set[int]],
+        spin: str,
+        n_orb: int,
     ):
+        """Do double excitations from i <-> j, k <-> l; hp1 = i, j or j, i, hp2 = k, l or l, k, particle-hole pairs
+        Electrons involved are of the same spin
+
+        For use in computing E_pt2 and subsequent selection"""
         # Opposite-spin double excitations for category G
         a1 = min(C)  # `Lowest` constraint orbital
         # Unpack hole-particle pairs (both of input spin)
@@ -1141,7 +511,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             elif ((p1 not in C) and (p1 < a1)) and ((p2 not in C) and (p2 < a1)):
                 # All excitation pairs related by <ij|kl> must already satisfy C
                 # Get `higher` orbitals not in C -> must be empty in the excitation pairs to satisfy C
-                unocc_spin_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) | {h1, h2})) | {
+                unocc_spin_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) | {h1, h2})) | {
                     p1,
                     p2,
                 }
@@ -1159,9 +529,10 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             elif (p1 not in C) and (p1 < a1):
                 # p1 not in C, p2 is by above conditonals
                 # Get `higher` orbitals not in C -> must be empty in the excitation pairs to satisfy C
-                unocc_spin_orbitals = (
-                    set(range(a1 + 1, exci.n_orb)) - ((set(C) - {p2}) | {h1, h2})
-                ) | {p1, p2}
+                unocc_spin_orbitals = (set(range(a1 + 1, n_orb)) - ((set(C) - {p2}) | {h1, h2})) | {
+                    p1,
+                    p2,
+                }
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, h2 C - {p2} (beta) none
                 #   Empty in: (alpha) p1, p2 {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p2}) | {h1, h2}) (beta) none
@@ -1177,7 +548,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # p2 not in C, p1 is by above conditonals
                 # Get `higher` orbitals not in C -> must be empty in the excitation pairs to satisfy C
                 unocc_spin_orbitals = (
-                    set(range(a1 + 1, exci.n_orb)) - ((set(C) - {p1, p2}) | {h1, h2})
+                    set(range(a1 + 1, n_orb)) - ((set(C) - {p1, p2}) | {h1, h2})
                 ) | {p1, p2}
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, h2 C - {p1} (beta) none
@@ -1193,7 +564,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             else:
                 # Both p1, p2 in C
                 unocc_spin_orbitals = (
-                    set(range(a1 + 1, exci.n_orb)) - ((set(C) - {p1, p2}) | {h1, h2})
+                    set(range(a1 + 1, n_orb)) - ((set(C) - {p1, p2}) | {h1, h2})
                 ) | {p1, p2}
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, h2 C - {p1, p2} (beta) none
@@ -1208,7 +579,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 )
         else:  # Spin is beta
             # Here, candidates must alreaady be occupied in C
-            unocc_oppspin_orbitals = set(range(a1 + 1, exci.n_orb)) - set(C)
+            unocc_oppspin_orbitals = set(range(a1 + 1, n_orb)) - set(C)
             # Related pairs must be:
             #   Occupied in: (alpha) C (beta) h1, h2
             #   Empty in: (alpha) {a1 + 1, a1 + 2, ... N_orb - 1} - C | {h1, h2}) (beta) p1, p2
@@ -1219,45 +590,65 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 {"same": {p1, p2}, "opposite": unocc_oppspin_orbitals},
             )
 
-        for I in det_indices:  # Loop through candidate determinants in internal space
+        # Now, loop through the filtered `candidate` determinants; generate the excitation pairs related by h1 -> p1, h2 -> p2
+        for I in det_indices:
             det = psi[I]
-            excited_spindet = exci.apply_excitation(getattr(det, spin), [[h1, h2], [p1, p2]])
             if spin == "alpha":
-                excited_det = Determinant(excited_spindet, getattr(det, "beta"))
+                # Create new |Determinant| via excitation from i -> j, k -> l
+                excited_det = det.apply_excitation(((h1, h2), (p1, p2)), ((), ()))
             else:
-                excited_det = Determinant(getattr(det, "alpha"), excited_spindet)
-            assert exci.check_constraint(excited_det) == C
-            phase = PhaseIdx.double_phase(getattr(det, spin), excited_spindet, h1, h2, p1, p2)
+                # Holes, particles are beta spin orbitals
+                excited_det = det.apply_excitation(((), ()), ((h1, h2), (p1, p2)))
+            # Assert the excited determinant satisfies the appropriate constraint C
+            assert check_constraint(excited_det) == C
+            phase = det.double_phase((h1, h2), (p1, p2), spin)
+            if h2 < h1:
+                phase = -phase
+            if p2 < p1:
+                phase = -phase
             yield (I, excited_det), phase
 
     @staticmethod
     def do_double_oppspin(
-        hp1, hp2, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, exci
+        hp1: Tuple[OrbitalIdx, OrbitalIdx],
+        hp2: Tuple[OrbitalIdx, OrbitalIdx],
+        psi_internal: Psi_det,
+        det_to_index: Dict[Determinant, int],
+        spindet_occ_i: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ_i: Dict[OrbitalIdx, Set[int]],
+        spin: str,
     ):
-        # hp1 = i, j or j, i, hp2 = k, l or l, k, particle-hole pairs
-        # double excitation from i to j and k to l, electrons are of opposite spin spin
-        i, k = hp1
-        j, l = hp2
+        """Do double excitations from i <-> j, k <-> l; hp1 = i, j or j, i, hp2 = k, l or l, k, particle-hole pairs
+        Electrons involved are of the opposite-spin
+
+        For use in building the Hamiltonian in the variational step"""
+        # Unpack hole-particle pairs
+        h1, p1 = hp1
+        h2, p2 = hp2
+        # Pre-filter; get list of candidate determinants thaat are possibly related via (opposite-spin) excitations h1 -> p1, h2 -> p2
         det_indices_AB = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
             spindet_occ_i,
             oppspindet_occ_i,
-            {"same": {i}, "opposite": {j}},
-            {"same": {k}, "opposite": {l}},
+            {"same": {h1}, "opposite": {h2}},
+            {"same": {p1}, "opposite": {p2}},
         )
-        for a in det_indices_AB:  # Look through candidate determinants in internal space
-            det = psi_i[a]
-            excited_spindet_A = exci.apply_excitation(getattr(det, spin), [[i], [k]])
-            phaseA = PhaseIdx.single_phase(getattr(det, spin), excited_spindet_A, i, k)
+        for I in det_indices_AB:
+            det = psi_internal[I]
             if spin == "alpha":
-                excited_spindet_B = exci.apply_excitation(getattr(det, "beta"), [[j], [l]])
-                phaseB = PhaseIdx.single_phase(getattr(det, "beta"), excited_spindet_B, j, l)
-                excited_det = Determinant(excited_spindet_A, excited_spindet_B)
+                # h1, p1 -> alpha spin-orbitals, h2, p2 -> beta
+                excited_det = det.apply_excitation(((h1,), (p1,)), ((h2,), (p2,)))
+                # Phase is computed from both spindets
+                phaseA = det.single_phase(h1, p1, spin)
+                phaseB = det.single_phase(h2, p2, "beta")
             else:
-                excited_spindet_B = exci.apply_excitation(getattr(det, "alpha"), [[j], [l]])
-                phaseB = PhaseIdx.single_phase(getattr(det, "alpha"), excited_spindet_B, j, l)
-                excited_det = Determinant(excited_spindet_B, excited_spindet_A)
-            if excited_det in det_to_index_j:  # Check if excited det is in external space
-                yield (a, det_to_index_j[excited_det]), phaseA * phaseB
+                # h1, p1 -> beta spin-orbitals, h2, p2 -> alpha
+                excited_det = det.apply_excitation(((h2,), (p2,)), ((h1,), (p1,)))
+                phaseA = det.single_phase(h1, p1, spin)
+                phaseB = det.single_phase(h2, p2, "alpha")
+            # If the excited determinant is in the internal wave function ->
+            #   Compute phase of (double) excitation pair and yield (I, J), phase
+            if excited_det in det_to_index:
+                yield (I, det_to_index[excited_det]), phaseA * phaseB
             else:
                 pass
 
@@ -1266,13 +657,17 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         hp1: Tuple[OrbitalIdx, OrbitalIdx],
         hp2: Tuple[OrbitalIdx, OrbitalIdx],
         psi: Determinant,
-        C: Spin_determinant,
-        spindet_occ,
-        oppspindet_occ,
-        spin,
-        exci,
+        C: Tuple[OrbitalIdx, ...],
+        spindet_occ: Dict[OrbitalIdx, Set[int]],
+        oppspindet_occ: Dict[OrbitalIdx, Set[int]],
+        spin: str,
+        n_orb: int,
     ):
-        # Opposite-spin double excitations for category G
+        """Do double excitations from i <-> j, k <-> l; hp1 = i, j or j, i, hp2 = k, l or l, k, particle-hole pairs
+        Electrons involved are of the opposite-spin
+
+        For use in computing E_pt2 energy and subsequent selection"""
+        # Opposite-spin double excitations for category G only
         a1 = min(C)  # `Lowest` constraint orbital
         # Unpack hole-particle pairs
         h1, p1 = hp1  # This excitation is of input spin (e.g., alpha)
@@ -1288,7 +683,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             elif (p1 not in C) and (p1 < a1):
                 # All excitation pairs related by <ij|kl> must already satisfy C
                 # Get `higher` orbitals not in C -> must be empty in the excitation pairs to satisfy C
-                unocc_spin_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) | {h1})) | {p1}
+                unocc_spin_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) | {h1})) | {p1}
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, C = {a1, a2, a3} (beta) h2
                 #   Empty in: (alpha) p1, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h1} (beta) p2
@@ -1303,9 +698,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             else:
                 # By above -> p1 \in C in this instance
                 # All excitation pairs related by <ij|kl> must be occupied in C - {p1}
-                unocc_spin_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) - {p1} | {h1})) | {
-                    p1
-                }
+                unocc_spin_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) - {p1} | {h1})) | {p1}
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, C - {p1} (beta) h2
                 #   Empty in: (alpha) p1, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p1}) | {h1}) (beta) p2
@@ -1327,7 +720,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             elif (p2 not in C) and (p2 < a1):
                 # All excitation pairs related by <ij|kl> must already satisfy C
                 # Get `higher` orbitals not in C -> must be empty in the excitation pairs to satisfy C
-                unocc_spin_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) | {h2})) | {p2}
+                unocc_spin_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) | {h2})) | {p2}
                 # Related pairs must be:
                 #   Occupied in: (alpha) h2, C = {a1, a2, a3} (beta) h1
                 #   Empty in: (alpha) p2, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h2} (beta) p1
@@ -1342,9 +735,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             else:
                 # By above -> p2 \in C in this instance
                 # All excitation pairs related by <ij|kl> must be occupied in C - {p2}
-                unocc_spin_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) - {p2} | {h2})) | {
-                    p2
-                }
+                unocc_spin_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) - {p2} | {h2})) | {p2}
                 # Related pairs must be:
                 #   Occupied in: (alpha) h2, C - {p2} (beta) h1
                 #   Empty in: (alpha) p2, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p2}) | {h2}) (beta) p1
@@ -1356,23 +747,22 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         {"same": {p1}, "opposite": unocc_spin_orbitals},
                     )
                 )
-        # Loop through indices of candidate determinants
+        # Now, loop through filtered dets to yield excitation pairs s.to C
         for I in det_indices:
             det = psi[I]
-            # Apply `spin` (e.g., alpha) excitation + get phase
-            excited_spindet_A = exci.apply_excitation(getattr(det, spin), [[h1], [p1]])
-            phaseA = PhaseIdx.single_phase(getattr(det, spin), excited_spindet_A, h1, p1)
-            # Apply `opposite-spin` (e.g., beta) excitation + get phase
             if spin == "alpha":
-                excited_spindet_B = exci.apply_excitation(getattr(det, "beta"), [[h2], [p2]])
-                phaseB = PhaseIdx.single_phase(getattr(det, "beta"), excited_spindet_B, h2, p2)
-                excited_det = Determinant(excited_spindet_A, excited_spindet_B)
+                # h1, p1 -> alpha spin-orbitals, h2, p2 -> beta
+                excited_det = det.apply_excitation(((h1,), (p1,)), ((h2,), (p2,)))
+                # Phase is computed from both spindets
+                phaseA = det.single_phase(h1, p1, spin)
+                phaseB = det.single_phase(h2, p2, "beta")
             else:
-                excited_spindet_B = exci.apply_excitation(getattr(det, "alpha"), [[h2], [p2]])
-                phaseB = PhaseIdx.single_phase(getattr(det, "alpha"), excited_spindet_B, h2, p2)
-                excited_det = Determinant(excited_spindet_B, excited_spindet_A)
+                # h1, p1 -> beta spin-orbitals, h2, p2 -> alpha
+                excited_det = det.apply_excitation(((h2,), (p2,)), ((h1,), (p1,)))
+                phaseA = det.single_phase(h1, p1, spin)
+                phaseB = det.single_phase(h2, p2, "alpha")
             # Assert excited det satisfies constraint and yield
-            assert exci.check_constraint(excited_det) == C
+            assert check_constraint(excited_det) == C
             yield (I, excited_det), phaseA * phaseB
 
     @staticmethod
@@ -1471,7 +861,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         det_to_index_j,
         spindet_a_occ_i,
         spindet_b_occ_i,
-        exci,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category C. Used in the Hamiltonian build
@@ -1493,11 +882,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "C"
 
-        # Hopefully, can remove hashes (det_to_index_i,j, psi_i,j, spindets... ) and call them as properties of the class (self. ...)
-        def do_single_C(
-            i, j, k, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, exci
-        ):
-            # Get indices of determinants that are possibly related by excitations from internal --> external space
+        def do_single_C(i, j, k, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin):
+            # One way: Indices of determinants related by excitations from psi_i -> psi_j
             # phasemod, occ, h, p = 1, j, i, k
             det_indices_1 = chain(
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1508,9 +894,9 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 ),
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
-                det_indices_1, 1, j, i, k, psi_i, det_to_index_j, spin, exci
+                det_indices_1, 1, j, i, k, psi_i, det_to_index_j, spin
             )
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+            # Other way: Indices of determinants related by excitations from psi_j -> psi_i
             # phasemod, occ, h, p = 1, j, k, i
             det_indices_2 = chain(
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1522,10 +908,10 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             )
 
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
-                det_indices_2, 1, j, k, i, psi_i, det_to_index_j, spin, exci
+                det_indices_2, 1, j, k, i, psi_i, det_to_index_j, spin
             )
 
-        if i == k:  # <ij|il> = <ji|li>, ja(b) to la(b) where ia or ib is occupied
+        if i == k:  # <ij|il> = <ji|li>, ja(b) <-> la(b), occ = ia or ib
             yield from do_single_C(
                 j,
                 i,
@@ -1535,7 +921,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 spindet_b_occ_i,
                 "alpha",
-                exci,
             )
             yield from do_single_C(
                 j,
@@ -1546,9 +931,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_b_occ_i,
                 spindet_a_occ_i,
                 "beta",
-                exci,
             )
-        else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b) where ja or jb or is occupied
+        else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b), occ = ja or jb
             yield from do_single_C(
                 i,
                 j,
@@ -1558,7 +942,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 spindet_b_occ_i,
                 "alpha",
-                exci,
             )
             yield from do_single_C(
                 i,
@@ -1569,17 +952,16 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_b_occ_i,
                 spindet_a_occ_i,
                 "beta",
-                exci,
             )
 
     @staticmethod
     def category_C_pt2(
         idx: Two_electron_integral_index,
         psi: Psi_det,
-        C: Spin_determinant,
+        C: Tuple[OrbitalIdx, ...],
         spindet_a_occ: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ: Dict[OrbitalIdx, Set[int]],
-        exci,
+        n_orb: int,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category C, s.to J \in constraint for use in PT2 selection
@@ -1601,7 +983,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "C"
 
-        def do_single_C_pt2(occ, h, p, psi, C, spindet_occ, oppspindet_occ, spin, exci):
+        def do_single_C_pt2(occ, h, p, psi, C, spindet_occ, oppspindet_occ, spin, n_orb):
             # Phasemod is always +1 in category C
             a1 = min(C)  # `Lowest` constraint orbital
             if spin == "alpha":  # If p -> h excitation is alpha spin
@@ -1619,12 +1001,11 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         # If occ (alpha) is \not\in C and > a1 -> Excitation pairs related by <ij|kl> necessarily satisfy a different constraint
                         # So, in this case only yield related pairs where the occ orbital is beta spin
                         # Get unocc orbitals not in C (including `higher` ones) -> must be empty in the excitation pairs to satisfy C
-                        unocc_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) | {h})) | {p}
+                        unocc_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) | {h})) | {p}
                         # Related pairs must be:
                         #   Occupied in: (alpha) h, C = {a1, a2, a3} (beta) occ
                         #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h} (beta) none
                         # p \not\in C in this instance, and < a1, so must include in `empty` orbital set
-                        higher_unocc_orbitals = set(range(a1 + 1, exci.n_orb)) - (set(C) | {h})
                         det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                             spindet_occ,
                             oppspindet_occ,
@@ -1632,13 +1013,13 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": unocc_orbitals},
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, 1, occ, h, p, psi, C, spin, exci
+                            det_indices, 1, occ, h, p, psi, C, spin
                         )
                     else:
                         # Here, occ is either \in C, or \not\in C and < a1
                         # Now, can yield related pairs where occ is alpha or beta spin (alpha case won't affect C)
                         # Get unocc orbitals not in C (including `higher` ones) -> must be empty in the excitation pairs to satisfy C
-                        unocc_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) | {h})) | {p}
+                        unocc_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) | {h})) | {p}
                         # Related pairs must be:
                         #   Occupied in: (alpha) h, C = {a1, a2, a3} (beta) occ, or (alpha) h, C = {a1, a2, a3}, occ (beta) none,
                         #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h} (beta) none
@@ -1658,7 +1039,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             ),
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, 1, occ, h, p, psi, C, spin, exci
+                            det_indices, 1, occ, h, p, psi, C, spin
                         )
                 else:
                     # By above -> p \in C in this instance
@@ -1667,9 +1048,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         # If occ (alpha) is \not\in C and > a1 -> Excitation pairs related by <ij|kl> necessarily satisfy a different constraint
                         # So, in this case only yield related pairs where the occ orbital is beta spin
                         # Get unocc orbitals not in C (including `higher` ones) -> must be empty in the excitation pairs to satisfy C
-                        unocc_orbitals = (
-                            set(range(a1 + 1, exci.n_orb)) - ((set(C) - {p}) | {h})
-                        ) | {p}
+                        unocc_orbitals = (set(range(a1 + 1, n_orb)) - ((set(C) - {p}) | {h})) | {p}
                         # Related pairs must be:
                         #   Occupied in: (alpha) h, C - {p} (beta) occ
                         #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p}) | {h}) (beta) none
@@ -1681,14 +1060,12 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": unocc_orbitals},
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, 1, occ, h, p, psi, C, spin, exci
+                            det_indices, 1, occ, h, p, psi, C, spin
                         )
                     else:
                         # Here, occ is either \in C, or \not\in C and < a1
                         # Now, can yield related pairs where occ is alpha or beta spin (alpha case won't affect C)
-                        unocc_orbitals = (
-                            set(range(a1 + 1, exci.n_orb)) - ((set(C) - {p}) | {h})
-                        ) | {p}
+                        unocc_orbitals = (set(range(a1 + 1, n_orb)) - ((set(C) - {p}) | {h})) | {p}
                         # Related pairs must be:
                         #   Occupied in: (alpha) h, C - {p}  (beta) occ, or (alpha) h,  C - {p}, occ (beta) none,
                         #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p}) | {h}) (beta) none
@@ -1708,7 +1085,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             ),
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, 1, occ, h, p, psi, C, spin, exci
+                            det_indices, 1, occ, h, p, psi, C, spin
                         )
             else:  # spin == "beta"
                 # All excitation pairs related by <ij|kl> must already satisfy C
@@ -1723,12 +1100,12 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": {h, occ}, "opposite": set(C)},
                             {
                                 "same": {p},
-                                "opposite": (set(range(a1 + 1, exci.n_orb)) - set(C)),
+                                "opposite": (set(range(a1 + 1, n_orb)) - set(C)),
                             },
                         )
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, exci
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
                 else:  # Both cases apply here (occ can be alpha spin)
                     # Occ is necessarily either in C or < a1, so don't demand its unoccupied
@@ -1739,7 +1116,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": {h, occ}, "opposite": set(C)},
                             {
                                 "same": {p},
-                                "opposite": (set(range(a1 + 1, exci.n_orb)) - set(C)),
+                                "opposite": (set(range(a1 + 1, n_orb)) - set(C)),
                             },
                         ),
                         Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1748,25 +1125,33 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": {h}, "opposite": (set(C) | {occ})},
                             {
                                 "same": {p},
-                                "opposite": (set(range(a1 + 1, exci.n_orb)) - (set(C) | {occ})),
+                                "opposite": (set(range(a1 + 1, n_orb)) - (set(C) | {occ})),
                             },
                         ),
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, exci
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
 
         if i == k:  # <ij|il> = <ji|li>, ja(b) <-> la(b), occ = ia or ib
-            yield from do_single_C_pt2(i, j, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_C_pt2(i, l, j, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_C_pt2(i, j, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
-            yield from do_single_C_pt2(i, l, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_C_pt2(
+                i, j, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_C_pt2(
+                i, l, j, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_C_pt2(i, j, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
+            yield from do_single_C_pt2(i, l, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
         else:  # j == l, <ji|jk> = <ij|kj>, ia(b) to ka(b), occ = ja or jb
-            yield from do_single_C_pt2(j, i, k, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_C_pt2(j, k, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_C_pt2(j, i, k, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
-            yield from do_single_C_pt2(j, k, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_C_pt2(
+                j, i, k, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_C_pt2(
+                j, k, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_C_pt2(j, i, k, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
+            yield from do_single_C_pt2(j, k, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
     @staticmethod
     def category_D(
@@ -1775,7 +1160,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         det_to_index_j: Dict[Determinant, int],
         spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
-        exci,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category D. For use in the Hamiltonian build
@@ -1796,10 +1180,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "D"
 
-        def do_single_D(
-            i, j, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, exci
-        ):
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+        def do_single_D(i, j, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin):
+            # One way: Indices of determinants related by excitations from psi_i -> psi_j
             # phasemod, occ, h, p = 1, i, j, l
             det_indices_1 = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1807,9 +1189,9 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 )
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
-                det_indices_1, 1, i, j, l, psi_i, det_to_index_j, spin, exci
+                det_indices_1, 1, i, j, l, psi_i, det_to_index_j, spin
             )
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+            # Other way: Indices of determinants related by excitations from psi_j -> psi_i
             # phasemod, occ, h, p = 1, i, l, j
             det_indices_2 = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -1818,10 +1200,10 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             )
 
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
-                det_indices_2, 1, i, l, j, psi_i, det_to_index_j, spin, exci
+                det_indices_2, 1, i, l, j, psi_i, det_to_index_j, spin
             )
 
-        if i == j:  # <ii|il>, ia(b) to la(b) while ib(a) is occupied
+        if i == j:  # <ii|il>, ia(b) <-> la(b), occ = ib(a)
             yield from do_single_D(
                 i,
                 i,
@@ -1831,7 +1213,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 spindet_b_occ_i,
                 "alpha",
-                exci,
             )
             yield from do_single_D(
                 i,
@@ -1842,9 +1223,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_b_occ_i,
                 spindet_a_occ_i,
                 "beta",
-                exci,
             )
-        else:  # i < j == k == l, <ij|jj> = <jj|ij> = <jj|ji>, ja(b) to ia(b) where jb(a) is occupied
+        else:  # i < j == k == l, <ij|jj> = <jj|ij> = <jj|ji>, ja(b) <-> ia(b) occ = jb(a)
             yield from do_single_D(
                 j,
                 j,
@@ -1854,7 +1234,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 spindet_b_occ_i,
                 "alpha",
-                exci,
             )
             yield from do_single_D(
                 j,
@@ -1865,17 +1244,16 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_b_occ_i,
                 spindet_a_occ_i,
                 "beta",
-                exci,
             )
 
     @staticmethod
     def category_D_pt2(
         idx: Two_electron_integral_index,
         psi: Psi_det,
-        C: Spin_determinant,
+        C: Tuple[OrbitalIdx, ...],
         spindet_a_occ: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ: Dict[OrbitalIdx, Set[int]],
-        exci,
+        n_orb,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category D, s.to J \in constraint for use in PT2 selection
@@ -1896,7 +1274,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "D"
 
-        def do_single_D_pt2(occ, h, p, psi, C, spindet_occ, oppspindet_occ, spin, exci):
+        def do_single_D_pt2(occ, h, p, psi, C, spindet_occ, oppspindet_occ, spin, n_orb):
             # TODO: Re-factor s.t. static part and part dep on psi are separate
             # Phasemod is always +1 in category D
             # Only opposite-spin single excitations are allowed
@@ -1913,7 +1291,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                     # All excitation pairs related by <ij|kl> must already satisfy C
                     # Since we are in category D, we need only do the case when occ is opposite spin
                     # Here, excitation is alpha -> occ is beta, no restrictions based on occ
-                    unocc_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) | {h})) | {p}
+                    unocc_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) | {h})) | {p}
                     # Related pairs must be:
                     #   Occupied in: (alpha) h, C = {a1, a2, a3} (beta) occ
                     #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h} (beta) none
@@ -1927,14 +1305,14 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         )
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, exci
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
                 else:
                     # By above -> p \in C in this instance
                     # All excitation pairs related by <ij|kl> must be occupied in C - {p}
                     # Since we are in category D, we need only do the case when occ is opposite spin
                     # Here, excitation is alpha -> occ is beta, no restrictions based on occ
-                    unocc_orbitals = (set(range(a1 + 1, exci.n_orb)) - ((set(C) - {p}) | {h})) | {p}
+                    unocc_orbitals = (set(range(a1 + 1, n_orb)) - ((set(C) - {p}) | {h})) | {p}
                     # Related pairs must be:
                     #   Occupied in: (alpha) h, C - {p} (beta) occ
                     #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p}) | {h}) (beta) none
@@ -1948,7 +1326,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         )
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, exci
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
             else:  # spin == "beta"
                 # All excitation pairs related by <ij|kl> must already satisfy C
@@ -1959,7 +1337,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                     return None
                 else:
                     # Occ is necessarily either in C or < a1, so don't demand its unoccupied
-                    unocc_orbitals = set(range(a1 + 1, exci.n_orb)) - (set(C) | {occ})
+                    unocc_orbitals = set(range(a1 + 1, n_orb)) - (set(C) | {occ})
                     det_indices = (
                         Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                             spindet_occ,
@@ -1972,19 +1350,27 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         )
                     )
                     yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                        det_indices, 1, occ, h, p, psi, C, spin, exci
+                        det_indices, 1, occ, h, p, psi, C, spin
                     )
 
         if i == j:  # <ii|il>, ia(b) <-> la(b), occ = ib(a)
-            yield from do_single_D_pt2(i, i, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_D_pt2(i, l, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_D_pt2(i, i, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
-            yield from do_single_D_pt2(i, l, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_D_pt2(
+                i, i, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_D_pt2(
+                i, l, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_D_pt2(i, i, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
+            yield from do_single_D_pt2(i, l, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
         else:  # i < j == k == l, <ij|jj> = <jj|ij> = <jj|ji>, ja(b) <-> ia(b) occ = jb(a)
-            yield from do_single_D_pt2(j, j, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_D_pt2(j, i, j, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_D_pt2(j, j, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
-            yield from do_single_D_pt2(j, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_D_pt2(
+                j, j, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_D_pt2(
+                j, i, j, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_D_pt2(j, j, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
+            yield from do_single_D_pt2(j, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
     @staticmethod
     def category_E(
@@ -1993,7 +1379,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         det_to_index_j: Dict[Determinant, int],
         spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
-        exci,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category E. For use in the Hamiltonian build
@@ -2015,10 +1400,8 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "E"
 
-        def do_single_E(
-            i, k, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin, exci
-        ):
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+        def do_single_E(i, k, l, psi_i, det_to_index_j, spindet_occ_i, oppspindet_occ_i, spin):
+            # One way: Indices of determinants related by excitations from psi_i -> psi_j
             # phasemod, occ, h, p = -1, i, k, l
             det_indices_1 = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -2026,9 +1409,9 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 )
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
-                det_indices_1, -1, i, k, l, psi_i, det_to_index_j, spin, exci
+                det_indices_1, -1, i, k, l, psi_i, det_to_index_j, spin
             )
-            # Get indices of determinants that are possibly related by excitations from external --> internal space
+            # Other way: Indices of determinants related by excitations from psi_j -> psi_i
             # phasemod, occ, h, p = -1, i, l, k
             det_indices_2 = (
                 Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
@@ -2036,16 +1419,16 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 )
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_single(
-                det_indices_2, -1, i, l, k, psi_i, det_to_index_j, spin, exci
+                det_indices_2, -1, i, l, k, psi_i, det_to_index_j, spin
             )
 
         # doubles, ia(b) to ka(b) and jb(a) to lb(a)
         for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", exci
+                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha"
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", exci
+                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta"
             )
 
         if i == j:  # <ii|kl> = <ii|lk> = <ik|li> -> - <ik|il>
@@ -2059,7 +1442,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 spindet_b_occ_i,
                 "alpha",
-                exci,
             )
             yield from do_single_E(
                 i,
@@ -2070,7 +1452,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_b_occ_i,
                 spindet_a_occ_i,
                 "beta",
-                exci,
             )
         elif j == k:  # <ij|jl> = - <ij|lj>
             # singles, ia(b) to la(b) where ja(b) is occupied
@@ -2083,7 +1464,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 spindet_b_occ_i,
                 "alpha",
-                exci,
             )
             yield from do_single_E(
                 j,
@@ -2094,7 +1474,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_b_occ_i,
                 spindet_a_occ_i,
                 "beta",
-                exci,
             )
         else:  # k == l, <ij|kk> = <ji|kk> = <jk|ki> -> -<jk|ik>
             # singles, ja(b) to ia(b) where ka(b) is occupied
@@ -2107,7 +1486,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_a_occ_i,
                 spindet_b_occ_i,
                 "alpha",
-                exci,
             )
             yield from do_single_E(
                 k,
@@ -2118,17 +1496,16 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 spindet_b_occ_i,
                 spindet_a_occ_i,
                 "beta",
-                exci,
             )
 
     @staticmethod
     def category_E_pt2(
         idx: Two_electron_integral_index,
         psi: Psi_det,
-        C: Spin_determinant,
+        C: Tuple[OrbitalIdx, ...],
         spindet_a_occ: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ: Dict[OrbitalIdx, Set[int]],
-        exci,
+        n_orb,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category E, s.to J \in constraint for use in PT2 selection
@@ -2151,7 +1528,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         i, j, k, l = idx
         assert integral_category(i, j, k, l) == "E"
 
-        def do_single_E_pt2(occ, h, p, psi, C, spindet_occ, oppspindet_occ, spin, exci):
+        def do_single_E_pt2(occ, h, p, psi, C, spindet_occ, oppspindet_occ, spin, n_orb):
             # Phasemod is always -1 in category E
             # Only same-spin single excitations are allowed
             a1 = min(C)  # `Lowest` constraint orbital
@@ -2175,7 +1552,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                     else:
                         # Here, occ is either \in C, or \not\in C and < a1
                         # Now, can yield related pairs where occ is alpha spin
-                        unocc_orbitals = (set(range(a1 + 1, exci.n_orb)) - (set(C) | {h})) | {p}
+                        unocc_orbitals = (set(range(a1 + 1, n_orb)) - (set(C) | {h})) | {p}
                         # Related pairs must be:
                         #   Occupied in: (alpha) h, C = {a1, a2, a3}, occ (beta) none,
                         #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h} (beta) none
@@ -2187,7 +1564,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": unocc_orbitals},
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, -1, occ, h, p, psi, C, spin, exci
+                            det_indices, -1, occ, h, p, psi, C, spin
                         )
                 else:
                     # By above -> p \in C in this instance
@@ -2199,9 +1576,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                     else:
                         # Here, occ is either \in C, or \not\in C and < a1
                         # Now, can yield related pairs where occ is alpha
-                        unocc_orbitals = (
-                            set(range(a1 + 1, exci.n_orb)) - ((set(C) - {p}) | {h})
-                        ) | {p}
+                        unocc_orbitals = (set(range(a1 + 1, n_orb)) - ((set(C) - {p}) | {h})) | {p}
                         # Related pairs must be:
                         #   Occupied in: (alpha) h,  C - {p}, occ (beta) none,
                         #   Empty in: (alpha) p, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p}) | {h}) (beta) none
@@ -2213,7 +1588,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                             {"same": unocc_orbitals},
                         )
                         yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                            det_indices, -1, occ, h, p, psi, C, spin, exci
+                            det_indices, -1, occ, h, p, psi, C, spin
                         )
             else:  # spin == "beta"
                 # All excitation pairs related by <ij|kl> must already satisfy C
@@ -2226,41 +1601,53 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         {"same": {h, occ}, "opposite": set(C)},
                         {
                             "same": {p},
-                            "opposite": (set(range(a1 + 1, exci.n_orb)) - set(C)),
+                            "opposite": (set(range(a1 + 1, n_orb)) - set(C)),
                         },
                     )
                 )
                 yield from Hamiltonian_two_electrons_integral_driven.do_single_pt2(
-                    det_indices, -1, occ, h, p, psi, C, spin, exci
+                    det_indices, -1, occ, h, p, psi, C, spin
                 )
 
         # doubles, ia(b) to ka(b) and jb(a) to lb(a)
         for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-                hp1, hp2, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci
+                hp1, hp2, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-                hp1, hp2, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci
+                hp1, hp2, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb
             )
 
         if i == j:  # <ii|kl> = <ii|lk> = <ik|li> -> - <ik|il>
             # singles, ka(b) <-> la(b), occ = ia(b)
-            yield from do_single_E_pt2(i, k, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_E_pt2(i, l, k, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_E_pt2(i, k, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
-            yield from do_single_E_pt2(i, l, k, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_E_pt2(
+                i, k, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_E_pt2(
+                i, l, k, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_E_pt2(i, k, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
+            yield from do_single_E_pt2(i, l, k, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
         elif j == k:  # <ij|jl> = - <ij|lj>
             # singles, ia(b) <-> la(b), occ = ja(b)
-            yield from do_single_E_pt2(j, i, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_E_pt2(j, l, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_E_pt2(j, i, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
-            yield from do_single_E_pt2(j, l, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_E_pt2(
+                j, i, l, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_E_pt2(
+                j, l, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_E_pt2(j, i, l, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
+            yield from do_single_E_pt2(j, l, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
         else:  # k == l, <ij|kk> = <ji|kk> = <jk|ki> -> -<jk|ik>
             # singles, ja(b) <-> ia(b) occ = ka(b)
-            yield from do_single_E_pt2(k, i, j, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_E_pt2(k, j, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci)
-            yield from do_single_E_pt2(k, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
-            yield from do_single_E_pt2(k, j, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci)
+            yield from do_single_E_pt2(
+                k, i, j, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_E_pt2(
+                k, j, i, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
+            )
+            yield from do_single_E_pt2(k, i, j, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
+            yield from do_single_E_pt2(k, j, i, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb)
 
     @staticmethod
     def category_F(
@@ -2269,7 +1656,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         det_to_index_j: Dict[Determinant, int],
         spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
-        exci,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category F. For use in the Hamiltonian build
@@ -2309,29 +1695,29 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
 
         # Only call for a single spin variable. Each excitation involves ia, ib to ka, kb. Flipping the spin just double counts it
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            [i, k], [i, k], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", exci
+            [i, k], [i, k], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha"
         )
         # Need to do ph1, ph2 pairing twice, once for each spin. ia -> ka, kb -> ib
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            [i, k], [k, i], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", exci
+            [i, k], [k, i], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha"
         )
         # Double from ia -> ka, kb -> ib
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            [i, k], [k, i], psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", exci
+            [i, k], [k, i], psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta"
         )
         # Only call for a single spin variable. Each excitation involves ia, ib to ka, kb. Flipping the spin just double counts it
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-            [k, i], [k, i], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", exci
+            [k, i], [k, i], psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha"
         )
 
     @staticmethod
     def category_F_pt2(
         idx: Two_electron_integral_index,
         psi: Psi_det,
-        C: Spin_determinant,
+        C: Tuple[OrbitalIdx, ...],
         spindet_a_occ: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ: Dict[OrbitalIdx, Set[int]],
-        exci,
+        n_orb,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category F, s.to J \in constraint for use in PT2 selection
@@ -2353,19 +1739,19 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
 
         # Only call for a single spin variable. Each excitation involves ia, ib to ka, kb. Flipping the spin just double counts it
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-            [i, k], [i, k], psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci
+            [i, k], [i, k], psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
         )
         # Need to do ph1, ph2 pairing twice, once for each spin. ia -> ka, kb -> ib
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-            [i, k], [k, i], psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci
+            [i, k], [k, i], psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
         )
         # Double from ia -> ka, kb -> ib
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-            [i, k], [k, i], psi, C, spindet_b_occ, spindet_a_occ, "beta", exci
+            [i, k], [k, i], psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb
         )
         # Only call for a single spin variable. Each excitation involves ia, ib to ka, kb. Flipping the spin just double counts it
         yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-            [k, i], [k, i], psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci
+            [k, i], [k, i], psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
         )
 
     @staticmethod
@@ -2375,7 +1761,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         det_to_index_j: Dict[Determinant, int],
         spindet_a_occ_i: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ_i: Dict[OrbitalIdx, Set[int]],
-        exci,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category G. For use in the Hamiltonian build
@@ -2400,28 +1785,28 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         # doubles, i to k and j to l, same spin and opposite-spin excitations allowed
         for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
             yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", exci
+                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha"
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin(
-                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", exci
+                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta"
             )
         # doubles, i to k and j to l, same spin and opposite-spin excitations allowed
         for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha", exci
+                hp1, hp2, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, "alpha"
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin(
-                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta", exci
+                hp1, hp2, psi_i, det_to_index_j, spindet_b_occ_i, spindet_a_occ_i, "beta"
             )
 
     @staticmethod
     def category_G_pt2(
         idx: Two_electron_integral_index,
         psi: Psi_det,
-        C: Spin_determinant,
+        C: Tuple[OrbitalIdx, ...],
         spindet_a_occ: Dict[OrbitalIdx, Set[int]],
         spindet_b_occ: Dict[OrbitalIdx, Set[int]],
-        exci,
+        n_orb,
     ):
         """
         Return determinant pairs (I, J) connected by integral idx in category G, s.to J \in constraint for use in PT2 selection
@@ -2447,18 +1832,18 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         # Doubles (same-spin) i <-> k and j <-> l
         for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
             yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin_pt2(
-                hp1, hp2, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci
+                hp1, hp2, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_double_samespin_pt2(
-                hp1, hp2, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci
+                hp1, hp2, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb
             )
         # Doubles (opposite-spin) i <-> k and j <-> l
         for hp1, hp2 in product(permutations([i, k], 2), permutations([j, l], 2)):
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-                hp1, hp2, psi, C, spindet_a_occ, spindet_b_occ, "alpha", exci
+                hp1, hp2, psi, C, spindet_a_occ, spindet_b_occ, "alpha", n_orb
             )
             yield from Hamiltonian_two_electrons_integral_driven.do_double_oppspin_pt2(
-                hp1, hp2, psi, C, spindet_b_occ, spindet_a_occ, "beta", exci
+                hp1, hp2, psi, C, spindet_b_occ, spindet_a_occ, "beta", n_orb
             )
 
     def H_indices(
@@ -2491,28 +1876,18 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         if category == "B":
             yield from self.category_B(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
         if category == "C":
-            yield from self.category_C(
-                idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, self.exci
-            )
+            yield from self.category_C(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
         if category == "D":
-            yield from self.category_D(
-                idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, self.exci
-            )
+            yield from self.category_D(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
         if category == "E":
-            yield from self.category_E(
-                idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, self.exci
-            )
+            yield from self.category_E(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
         if category == "F":
-            yield from self.category_F(
-                idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, self.exci
-            )
+            yield from self.category_F(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
         if category == "G":
-            yield from self.category_G(
-                idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i, self.exci
-            )
+            yield from self.category_G(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i)
 
     def H_indices_pt2(
-        self, psi_i: Psi_det, C: Spin_determinant
+        self, psi_i: Psi_det, C: Tuple[OrbitalIdx, ...]
     ) -> Iterator[Two_electron_integral_index_phase]:
         # Returns H_indices, and idx of associated integral
         # For pt2 selection!
@@ -2530,7 +1905,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         self,
         idx: Two_electron_integral_index,
         psi_i: Psi_det,
-        C: Spin_determinant,
+        C: Tuple[OrbitalIdx, ...],
         spindet_a_occ_i,
         spindet_b_occ_i,
     ) -> Iterator[Two_electron_integral_index_phase]:
@@ -2542,23 +1917,23 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             pass
         if category == "C":
             yield from self.category_C_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.exci
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         if category == "D":
             yield from self.category_D_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.exci
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         if category == "E":
             yield from self.category_E_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.exci
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         if category == "F":
             yield from self.category_F_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.exci
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
         if category == "G":
             yield from self.category_G_pt2(
-                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.exci
+                idx, psi_i, C, spindet_a_occ_i, spindet_b_occ_i, self.N_orb
             )
 
     def H(self, psi_i, psi_j) -> List[List[Energy]]:
@@ -2575,9 +1950,6 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             ) in self.H_indices_idx(idx, psi_i, det_to_index_j, spindet_a_occ_i, spindet_b_occ_i):
                 h[a, b] += phase * integral_values
         return h
-
-    def H_ii(self, det_i: Determinant):
-        return sum(phase * self.H_ijkl_orbital(*idx) for idx, phase in self.H_ii_indices(det_i))
 
 
 class H_indices_generator(object):
@@ -2607,6 +1979,7 @@ class H_indices_generator(object):
         set()
         """
 
+        # TODO: Implement bitstring rep
         # Can generate det_to_indices hash in here
         def get_dets_occ(psi_i: Psi_det, spin: str) -> Dict[OrbitalIdx, Set[int]]:
             ds = defaultdict(set)
@@ -3246,22 +2619,15 @@ class Powerplant_manager(object):
         # TODO: Fix this if there's a more efficient way to convert to a float
         return E.item()
 
-    def gen_local_chunk_of_connected_dets(self, L=None) -> Iterator[Psi_det]:
-        # Generate all external (connected) determinants for current CIPSI iteration
-        # Just a pass to Excitation function; yields chunk of connected determinants of size L
-        # TODO: Ultimately, will be replaced with constraint-based generataion of the connected space
-
-        yield from Excitation(self.N_orb).get_chunk_of_connected_determinants(self.psi_internal, L)
-
-    def gen_local_constraints(self) -> Iterator[Spin_determinant]:
+    def gen_local_constraints(self) -> Iterator[Tuple[OrbitalIdx, ...]]:
         # Generate local constraints
         # Call to MPI function that yields local constraints
-        C_loc, _ = Excitation(self.N_orb).dispatch_local_constraints(self.comm, self.psi_internal)
+        C_loc, _ = dispatch_local_constraints(self.comm, self.psi_internal, self.N_orb)
         for C in C_loc:
             yield C
 
     def psi_external_pt2(
-        self, C: Spin_determinant, psi_coef: Psi_coef, E_var: Energy
+        self, C: Tuple[OrbitalIdx, ...], psi_coef: Psi_coef, E_var: Energy
     ) -> List[Energy]:
         """
         Compute the E_pt2 contributions of a subset of the connected space determined by given constraiant C
@@ -3297,9 +2663,7 @@ class Powerplant_manager(object):
             for I, det_I in enumerate(self.psi_internal):
                 # Inner pass (for each |I⟩) generates all excitations satisfying constraint |C⟩ from |I⟩
                 # Triplet constrained singles
-                for det_J in Excitation(self.N_orb).triplet_constrained_single_excitations_from_det(
-                    det_I, C
-                ):
+                for det_J in det_I.triplet_constrained_single_excitations_from_det(C, self.N_orb):
                     for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
                         det_I, det_J
                     ):
@@ -3312,9 +2676,7 @@ class Powerplant_manager(object):
                         I
                     ] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(det_I, det_J)
                 # Triplet-constrained doubles
-                for det_J in Excitation(self.N_orb).triplet_constrained_double_excitations_from_det(
-                    det_I, C
-                ):
+                for det_J in det_I.triplet_constrained_double_excitations_from_det(C, self.N_orb):
                     for idx, phase in self.H_i_generator.Hamiltonian_2e_driver.H_ij_indices(
                         det_I, det_J
                     ):
@@ -3335,9 +2697,7 @@ class Powerplant_manager(object):
                 # Inner pass (for each |I⟩) generates all excitations satisfying constraint |C⟩ from |I⟩
                 # Triplet constrained singles
                 # Each det_J will show up all connected to multiple I.. so have to do this outside of integral loop
-                for det_J in Excitation(self.N_orb).triplet_constrained_single_excitations_from_det(
-                    det_I, C
-                ):
+                for det_J in det_I.triplet_constrained_single_excitations_from_det(C, self.N_orb):
                     nominator_conts_table[det_J] += c[
                         I
                     ] * self.H_i_generator.Hamiltonian_1e_driver.H_ij(det_I, det_J)
@@ -3354,6 +2714,7 @@ class Powerplant_manager(object):
         E_pt2_J = nominator_conts_table.values()
         nominator_conts = np.array(list(E_pt2_J), dtype="float")
         # TODO: For integral driven, loop over integrals? In general, be more efficient in this area.
+        # TODO: In general, though, we need a different way to do this. It goes back to storing the connected space. We can even do the denominator conts in a separate array..
         psi_connected_C = [det_J for det_J in nominator_conts_table.keys()]
         denominator_conts = np.divide(
             1.0,
@@ -3400,6 +2761,8 @@ class Powerplant_manager(object):
 # (_   _  |  _   _ _|_ o  _  ._
 # __) (/_ | (/_ (_  |_ | (_) | |
 #
+
+# First, we have functions that do the selection
 
 
 def selection_step(
@@ -3460,7 +2823,8 @@ def local_sort_pt2_energies(
     E_var = PP_manager.E(psi_coef)
     local_best_energies = np.ones(n, dtype="float")
     # TODO: Will have to think more carefully about the case when size of the constraint space is < n
-    local_best_dets = [Determinant(alpha=(), beta=())] * n  # `Dummy' determinants
+    local_best_dets = [Determinant((), ())] * n  # `Dummy' determinants
+
     for C in PP_manager.gen_local_constraints():
         # 1.
         # Compute E_pt2 contributions of current chunk of determinants
@@ -3475,8 +2839,9 @@ def local_sort_pt2_energies(
         else:
             # TODO: Maybe a bit hacky, but working fix for now... Argpartition throws error if no dets are generated in this constraint
             working_energies = np.r_[1, local_best_energies]
-            # Add dummy
-            working_dets = [Determinant(alpha=(), beta=())] + local_best_dets
+            working_dets = local_best_dets
+        if not (working_dets):
+            working_dets = [Determinant(alpha=(), beta=())]
         # Update `local' n largest magnitude E_pt2 contributions from working chunk -> indices of top n determinants
         # E_pt2 < 0, so n `smallest' are actually the largest magnitude contributors
         local_idx = np.argpartition(working_energies, n)[:n]
@@ -3509,3 +2874,199 @@ def global_sort_pt2_energies(comm, local_best_dets: Psi_det, local_best_energies
 
     # Return dets corresponding to globally `best' E_pt2 contributions
     return global_best_dets
+
+
+# Next, we have functions that split the connected space
+
+
+def get_chunk_of_connected_determinants(psi_det: Psi_det, n_orb: int, L=None) -> Iterator[Psi_det]:
+    """
+    MPI function, generates chunks of connected determinants of size L
+
+    Inputs:
+    :param psi_det: list of determinants
+    :param L: integer, maximally allowed `chunk' of the conneceted space to yield at a time
+    default is L = None, if no chunk size specified, a chunk of the connected space is allocated to each rank
+
+    >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
+    >>> for psi_chunk in get_chunk_of_connected_determinants( [ d1,d2 ], 4):
+    ...     len(psi_chunk)
+    22
+    >>> for psi_chunk in get_chunk_of_connected_determinants( [ d1,d2 ], 4, 11 ):
+    ...     len(psi_chunk)
+    11
+    11
+    >>> for psi_chunk in get_chunk_of_connected_determinants( [ d1,d2 ], 4, 10 ):
+    ...     len(psi_chunk)
+    10
+    10
+    2
+    """
+
+    def gen_all_connected_determinant(psi_det: Psi_det, n_orb: int) -> Psi_det:
+        """
+        >>> d1 = Determinant((0, 1), (0,) ) ; d2 = Determinant((0, 2), (0,) )
+        >>> len(gen_all_connected_determinant( [ d1,d2 ], 4 ))
+        22
+
+        We remove the connected determinant who are already inside the wave function. Order doesn't matter
+        """
+        # Literal programing
+        # return set(chain.from_iterable(map(self.gen_all_connected_det_from_det, psi_det)))- set(psi_det)
+
+        # Naive algorithm 13
+        l_global = []
+        for i, det in enumerate(psi_det):
+            for det_connected in det.gen_all_connected_det(n_orb):
+                # Remove determinant who are in psi_det
+                if det_connected in psi_det:
+                    continue
+                # If it's was already generated by an old determinant, just drop it
+                if any(det_connected.is_connected(d) for d in psi_det[:i]):
+                    continue
+
+                l_global.append(det_connected)
+
+        # Return connected space
+        return l_global
+
+    # Naive: Each ranks generates all connected determinants, and takes what is theirs
+    psi_connected = gen_all_connected_determinant(psi_det, n_orb)
+    world_size = MPI.COMM_WORLD.Get_size()
+    # TODO: len(psi_connected) will not scale, but is needed for this naive representation
+    full_idx = np.arange(len(psi_connected))
+    split_idx = np.array_split(full_idx, world_size)
+    # Part of connected space available to each rank
+    full_chunk = [psi_connected[i] for i in split_idx[MPI.COMM_WORLD.Get_rank()]]
+
+    if L is None:  # If no argument passed by the user
+        L = len(full_chunk)
+    number_of_chunks, leftovers = divmod(len(full_chunk), L)
+    # Yield chunks of size L one at a time
+    for i in np.arange(number_of_chunks):
+        yield full_chunk[i * L : (i + 1) * L]
+    # Yield `leftover' determinants (size of chunk < L)
+    if leftovers > 0:  # If there are leftover determinants to handle
+        yield full_chunk[number_of_chunks * L : number_of_chunks * L + leftovers]
+
+
+def generate_all_constraints(n_elec: int, n_orb: int, m=3) -> List[Tuple[OrbitalIdx, ...]]:
+    """Generate all `m'-constraints, characterized by m most highly occupied (usually alpha) electrons
+    >>> generate_all_constraints(3, 4)
+    [(0, 1, 2), (0, 1, 3), (0, 2, 3), (1, 2, 3)]
+    >>> len(generate_all_constraints(3, 6))
+    20
+    """
+    # Problem of number of constraints reduces to binning m (= 3, usually) spin electrons into n_orb - (n_elec - m) orbitals...
+    # We assume the bottom n_elec - m alpha-electrons are at the lowest ON, since only the top three matter
+    # Then, just bin the last m among n_orb - (n_elec - m) remaining orbitals.
+    if n_elec < m:
+        raise NotImplementedError
+    unfilled_orbs = [i for i in range(n_elec - m, n_orb)]
+    return [constraint for constraint in combinations(unfilled_orbs, m)]
+
+
+def check_constraint(det: Determinant, spin="alpha"):
+    # Give me a determinant. What constraint does it satisfy? (What are three most highly occupied alpha spin orbitas)
+    spindet = getattr(det, spin)
+    # Return constraint as |Spin_determinant|
+    return spindet[-3:]
+
+
+def dispatch_local_constraints(
+    comm: MPI.COMM_WORLD, psi: Psi_det, n_orb: int
+) -> List[Tuple[OrbitalIdx, ...]]:
+    """MPI function, perform static load balancing + distribution of triplet-constraints to MPI ranks
+    Work is roughly distributed based on the number of connected determinants satisfying a particular constraint
+
+    Inputs:
+    :param psi: List of internal determinants (global)
+
+    Outputs:
+    :param C_loc: Local constraints"""
+
+    rank = comm.Get_rank()
+    # Initialize array to track workload of each rank
+    W = np.zeros(shape=(comm.Get_size(),), dtype="i")
+    C_loc = []  # Pre-allocate space for local constraints
+    na = len(getattr(psi[0], "alpha"))  # No. of alpha electrons
+    nb = len(getattr(psi[0], "beta"))  # No. of beta electrons
+    # Pass through all triplet constraints to distribute
+    H = []  # Track work dist.
+    for C in generate_all_constraints(na, n_orb):
+        B_upper = set(range(min(C) + 1, n_orb))  # Upper bitmask
+        B_lower = set(range(min(C)))  # Lower bitmask
+        h = 0  # Track work of this constraint
+        for det in psi:
+            det_a = getattr(det, "alpha")
+            constraint_orbitals_occupied = set(det_a) & set(C)
+            nonconstrained_orbitals_occupied = (set(det_a) & B_upper) - set(C)
+            # n_particles = [np_a, np_b, np_aa, np_bb, np_ab]
+            # Number of particles (or pairs) that (could possibly) involve an excitation satisfying C
+            if len(constraint_orbitals_occupied) == 0:
+                # No excitations will satisfy C -> Pass
+                n_particles = np.zeros(5, dtype="i")
+            elif len(constraint_orbitals_occupied) == 1:
+                # To satisfy C, excitation must be aa (into empty constraint orbitals)
+                n_particles = np.array([0, 0, 1, 0, 0], dtype="i")
+            elif len(constraint_orbitals_occupied) == 2:
+                # To satisfy C, only possible single is a, must excite into empty constraint orbital
+                na_orbs_unocc_lower = B_lower - set(det_a)
+                # No bb; for ab doubles, a must excite into empty constraint orbital, so 1 * (self.n_orb - nb) ab pairs
+                n_particles = np.array([1, 0, len(na_orbs_unocc_lower), 0, (n_orb - nb)], dtype="i")
+            elif len(constraint_orbitals_occupied) == 3:
+                # To satisfy C, any a or aa excitaion into `lower` unoccupied alpha orbitals
+                # All possible b or bb excitations satisfy C
+                na_orbs_unocc_lower = B_lower - set(det_a)
+                # Divide some things by 2 to avoid repeats due to permuation (e.g., (p1, p2) = (1, 2) <-> (p1, p2) = (2, 1))
+                n_particles = np.array(
+                    [
+                        len(na_orbs_unocc_lower),
+                        n_orb - nb,
+                        len(na_orbs_unocc_lower) * (len(na_orbs_unocc_lower) - 1) / 2,
+                        (n_orb - nb) * (n_orb - nb - 1) / 2,
+                        (n_orb - nb) * len(na_orbs_unocc_lower),
+                    ],
+                    dtype="i",
+                )
+
+            # n_holes = [nh_a, nh_b, nh_aa, nh_bb, nh_ab]
+            # Number of holes (or pairs) that (could possibly) involve an excitation satisfying C
+            if len(nonconstrained_orbitals_occupied) > 2:
+                # No excitations will satisfy C -> Pass
+                n_holes = np.zeros(5, dtype="i")
+            elif len(nonconstrained_orbitals_occupied) == 2:
+                # To satisfy C, excitation must be aa (out of `higher` non-constraint orbitals)
+                n_holes = np.array([0, 0, 1, 0, 0], dtype="i")
+            elif len(nonconstrained_orbitals_occupied) == 1:
+                # To satisfy C, only possible single is a, must excite out of `higher` constraint orbitals
+                na_orbs_occ_lower = set(det_a) & B_lower
+                # No bb; for ab doubles, a must excite out of `higher` constraint orbital, so 1 * nb ab pairs
+                n_holes = [1, 0, len(na_orbs_occ_lower), 0, nb]
+            elif len(nonconstrained_orbitals_occupied) == 0:
+                # To satisfy C, can excite out of any `lower` occupied alpha orbitals
+                # All possible b or bb excitations satisfy C
+                na_orbs_occ_lower = set(det_a) & B_lower
+                n_holes = [
+                    len(na_orbs_occ_lower),
+                    nb,
+                    len(na_orbs_occ_lower) * (len(na_orbs_occ_lower) - 1) / 2,
+                    nb * (nb - 1) / 2,
+                    len(na_orbs_occ_lower) * nb,
+                ]
+
+            # Number of singly/doubly connected determinants to |det> satisfying constraint C
+            #   Simply (per spin type) number of holes * particles that will yield an excitation in C
+            h += np.dot(n_particles, n_holes)  # Add to work thus far
+
+        if h:  # Handle case where no dets satisfy C.. No one will do it
+            _, loc = comm.allreduce(
+                (W[rank], rank), MPI.MINLOC
+            )  # This is a tuple, so use python command
+            if loc == rank:  # Rank with lowest amount of work collects current constraint
+                C_loc.append(C)
+                H.append(h)
+                W[rank] += h  # Add h to the amount of `work` rank has
+
+    # Return local constraints and distribution of work
+    return C_loc, H

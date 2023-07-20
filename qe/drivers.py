@@ -2839,7 +2839,7 @@ def local_sort_pt2_energies(
         else:
             # Nothing generated; local best dets and energies remain the same... Pass to next constraint in loop
             continue
-            
+
         # Update `local' n largest magnitude E_pt2 contributions from working chunk -> indices of top n determinants
         # E_pt2 < 0, so n `smallest' are actually the largest magnitude contributors
         local_idx = np.argpartition(working_energies, n)[:n]

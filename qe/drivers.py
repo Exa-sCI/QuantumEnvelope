@@ -2821,9 +2821,11 @@ def local_sort_pt2_energies(
 
     # Pre-allocate space to track bests from previous chunk
     E_var = PP_manager.E(psi_coef)
+    # PT2 contribution are always < 0, use 1 as a tombstone value; these will never be selected
     local_best_energies = np.ones(n, dtype="float")
     # TODO: Will have to think more carefully about the case when size of the constraint space is < n
-    local_best_dets = [Determinant((), ())] * n  # `Dummy' determinants
+    # `Dummy' determinants, corresponding to local_best_energies = 1
+    local_best_dets = [Determinant((), ())] * n
 
     for C in PP_manager.gen_local_constraints():
         # 1.
@@ -2837,11 +2839,9 @@ def local_sort_pt2_energies(
             working_energies = np.r_[E_pt2_energies_C, local_best_energies]
             working_dets = psi_connected_C + local_best_dets
         else:
-            # TODO: Maybe a bit hacky, but working fix for now... Argpartition throws error if no dets are generated in this constraint
-            working_energies = np.r_[1, local_best_energies]
-            working_dets = local_best_dets
-        if not (working_dets):
-            working_dets = [Determinant(alpha=(), beta=())]
+            # Nothing generated; local best dets and energies remain the same... Pass to next constraint in loop
+            continue
+
         # Update `local' n largest magnitude E_pt2 contributions from working chunk -> indices of top n determinants
         # E_pt2 < 0, so n `smallest' are actually the largest magnitude contributors
         local_idx = np.argpartition(working_energies, n)[:n]

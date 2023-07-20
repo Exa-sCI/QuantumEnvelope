@@ -2837,11 +2837,8 @@ def local_sort_pt2_energies(
             working_energies = np.r_[E_pt2_energies_C, local_best_energies]
             working_dets = psi_connected_C + local_best_dets
         else:
-            # TODO: Maybe a bit hacky, but working fix for now... Argpartition throws error if no dets are generated in this constraint
-            working_energies = np.r_[1, local_best_energies]
-            working_dets = local_best_dets
-        if not (working_dets):
-            working_dets = [Determinant(alpha=(), beta=())]
+            # Nothing generated; local best dets and energies remain the same... Pass to next constraint in loop
+            continue
         # Update `local' n largest magnitude E_pt2 contributions from working chunk -> indices of top n determinants
         # E_pt2 < 0, so n `smallest' are actually the largest magnitude contributors
         local_idx = np.argpartition(working_energies, n)[:n]

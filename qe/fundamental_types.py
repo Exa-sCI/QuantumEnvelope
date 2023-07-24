@@ -53,7 +53,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) & Spin_determinant_tuple((2, 3))
         ()
         """
-        return Spin_determinant_tuple(set(self) & set(s_tuple))
+        return Spin_determinant_tuple(sorted(set(self) & set(s_tuple)))
 
     def __rand__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __and__
@@ -74,7 +74,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) | Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(set(self) | set(s_tuple))
+        return Spin_determinant_tuple(sorted(set(self) | set(s_tuple)))
 
     def __ror__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __or__
@@ -93,7 +93,7 @@ class Spin_determinant_tuple(Tuple[OrbitalIdx, ...]):
         >>> Spin_determinant_tuple((0, 1)) ^ Spin_determinant_tuple((2, 3))
         (0, 1, 2, 3)
         """
-        return Spin_determinant_tuple(set(self) ^ set(s_tuple))
+        return Spin_determinant_tuple(sorted(set(self) ^ set(s_tuple)))
 
     def __rxor__(self, s_tuple: Tuple[OrbitalIdx, ...]) -> Tuple[OrbitalIdx]:
         """Reverse overloaded __xor__

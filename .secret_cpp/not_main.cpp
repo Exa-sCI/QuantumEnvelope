@@ -8,43 +8,7 @@
 #include <array>
 #define DOCTEST_CONFIG_IMPLEMENT_WITH_MAIN
 #include <doctest/doctest.h>
-
-typedef sul::dynamic_bitset<> spin_det_t;
-
-template<>
-struct std::hash<spin_det_t> {
-  std::size_t operator()(spin_det_t const& s) const noexcept {
-    return std::hash<std::string>()(s.to_string());
-  }
-};
-
-#define N_SPIN_SPECIES 2
-// enum spin_type_e {
-//   ALPHA = 0,
-//   BETA  = 1,
-//   N_SPIN_SPECIES,
-// };
-
-typedef std::array<spin_det_t, 2> det_t;
-template<>
-struct std::hash<det_t> {
-  std::size_t operator()(det_t const& s) const noexcept {
-    std::size_t h1 = std::hash<spin_det_t>{}(s[0]);
-    std::size_t h2 = std::hash<spin_det_t>{}(s[1]);
-    return h1 ^ (h2 << 1);
-  }
-};
-std::ostream& operator<<(std::ostream& os, const det_t& obj) {
-  return os << "(" << obj[0] << "," << obj[1] << ")";
-}
-
-typedef sul::dynamic_bitset<> spin_occupancy_mask_t;
-typedef std::array<spin_occupancy_mask_t, 2> occupancy_mask_t;
-
-typedef sul::dynamic_bitset<> spin_unoccupancy_mask_t;
-typedef std::array<spin_unoccupancy_mask_t, 2> unoccupancy_mask_t;
-
-typedef std::array<uint64_t, 4> eri_4idx_t;
+#include <qpx.hpp>
 
 
 // Utils
@@ -337,7 +301,7 @@ void category_D_iiil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
   // aα aβ <- aα bβ
   for(size_t spin_ph = 0; spin_ph < N_SPIN_SPECIES; spin_ph++) {
     size_t spin_aa = !spin_ph;
-    for(size_t exc_fwd = 0; exc_fwd < 2; exc_fwd++) {
+    for(size_t exc_fwd = 0; exc_fwd < N_SPIN_SPECIES; exc_fwd++) {
       size_t exc_rev = !exc_fwd;
       auto p         = ph[exc_fwd];
       auto h         = ph[exc_rev];

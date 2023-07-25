@@ -52,7 +52,6 @@ spin_det_t vec_to_spin_det(std::vector<T> idx, size_t n_orb) {
 
 
 // Phase
-
 spin_det_t get_phase_mask(spin_det_t p) {
   size_t i = 0;
   while(true) {

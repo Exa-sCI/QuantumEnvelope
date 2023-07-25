@@ -1,7 +1,10 @@
+#pragma once
+
 #include <array>
 #include <sul/dynamic_bitset.hpp>
-#include <unordered_map>
-
+#include <functional>
+#include <array>
+#include <iostream>
 
 typedef sul::dynamic_bitset<> spin_det_t;
 
@@ -11,28 +14,37 @@ struct std::hash<spin_det_t> {
     return std::hash<std::string>()(s.to_string());
   }
 };
+
 #define N_SPIN_SPECIES 2
-//typedef std::array<spin_det_t, 2> det_t;
 
-class det_t {       // The class
+class det_t { // The class
 
-  public:          // Access specifier
-	spin_det_t alpha;
-	spin_det_t beta;
+public: // Access specifier
+  spin_det_t alpha;
+  spin_det_t beta;
 
-	  det_t(spin_det_t _alpha, spin_det_t _beta) {
-		alpha = _alpha;
-		beta = _beta;
-	}
+  det_t(spin_det_t _alpha, spin_det_t _beta) {
+    alpha = _alpha;
+    beta  = _beta;
+  }
 
-    bool operator < (   const det_t &b  ) const {
-	return (alpha < b.alpha) && (beta < b.beta) ;
+  bool operator<(const det_t& b) const {
+    if(alpha == b.alpha) return (beta < b.beta);
+    return (alpha < b.alpha);
+  }
+
+  bool operator==(const det_t& b) const { return (alpha == b.alpha) && (beta == b.beta); }
+
+  spin_det_t& operator[](unsigned i) {
+    assert(i < N_SPIN_SPECIES);
+    switch(i) {
+      case 0: return alpha;
+      // Avoid `non-void function does not return a value in all control paths`
+      default: return beta;
     }
-
-    bool operator == (   const det_t &b  ) const {
-        return (alpha == b.alpha) && (beta == b.beta) ;
-    }
-
+  }
+  // https://stackoverflow.com/a/27830679/7674852 seem to recommand doing the other way arround
+  const spin_det_t& operator[](unsigned i) const { return (*this)[i]; }
 };
 
 template<>
@@ -43,6 +55,7 @@ struct std::hash<det_t> {
     return h1 ^ (h2 << 1);
   }
 };
+
 std::ostream& operator<<(std::ostream& os, const det_t& obj) {
   return os << "(" << obj.alpha << "," << obj.beta << ")";
 }
@@ -54,5 +67,3 @@ typedef sul::dynamic_bitset<> spin_unoccupancy_mask_t;
 typedef std::array<spin_unoccupancy_mask_t, N_SPIN_SPECIES> unoccupancy_mask_t;
 
 typedef std::array<uint64_t, 4> eri_4idx_t;
-
-

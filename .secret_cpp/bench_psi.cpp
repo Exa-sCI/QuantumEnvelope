@@ -138,7 +138,7 @@ static void tslHashLookup(benchmark::State& state) {
 }
 
 // Register the function as a benchmark
-//BENCHMARK(NaiveLookup);
+BENCHMARK(NaiveLookup);
 BENCHMARK(BinarySearchLookup);
 BENCHMARK(BinarySearchesLookup);
 BENCHMARK(stdHashLookup);

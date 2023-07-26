@@ -1,4 +1,3 @@
-
 #include <random>
 #include <algorithm>
 #include "qpx.hpp"
@@ -89,12 +88,9 @@ static void BinarySearchesLookup(benchmark::State& state) {
   std::sort(psi.begin(), psi.end());
 
   std::vector<det_t> vals{psi.begin(), psi.end()};
-  std::vector<bool> result(vals.size());
+  std::vector<bool> result(vals.size(), false);
 
-  for(auto _ : state) {
-    binary_searchs(psi.begin(), psi.end(), vals.begin(), vals.end(), vals.begin() + vals.size() / 2,
-                   result.begin() + vals.size() / 2);
-  }
+  for(auto _ : state) { binary_searchs(psi, vals, result); }
 
   state.counters["LookupRate"] =
       benchmark::Counter(psi.size(), benchmark::Counter::kIsIterationInvariantRate);

@@ -56,7 +56,8 @@ struct std::hash<det_t> {
   }
 };
 
-std::ostream& operator<<(std::ostream& os, const det_t& obj) {
+// Should be moved in the cpp of det
+inline std::ostream& operator<<(std::ostream& os, const det_t& obj) {
   return os << "(" << obj.alpha << "," << obj.beta << ")";
 }
 

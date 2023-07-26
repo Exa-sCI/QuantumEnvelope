@@ -11,7 +11,7 @@
 #endif
 #include <doctest/doctest.h>
 #include <qpx.hpp>
-
+#include <determinant.hpp>
 
 // Utils
 uint64_t binom(int n, int k) {
@@ -68,27 +68,6 @@ spin_det_t get_phase_mask(spin_det_t p) {
 */
 }
 
-int get_phase_single(spin_det_t d, size_t h, size_t p) {
-  //auto pm     = get_phase_mask(d);
-  //bool parity = (pm[h] ^ pm[p]);
-  //auto tmp = std::pow(-1, parity);
-  //return (p> h) ? tmp : -tmp;
-
-  const auto& [i, j] = std::minmax(h, p);
-  spin_det_t hpmask(d.size());
-  hpmask.set(i + 1, j - i - 1, 1);
-  bool parity = (hpmask & d).count() % 2;
-  return parity ? -1 : 1;
-}
-
-TEST_CASE("testing get_phase_single") {
-  CHECK(get_phase_single(spin_det_t{"11000"}, 4, 2) == -1);
-  CHECK(get_phase_single(spin_det_t{"10001"}, 4, 2) == 1);
-  CHECK(get_phase_single(spin_det_t{"01100"}, 2, 4) == -1);
-  CHECK(get_phase_single(spin_det_t{"00100"}, 2, 4) == 1);
-}
-
-
 // Integral Driven
 
 std::vector<unsigned> get_dets_index_statisfing_masks(std::vector<det_t>& psi,
@@ -140,24 +119,6 @@ TEST_CASE("testing get_dets_index_statisfing_masks") {
     CHECK(get_dets_index_statisfing_masks(psi, occupancy_mask, unoccupancy_mask) ==
           std::vector<unsigned>{1});
   }
-}
-
-det_t apply_single_spin_excitation(det_t s, int spin, uint64_t hole, uint64_t particle) {
-  assert(s[spin][hole] == 1);
-  assert(s[spin][particle] == 0);
-
-  auto s2            = det_t{s};
-  s2[spin][hole]     = 0;
-  s2[spin][particle] = 1;
-  return s2;
-}
-
-TEST_CASE("testing apply_single_spin_excitation") {
-  det_t s{spin_det_t{"11000"}, spin_det_t{"00001"}};
-  CHECK(apply_single_spin_excitation(s, 0, 4, 1) ==
-        det_t{spin_det_t{"01010"}, spin_det_t{"00001"}});
-  CHECK(apply_single_spin_excitation(s, 1, 0, 1) ==
-        det_t{spin_det_t{"11000"}, spin_det_t{"00010"}});
 }
 
 enum integrals_categorie_e { IC_A, IC_B, IC_C, IC_D, IC_E, IC_F, IC_G };
@@ -254,7 +215,7 @@ void category_C_ijil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
 
         for(uint64_t index1 = 0; index1 < psi.size(); index1++) {
           if(psi[index1] == det1) {
-            result.push_back({{index0, index1}, get_phase_single(det0[spin_bc], b, c)});
+            result.push_back({{index0, index1}, compute_phase_single_spin_excitation(det0[spin_bc], b, c)});
           }
         }
       }
@@ -323,7 +284,7 @@ void category_D_iiil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
 
         for(uint64_t index1 = 0; index1 < psi.size(); index1++) {
           if(psi[index1] == det1) {
-            result.push_back({{index0, index1}, get_phase_single(det0[spin_ph], h, p)});
+            result.push_back({{index0, index1}, compute_phase_single_spin_excitation(det0[spin_ph], h, p)});
           }
         }
       }

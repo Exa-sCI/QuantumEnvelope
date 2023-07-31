@@ -159,12 +159,15 @@ def load_wf(path_wf, det_representation="tuple") -> Tuple[List[float], List[Dete
                 Determinant(
                     tuple(decode_det(det_i, det_representation)),
                     tuple(decode_det(det_j, det_representation)),
+                    "tuple",
                 )
             )
         elif det_representation == "bitstring":
             alpha_str = ["0", "b"] + [bit for bit in decode_det(det_i, det_representation)][::-1]
             beta_str = ["0", "b"] + [bit for bit in decode_det(det_j, det_representation)][::-1]
-            det.append(Determinant(int(("".join(alpha_str)), 2), int(("".join(beta_str)), 2)))
+            det.append(
+                Determinant(int(("".join(alpha_str)), 2), int(("".join(beta_str)), 2), "bitset")
+            )
         else:
             raise NotImplementedError
 

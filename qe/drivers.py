@@ -79,6 +79,142 @@ def integral_category(i, j, k, l):
         return "G"
 
 
+#   ______ _                                      _   _____         _ _        _   _
+#   | ___ \ |                                    | | |  ___|       (_) |      | | (_)
+#   | |_/ / |__   __ _ ___  ___    __ _ _ __   __| | | |____  _____ _| |_ __ _| |_ _  ___  _ __
+#   |  __/| '_ \ / _` / __|/ _ \  / _` | '_ \ / _` | |  __\ \/ / __| | __/ _` | __| |/ _ \| '_ \
+#   | |   | | | | (_| \__ \  __/ | (_| | | | | (_| | | |___>  < (__| | || (_| | |_| | (_) | | | |
+#   \_|   |_| |_|\__,_|___/\___|  \__,_|_| |_|\__,_| \____/_/\_\___|_|\__\__,_|\__|_|\___/|_| |_|
+#
+#
+
+# Drivers for `batched` operations
+
+
+def batch_apply_single_excitation(
+    batch: List[Determinant], h: OrbitalIdx, p: OrbitalIdx, spin: str
+) -> List[Determinant]:
+    """Apply single excitation to a batch of determinants at a time
+    :param b:        Batch of Determinants to apply h->p excitation to
+    :param hash:     Hash map to check if excited determinant is present in the wave function
+    :param h:        Hole in excitation
+    :param p:        Particle in excitation
+    :param spintype: Effectively a bool, is the excitation applied to alpha or beta spin determinants
+
+    >>> batch = [Determinant((0, 1), (0, 1)),
+    ...          Determinant((0, 2), (0, 2))]
+    >>> batch_apply_single_excitation(batch, 0, 3, "alpha")
+    [Determinant(alpha=(1, 3), beta=(0, 1)), Determinant(alpha=(2, 3), beta=(0, 2))]
+    >>> batch = [Determinant((0, 1), (0, 1)),
+    ...          Determinant((0, 2), (0, 2))]
+    >>> batch_apply_single_excitation(batch, 0, 3, "beta")
+    [Determinant(alpha=(0, 1), beta=(1, 3)), Determinant(alpha=(0, 2), beta=(2, 3))]
+    """
+
+    # TODO: Once in C, replace with allocation of space for new determinants...
+    # For now, we do list comprehension
+
+    return [det_I.apply_single_excitation(h, p, spin) for det_I in batch]
+
+
+def batch_apply_same_spin_double_excitation(
+    batch: List[Determinant],
+    h1: OrbitalIdx,
+    p1: OrbitalIdx,
+    h2: OrbitalIdx,
+    p2: OrbitalIdx,
+    spin: str,
+) -> List[Determinant]:
+    """Apply double (same-spin) excitation to a batch of determinants at a time
+    :param b:        Batch of Determinants to apply h->p excitation to
+    :param size:     Size of batch b
+    :param h1, h2:   Hole in excitation
+    :param p1, p2:   Particle in excitation
+    :param spintype: Effectively a bool, is the excitation applied to alpha or beta spin determinants
+    >>> batch = [Determinant((0, 1, 2), (0, 1, 2)),
+    ...          Determinant((0, 2, 3), (0, 2, 3))]
+    >>> batch_apply_same_spin_double_excitation(batch, 0, 4, 2, 5, "alpha")
+    [Determinant(alpha=(1, 4, 5), beta=(0, 1, 2)), Determinant(alpha=(3, 4, 5), beta=(0, 2, 3))]
+    """
+
+    # TODO: Once in C, replace with allocation of space for new determinants...
+    # For now, we do list comprehension
+
+    return [det_I.apply_same_spin_double_excitation(h1, p1, h2, p2, spin) for det_I in batch]
+
+
+def batch_apply_opposite_spin_double_excitation(
+    batch: List[Determinant], h1: OrbitalIdx, p1: OrbitalIdx, h2: OrbitalIdx, p2: OrbitalIdx
+) -> List[Determinant]:
+    """Apply double (same-spin) excitation to a batch of determinants at a time
+    :param b:        Batch of Determinants to apply h->p excitation to
+    :param size:     Size of batch b
+    :param h1, h2:   Hole in excitation
+    :param p1, p2:   Particle in excitation
+    :param spintype: Effectively a bool, is the excitation applied to alpha or beta spin determinants
+    >>> batch = [Determinant((0, 1, 2), (0, 1, 2)),
+    ...          Determinant((0, 2, 3), (0, 2, 3))]
+    >>> batch_apply_opposite_spin_double_excitation(batch, 0, 4, 2, 5)
+    [Determinant(alpha=(1, 2, 4), beta=(0, 1, 5)), Determinant(alpha=(2, 3, 4), beta=(0, 3, 5))]
+    """
+
+    # TODO: Once in C, replace with allocation of space for new determinants...
+    # For now, we do list comprehension
+
+    return [det_I.apply_opposite_spin_double_excitation(h1, p1, h2, p2) for det_I in batch]
+
+
+def batch_single_phase(
+    batch: List[Determinant], h: OrbitalIdx, p: OrbitalIdx, spin: str
+) -> List[int]:
+    """Compute phase for batch of determinants related by excitation h <-> p
+    :param b:        Batch of Determinants to apply h->p excitation to
+    :param size:     Size of batch b
+    :param h:        Hole in excitation
+    :param p:        Particle in excitation
+    :param spintype: Effectively a bool, is the excitation applied to alpha or beta spin determinants
+    >>> batch = [Determinant((0, 1, 4, 7, 8), ()),
+    ...          Determinant((0, 1, 7, 11, 13), ())]
+    >>> batch_single_phase(batch, 1, 12, "alpha")
+    array([-1, 1])
+    """
+    return np.array([getattr(det, spin).single_phase(h, p) for det in batch], dtype="int")
+
+
+def batch_double_phase(
+    batch: List[Determinant],
+    h1: OrbitalIdx,
+    p1: OrbitalIdx,
+    h2: OrbitalIdx,
+    p2: OrbitalIdx,
+    spin: str,
+) -> List[int]:
+    """Compute phase for batch of determinants related by double (same-spin) excitation h1, h2 <-> p1, p2
+    :param b:        Batch of Determinants to apply h->p excitation to
+    :param size:     Size of batch b
+    :param h1, h2:   Holes in excitation
+    :param p1, p2:   Particles in excitation
+    :param spintype: Effectively a bool, is the excitation applied to alpha or beta spin determinants
+    >>> batch = [Determinant((0, 1, 2, 3, 4, 5, 6, 7, 8), ()),
+    ...          Determinant((0, 1, 2, 3, 4, 5, 6, 7, 13), ())]
+    >>> batch_double_phase(batch, 2, 11, 3, 12, "alpha")
+    array([1, 1])
+    >>> batch = [Determinant((0, 1, 4, 5, 6, 7, 8), ()),
+    ...          Determinant((0, 1, 4, 5, 6, 7, 13), ())]
+    >>> batch_double_phase(batch, 1, 11, 4, 3, "alpha")
+    array([ 1, -1])
+    """
+    # batch_single_phase returns np.array; supports element-wise multiplication
+    phase_of_batch = batch_single_phase(batch, h1, p1, spin) * batch_single_phase(
+        batch, h2, p2, spin
+    )
+    if h2 < p1:
+        phase_of_batch *= -1
+    if p2 < h1:
+        phase_of_batch *= -1
+    return phase_of_batch
+
+
 #   _   _                 _ _ _              _
 #  | | | |               (_) | |            (_)
 #  | |_| | __ _ _ __ ___  _| | |_ ___  _ __  _  __ _ _ __
@@ -384,19 +520,40 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         Called by category functions corresponding to single excitations
 
         For use in building the Hamiltonian in the variational step"""
-        for I in det_indices:
-            det = psi_internal[I]  # Grab |Determinant| I from w.f.
-            # Create new |Determinant| via excitation from h -> p
-            # Hole, particle are `spin' orbitals
-            excited_det = det.apply_single_excitation(h, p, spin)
-            # If the excited determinant is in the internal wave function ->
-            #   Compute phase of (single) excitation pair and yield (I, J), phase
-            if excited_det in det_to_index:
-                # :param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
-                phase = phasemod * getattr(det, spin).single_phase(h, p)
-                yield (I, det_to_index[excited_det]), phase
-            else:
-                pass
+        # TODO: Just for proof of concept, will do this outside the function later
+        # det_indices is from itertools, so it is de-allocated after one pass through it
+        batch_of_dets = [(I, psi_internal[I]) for I in det_indices]
+        # In order
+        #   1. Apply single h -> p excitation to pre-filtered determinants in `batch_of_dets`
+        exc_batch = batch_apply_single_excitation(
+            [index_det_pair[1] for index_det_pair in batch_of_dets], h, p, spin
+        )
+        #   2. Filter excitation pairs based on whether excitation is \in psi_internal
+        filtered_pairs = [
+            (index_det_pair[0], det_to_index[exc_det_I])
+            for index_det_pair, exc_det_I in zip(batch_of_dets, exc_batch)
+            if (exc_det_I in det_to_index)
+        ]
+        #   3. Compute phase and yield (phasemod is \pm 1)
+        phase_of_batch = phasemod * batch_single_phase(
+            [psi_internal[I] for (I, _) in filtered_pairs], h, p, spin
+        )
+        for i, phase in enumerate(phase_of_batch):
+            yield filtered_pairs[i], phase
+
+        # for I in det_indices:
+        #     det = psi_internal[I]  # Grab |Determinant| I from w.f.
+        #     # Create new |Determinant| via excitation from h -> p
+        #     # Hole, particle are `spin' orbitals
+        #     excited_det = det.apply_single_excitation(h, p, spin)
+        #     # If the excited determinant is in the internal wave function ->
+        #     #   Compute phase of (single) excitation pair and yield (I, J), phase
+        #     if excited_det in det_to_index:
+        #         # :param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
+        #         phase = phasemod * getattr(det, spin).single_phase(h, p)
+        #         yield (I, det_to_index[excited_det]), phase
+        #     else:
+        #         pass
 
     @staticmethod
     def do_single_pt2(
@@ -2691,7 +2848,6 @@ class Powerplant_manager(object):
         E_pt2_J = nominator_conts_table.values()
         nominator_conts = np.array(list(E_pt2_J), dtype="float")
         # TODO: For integral driven, loop over integrals? In general, be more efficient in this area.
-        # TODO: In general, though, we need a different way to do this. It goes back to storing the connected space. We can even do the denominator conts in a separate array..
         psi_connected_C = [det_J for det_J in nominator_conts_table.keys()]
         denominator_conts = np.divide(
             1.0,

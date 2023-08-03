@@ -573,11 +573,11 @@ class Determinant:
             return False
 
     def __hash__(self):
-        """Hash custom Det"""
+        """Hash custom Det; Concatenate tuples, in [\alpha, \beta] order. Return hash of this 2 * N_a * N_b tuple"""
         return hash((self.alpha, self.beta))
 
     def __iter__(self):
-        """Unpack"""
+        """Unpack determinant"""
         return iter((self.alpha, self.beta))
 
     #     _
@@ -1041,6 +1041,7 @@ class Determinant:
     #     _. ._   _|   |_) _. ._ _|_ o  _ |  _
     #    (_| | | (_|   |  (_| |   |_ | (_ | (/_
 
+    # These are used for testing; all other phase, hole, particle functions are implemented on the spin determinant level
     @staticmethod
     def single_exc_no_phase(
         sdet_i: Tuple[OrbitalIdx, ...], sdet_j: Tuple[OrbitalIdx, ...]

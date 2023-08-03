@@ -520,40 +520,28 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         Called by category functions corresponding to single excitations
 
         For use in building the Hamiltonian in the variational step"""
-        # TODO: Just for proof of concept, will do this outside the function later
-        # det_indices is from itertools, so it is de-allocated after one pass through it
+        # TODO: Just for proof of concept, can do this outside the function later
+        # det_indices is from itertools, so it is de-allocated after one pass through it. So, yield (I, D_I) pairs
         batch_of_dets = [(I, psi_internal[I]) for I in det_indices]
         # In order
-        #   1. Apply single h -> p excitation to pre-filtered determinants in `batch_of_dets`
+        #   1. Apply simultaneous single h -> p excitation to pre-filtered determinants in `batch_of_dets`
         exc_batch = batch_apply_single_excitation(
             [index_det_pair[1] for index_det_pair in batch_of_dets], h, p, spin
         )
-        #   2. Filter excitation pairs based on whether excitation is \in psi_internal
+        #   2. Batch filter of excitation pairs based on whether excitation is \in psi_internal
         filtered_pairs = [
             (index_det_pair[0], det_to_index[exc_det_I])
             for index_det_pair, exc_det_I in zip(batch_of_dets, exc_batch)
             if (exc_det_I in det_to_index)
         ]
-        #   3. Compute phase and yield (phasemod is \pm 1)
+        #   3. Compute phase for filtered pairs
+        #      (phasemod is \pm 1; accounts for whether integral is coulomb or exchange)
         phase_of_batch = phasemod * batch_single_phase(
             [psi_internal[I] for (I, _) in filtered_pairs], h, p, spin
         )
-        for i, phase in enumerate(phase_of_batch):
-            yield filtered_pairs[i], phase
-
-        # for I in det_indices:
-        #     det = psi_internal[I]  # Grab |Determinant| I from w.f.
-        #     # Create new |Determinant| via excitation from h -> p
-        #     # Hole, particle are `spin' orbitals
-        #     excited_det = det.apply_single_excitation(h, p, spin)
-        #     # If the excited determinant is in the internal wave function ->
-        #     #   Compute phase of (single) excitation pair and yield (I, J), phase
-        #     if excited_det in det_to_index:
-        #         # :param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
-        #         phase = phasemod * getattr(det, spin).single_phase(h, p)
-        #         yield (I, det_to_index[excited_det]), phase
-        #     else:
-        #         pass
+        # Yield (I, J), phase pairs for computing <I|H|J>
+        for (I, J), phase in zip(filtered_pairs, phase_of_batch):
+            yield (I, J), phase
 
     @staticmethod
     def do_single_pt2(
@@ -571,18 +559,25 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         Called by category functions corresponding to single excitations
 
         For use in computing E_pt2 and subsequent selection"""
-        for I in det_indices:
-            det = psi_internal[I]  # Grab |Determinant| I from w.f.
-            # Create new |Determinant| via excitation from h -> p
-            # Hole, particle are `spin' orbitals
-            excited_det = det.apply_single_excitation(h, p, spin)
-            # Assert the excited determinant satisfies the appropriate constraint C
-            assert check_constraint(excited_det) == C
-            # param `phasemod` is \pm 1, sign of two-electron integral in definition of SC-rules
-            phase = phasemod * getattr(det, spin).single_phase(h, p)
-            # excited_det is in the connected space by default; yield (I, det_J) phase
-            # Cannot yield index of excited_det since this requires storing (knowing) connected space a priori
-            yield (I, excited_det), phase
+        # det_indices is from itertools, so it is de-allocated after one pass through it. So, yield (I, D_I) pairs
+        batch_of_dets = [(I, psi_internal[I]) for I in det_indices]
+        # In order
+        #   1. Apply simultaneous single h -> p excitation to pre-filtered determinants in `batch_of_dets`
+        exc_batch = batch_apply_single_excitation(
+            [index_det_pair[1] for index_det_pair in batch_of_dets], h, p, spin
+        )
+        #   2. Organize excitation pairs of (I, det_J); I is index of det_I \in psi_internal, det_J in connected
+        int_ext_pairs = [
+            (int_index_det_pair[0], exc_det_I)
+            for int_index_det_pair, exc_det_I in zip(batch_of_dets, exc_batch)
+        ]
+        #   3. Compute phase for batch excitation pairs
+        phase_of_batch = phasemod * batch_single_phase(
+            [det_I for (_, det_I) in batch_of_dets], h, p, spin
+        )
+        # Yield (I, J), phase pairs for computing <I|H|J>
+        for (I, det_J), phase in zip(int_ext_pairs, phase_of_batch):
+            yield (I, det_J), phase
 
     @staticmethod
     def do_double_samespin(
@@ -605,19 +600,29 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
         det_indices_AA = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
             spindet_occ_i, {}, {"same": {h1, h2}}, {"same": {p1, p2}}
         )
-        for I in det_indices_AA:
-            det = psi_internal[I]
-            # Create new |Determinant| via excitation from h1 -> p1, h2 -> p1, type `spin`
-            excited_det = det.apply_same_spin_double_excitation(h1, p1, h2, p2, spin)
-            #   Compute phase of (double) excitation pair and yield (I, J), phase
-            if excited_det in det_to_index:
-                phase = getattr(det, spin).double_phase(h1, p1, h2, p2)
-                # For exchange integrals
-                if np.sign(h2 - h1) != np.sign(p2 - p1):
-                    phase = -phase
-                yield (I, det_to_index[excited_det]), phase
-            else:
-                pass
+        # Get (I, D_I) pairs of dets indicaated by det_indices_AA
+        batch_of_dets = [(I, psi_internal[I]) for I in det_indices_AA]
+        # In order
+        #   1. Apply simultaneous single h -> p excitation to pre-filtered determinants in `batch_of_dets`
+        exc_batch = batch_apply_same_spin_double_excitation(
+            [index_det_pair[1] for index_det_pair in batch_of_dets], h1, p1, h2, p2, spin
+        )
+        #   2. Batch filter of excitation pairs based on whether excitation is \in psi_internal
+        filtered_pairs = [
+            (index_det_pair[0], det_to_index[exc_det_I])
+            for index_det_pair, exc_det_I in zip(batch_of_dets, exc_batch)
+            if (exc_det_I in det_to_index)
+        ]
+        #   3. Compute phase for filtered pairs
+        phase_of_batch = batch_double_phase(
+            [psi_internal[I] for (I, _) in filtered_pairs], h1, p1, h2, p2, spin
+        )
+        # For exchange integrals;
+        if np.sign(h2 - h1) != np.sign(p2 - p1):
+            phase_of_batch *= -1
+        # Yield (I, J), phase pairs for computing <I|H|J>
+        for (I, J), phase in zip(filtered_pairs, phase_of_batch):
+            yield (I, J), phase
 
     @staticmethod
     def do_double_samespin_pt2(
@@ -657,7 +662,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, h2 C = {a1, a2, a3} (beta) none
                 #   Empty in: (alpha) p1, p2 {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h1, h2} (beta) none
-                det_indices = (
+                det_indices_AA = (
                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                         spindet_occ,
                         {},
@@ -675,7 +680,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, h2 C - {p2} (beta) none
                 #   Empty in: (alpha) p1, p2 {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p2}) | {h1, h2}) (beta) none
-                det_indices = (
+                det_indices_AA = (
                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                         spindet_occ,
                         {},
@@ -692,7 +697,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, h2 C - {p1} (beta) none
                 #   Empty in: (alpha) p1, p2 {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p1}) | {h1, h2}) (beta) none
-                det_indices = (
+                det_indices_AA = (
                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                         spindet_occ,
                         {},
@@ -708,7 +713,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, h2 C - {p1, p2} (beta) none
                 #   Empty in: (alpha) p1, p2 {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p1, p2}) | {h1, h2}) (beta) none
-                det_indices = (
+                det_indices_AA = (
                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                         spindet_occ,
                         {},
@@ -722,25 +727,39 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             # Related pairs must be:
             #   Occupied in: (alpha) C (beta) h1, h2
             #   Empty in: (alpha) {a1 + 1, a1 + 2, ... N_orb - 1} - C | {h1, h2}) (beta) p1, p2
-            det_indices = Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
-                spindet_occ,
-                oppspindet_occ,
-                {"same": {h1, h2}, "opposite": set(C)},
-                {"same": {p1, p2}, "opposite": unocc_oppspin_orbitals},
+            det_indices_AA = (
+                Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
+                    spindet_occ,
+                    oppspindet_occ,
+                    {"same": {h1, h2}, "opposite": set(C)},
+                    {"same": {p1, p2}, "opposite": unocc_oppspin_orbitals},
+                )
             )
 
-        # Now, loop through the filtered `candidate` determinants; generate the excitation pairs related by h1 -> p1, h2 -> p2
-        for I in det_indices:
-            det = psi[I]
-            # Create new |Determinant| via excitation from h1 -> p1, h2 -> p1, type `spin`
-            excited_det = det.apply_same_spin_double_excitation(h1, p1, h2, p2, spin)
-            # Assert the excited determinant satisfies the appropriate constraint C
-            assert check_constraint(excited_det) == C
-            phase = getattr(det, spin).double_phase(h1, p1, h2, p2)
-            # For exchange integrals
-            if np.sign(h2 - h1) != np.sign(p2 - p1):
-                phase = -phase
-            yield (I, excited_det), phase
+        # Organized filtered dets into index, determinant (I, D_I) pairs
+        batch_of_dets = [(I, psi[I]) for I in det_indices_AA]
+        # In order
+        #   1. Apply simultaneous single h1, h2 -> p1, p2 (same-spin) excitation to pre-filtered determinants in `batch_of_dets`
+        exc_batch = batch_apply_same_spin_double_excitation(
+            [index_det_pair[1] for index_det_pair in batch_of_dets], h1, p1, h2, p2, spin
+        )
+        #   2. Organize excitation pairs of (I, det_J);
+        #       a. I is index of det_I \in psi
+        #       b. det_J is the determinant connected to det_I via h1, h2 -> p1, p2
+        int_ext_pairs = [
+            (int_index_det_pair[0], exc_det_I)
+            for int_index_det_pair, exc_det_I in zip(batch_of_dets, exc_batch)
+        ]
+        #   3. Compute phase for filtered pairs
+        phase_of_batch = batch_double_phase(
+            [psi[I] for (I, _) in int_ext_pairs], h1, p1, h2, p2, spin
+        )
+        # For exchange integrals;
+        if np.sign(h2 - h1) != np.sign(p2 - p1):
+            phase_of_batch *= -1
+        # Yield (I, J), phase pairs for computing <I|H|J>
+        for (I, det_J), phase in zip(int_ext_pairs, phase_of_batch):
+            yield (I, det_J), phase
 
     @staticmethod
     def do_double_oppspin(
@@ -766,25 +785,38 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
             {"same": {h1}, "opposite": {h2}},
             {"same": {p1}, "opposite": {p2}},
         )
-        for I in det_indices_AB:
-            det = psi_internal[I]
-            if spin == "alpha":
-                # h1, p1 -> alpha spin-orbitals, h2, p2 -> beta
-                excited_det = det.apply_opposite_spin_double_excitation(h1, p1, h2, p2)
-                # Phase is computed from both spindets
-                phaseA = det.alpha.single_phase(h1, p1)
-                phaseB = det.beta.single_phase(h2, p2)
-            else:
-                # h1, p1 -> beta spin-orbitals, h2, p2 -> alpha
-                excited_det = det.apply_opposite_spin_double_excitation(h2, p2, h1, p1)
-                phaseA = det.beta.single_phase(h1, p1)
-                phaseB = det.alpha.single_phase(h2, p2)
-            # If the excited determinant is in the internal wave function ->
-            #   Compute phase of (double) excitation pair and yield (I, J), phase
-            if excited_det in det_to_index:
-                yield (I, det_to_index[excited_det]), phaseA * phaseB
-            else:
-                pass
+        # Get (I, D_I) pairs of dets indicaated by det_indices_AA
+        batch_of_dets = [(I, psi_internal[I]) for I in det_indices_AB]
+        # In order
+        #   1. Apply simultaneous single ha, hb -> pa, pb excitation to pre-filtered determinants in `batch_of_dets`
+        if spin == "alpha":
+            exc_batch = batch_apply_opposite_spin_double_excitation(
+                [index_det_pair[1] for index_det_pair in batch_of_dets], h1, p1, h2, p2
+            )
+            oppspin = "beta"
+        else:  # Spin is `beta`
+            exc_batch = batch_apply_opposite_spin_double_excitation(
+                [index_det_pair[1] for index_det_pair in batch_of_dets], h2, p2, h1, p1
+            )
+            oppspin = "alpha"
+        #   2. Batch filter of excitation pairs based on whether excitation is \in psi_internal
+        filtered_pairs = [
+            (index_det_pair[0], det_to_index[exc_det_I])
+            for index_det_pair, exc_det_I in zip(batch_of_dets, exc_batch)
+            if (exc_det_I in det_to_index)
+        ]
+        #   3. Compute phase for filtered pairs
+        phaseA_of_batch = batch_single_phase(
+            [psi_internal[I] for (I, _) in filtered_pairs], h1, p1, spin
+        )
+        phaseB_of_batch = batch_single_phase(
+            [psi_internal[I] for (I, _) in filtered_pairs], h2, p2, oppspin
+        )
+        # Element-wise multiplication of phaseA, phaseB
+        phase_of_batch = phaseA_of_batch * phaseB_of_batch
+        # Yield (I, J), phase pairs for computing <I|H|J>
+        for (I, J), phase in zip(filtered_pairs, phase_of_batch):
+            yield (I, J), phase
 
     @staticmethod
     def do_double_oppspin_pt2(
@@ -821,7 +853,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, C = {a1, a2, a3} (beta) h2
                 #   Empty in: (alpha) p1, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h1} (beta) p2
-                det_indices = (
+                det_indices_AB = (
                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                         spindet_occ,
                         oppspindet_occ,
@@ -836,7 +868,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Related pairs must be:
                 #   Occupied in: (alpha) h1, C - {p1} (beta) h2
                 #   Empty in: (alpha) p1, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p1}) | {h1}) (beta) p2
-                det_indices = (
+                det_indices_AB = (
                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                         spindet_occ,
                         oppspindet_occ,
@@ -858,7 +890,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Related pairs must be:
                 #   Occupied in: (alpha) h2, C = {a1, a2, a3} (beta) h1
                 #   Empty in: (alpha) p2, {a1 + 1, a1 + 2, ... N_orb - 1} - {a1, a2, a3, h2} (beta) p1
-                det_indices = (
+                det_indices_AB = (
                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                         spindet_occ,
                         oppspindet_occ,
@@ -873,7 +905,7 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                 # Related pairs must be:
                 #   Occupied in: (alpha) h2, C - {p2} (beta) h1
                 #   Empty in: (alpha) p2, {a1 + 1, a1 + 2, ... N_orb - 1} - ((C - {p2}) | {h2}) (beta) p1
-                det_indices = (
+                det_indices_AB = (
                     Hamiltonian_two_electrons_integral_driven.get_dets_via_orbital_occupancy(
                         spindet_occ,
                         oppspindet_occ,
@@ -881,23 +913,36 @@ class Hamiltonian_two_electrons_integral_driven(Hamiltonian_two_electrons, objec
                         {"same": {p1}, "opposite": unocc_spin_orbitals},
                     )
                 )
-        # Now, loop through filtered dets to yield excitation pairs s.to C
-        for I in det_indices:
-            det = psi[I]
-            if spin == "alpha":
-                # h1, p1 -> alpha spin-orbitals, h2, p2 -> beta
-                excited_det = det.apply_opposite_spin_double_excitation(h1, p1, h2, p2)
-                # Phase is computed from both spindets
-                phaseA = det.alpha.single_phase(h1, p1)
-                phaseB = det.beta.single_phase(h2, p2)
-            else:
-                # h1, p1 -> beta spin-orbitals, h2, p2 -> alpha
-                excited_det = det.apply_opposite_spin_double_excitation(h2, p2, h1, p1)
-                phaseA = det.beta.single_phase(h1, p1)
-                phaseB = det.alpha.single_phase(h2, p2)
-            # Assert excited det satisfies constraint and yield
-            assert check_constraint(excited_det) == C
-            yield (I, excited_det), phaseA * phaseB
+
+        # Organized filtered dets into index, determinant (I, D_I) pairs
+        batch_of_dets = [(I, psi[I]) for I in det_indices_AB]
+        # In order
+        #   1. Apply simultaneous single ha, hb -> pa, pb excitation to pre-filtered determinants in `batch_of_dets`
+        if spin == "alpha":
+            exc_batch = batch_apply_opposite_spin_double_excitation(
+                [index_det_pair[1] for index_det_pair in batch_of_dets], h1, p1, h2, p2
+            )
+            oppspin = "beta"
+        else:  # Spin is `beta`
+            exc_batch = batch_apply_opposite_spin_double_excitation(
+                [index_det_pair[1] for index_det_pair in batch_of_dets], h2, p2, h1, p1
+            )
+            oppspin = "alpha"
+        #   2. Organize excitation pairs of (I, det_J);
+        #       a. I is index of det_I \in psi
+        #       b. det_J is the determinant connected to det_I via h1, h2 -> p1, p2
+        int_ext_pairs = [
+            (int_index_det_pair[0], exc_det_I)
+            for int_index_det_pair, exc_det_I in zip(batch_of_dets, exc_batch)
+        ]
+        #   3. Compute phase for filtered pairs
+        phaseA_of_batch = batch_single_phase([psi[I] for (I, _) in int_ext_pairs], h1, p1, spin)
+        phaseB_of_batch = batch_single_phase([psi[I] for (I, _) in int_ext_pairs], h2, p2, oppspin)
+        # Element-wise multiplication of phaseA, phaseB
+        phase_of_batch = phaseA_of_batch * phaseB_of_batch
+        # Yield (I, J), phase pairs for computing <I|H|J>
+        for (I, det_J), phase in zip(int_ext_pairs, phase_of_batch):
+            yield (I, det_J), phase
 
     @staticmethod
     def category_A(

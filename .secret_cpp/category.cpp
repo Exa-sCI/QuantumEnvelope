@@ -13,7 +13,6 @@
 #include <qpx.hpp>
 #include <determinant.hpp>
 
-
 // Utils
 uint64_t binom(int n, int k) {
   if(k == 0 || k == n) return 1;
@@ -151,11 +150,10 @@ typedef float phase_t;
 typedef std::pair<std::pair<det_idx_t, det_idx_t>, phase_t> H_contribution_t;
 
 std::vector<H_contribution_t> category_A(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi) {
-  // Category A possibilties: i = k = j = l
+  assert(integral_category(idx) == IC_A);
   const auto& [i, j, k, l] = idx;
-
-  auto occ = spin_occupancy_mask_t(N_orb);
-  occ[i]   = 1;
+  auto occ                 = spin_occupancy_mask_t(N_orb);
+  occ[i]                   = 1;
 
   auto unocc = spin_unoccupancy_mask_t(N_orb);
   std::vector<H_contribution_t> result;
@@ -173,20 +171,21 @@ TEST_CASE("testing category A") {
       {spin_det_t{"11000"}, spin_det_t{"11001"}},
       {spin_det_t{"11001"}, spin_det_t{"11011"}},
   };
-  CHECK ( category_A(5, {0,0,0,0}, psi) == std::vector<H_contribution_t>{ { {0,0}, 1 }, { {3,3}, 1 } } );
-
+  CHECK(category_A(5, {0, 0, 0, 0}, psi) ==
+        std::vector<H_contribution_t>{{{0, 0}, 1}, {{3, 3}, 1}});
 }
 
 std::vector<H_contribution_t> category_B(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi) {
-  const auto& [i, j, k, l] = idx;
+  assert(integral_category(idx) == IC_B);
 
-  const auto occ    = spin_occupancy_mask_t(N_orb);
-  auto occ_i        = spin_occupancy_mask_t(N_orb);
-  occ_i[i]          = 1;
-  auto occ_j        = spin_occupancy_mask_t(N_orb);
-  occ_j[j]          = 1;
-  const auto occ_ij = occ_i | occ_j;
-  const auto unocc  = spin_unoccupancy_mask_t(N_orb);
+  const auto& [i, j, k, l] = idx;
+  const auto occ           = spin_occupancy_mask_t(N_orb);
+  auto occ_i               = spin_occupancy_mask_t(N_orb);
+  occ_i[i]                 = 1;
+  auto occ_j               = spin_occupancy_mask_t(N_orb);
+  occ_j[j]                 = 1;
+  const auto occ_ij        = occ_i | occ_j;
+  const auto unocc         = spin_unoccupancy_mask_t(N_orb);
 
   // Phase is always one
   std::vector<H_contribution_t> result;
@@ -199,6 +198,17 @@ std::vector<H_contribution_t> category_B(uint64_t N_orb, eri_4idx_t idx, std::ve
   for(auto index : get_dets_index_statisfing_masks(psi, {occ_j, occ_i}, {unocc, unocc}))
     result.push_back({{index, index}, 1});
   return result;
+}
+
+TEST_CASE("testing category B") {
+  std::vector<det_t> psi{
+      {spin_det_t{"00110"}, spin_det_t{"00000"}},
+      {spin_det_t{"00000"}, spin_det_t{"00110"}},
+      {spin_det_t{"00010"}, spin_det_t{"00100"}},
+      {spin_det_t{"00100"}, spin_det_t{"00010"}},
+  };
+  CHECK(category_B(5, {1, 2, 1, 2}, psi) ==
+        std::vector<H_contribution_t>{{{1, 1}, 1}, {{0, 0}, 1}, {{2, 2}, 1}, {{3, 3}, 1}});
 }
 
 void category_C_ijil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
@@ -228,7 +238,8 @@ void category_C_ijil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
 
         for(uint64_t index1 = 0; index1 < psi.size(); index1++) {
           if(psi[index1] == det1) {
-            result.push_back({{index0, index1}, compute_phase_single_spin_excitation(det0[spin_bc], b, c)});
+            result.push_back(
+                {{index0, index1}, compute_phase_single_spin_excitation(det0[spin_bc], b, c)});
           }
         }
       }
@@ -297,7 +308,8 @@ void category_D_iiil(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi,
 
         for(uint64_t index1 = 0; index1 < psi.size(); index1++) {
           if(psi[index1] == det1) {
-            result.push_back({{index0, index1}, compute_phase_single_spin_excitation(det0[spin_ph], h, p)});
+            result.push_back(
+                {{index0, index1}, compute_phase_single_spin_excitation(det0[spin_ph], h, p)});
           }
         }
       }

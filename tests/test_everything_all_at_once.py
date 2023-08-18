@@ -268,8 +268,8 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         # 4 Electron in 4 Orbital
         # I'm stupid so let's do the product
         n_orb = 4
-        psi = [Determinant((0, 1), (0, 1))]
-        for det in Determinant((0, 1), (0, 1)).gen_all_connected_det(n_orb):
+        psi = [Determinant((0, 1), (0, 1), "tuple")]
+        for det in Determinant((0, 1), (0, 1), "tuple").gen_all_connected_det(n_orb):
             psi.append(det)
         d_two_e_integral = {}
         for i, j, k, l in product(range(n_orb), repeat=4):
@@ -281,7 +281,10 @@ class Test_Minimal(Timing, unittest.TestCase, Test_Category):
         # minimal psi_and_integral, psi_i != psi_j
         # Na = 3, Nb = 3, Norb = 6 to account for triplet constraints
         n_orb = 6
-        psi_i = [Determinant((0, 1, 2), (0, 1, 2)), Determinant((1, 2, 3), (1, 2, 3))]
+        psi_i = [
+            Determinant((0, 1, 2), (0, 1, 2), "tuple"),
+            Determinant((1, 2, 3), (1, 2, 3), "tuple"),
+        ]
         psi_j = []
         for i, det in enumerate(psi_i):
             for det_connected in det.gen_all_connected_det(n_orb):
@@ -340,8 +343,8 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
     def psi_and_norb_2det(self):
         # Do 5 e, 10 orb
         return 10, [
-            Determinant((0, 1, 2, 3, 4), (0, 1, 2, 3, 4)),
-            Determinant((1, 2, 3, 4, 5), (1, 2, 3, 4, 5)),
+            Determinant((0, 1, 2, 3, 4), (0, 1, 2, 3, 4), "tuple"),
+            Determinant((1, 2, 3, 4, 5), (1, 2, 3, 4, 5), "tuple"),
         ]
 
     @cached_property
@@ -389,15 +392,9 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
         )
         for det in self.psi_connected_2det:
             # What triplet constraint does this det satisfy?
-            con = self.check_constraint(det, "alpha")
+            con = check_constraint(det, "alpha")
             d[con].append(det)
         return d
-
-    def check_constraint(self, det: Determinant, spin="alpha"):
-        # Give me a determinant. What constraint does it satisfy? (What are three most highly occupied alpha spin orbitas)
-        spindet = getattr(det, spin)
-        # Return constraint as |Spin_determinant|
-        return spindet[-3:]
 
     def test_constrained_excitations(self, spin="alpha"):
         # 1. For each constraint, pass through wf
@@ -429,12 +426,23 @@ class Test_Constrained_Excitation(Timing, unittest.TestCase):
             # This is for ONE determinant.. So there should be no duplicates in the dict per generator key
             for gen_det_I, det_I_conn_by_C in sd_by_C.items():
                 # This list contains all determinants connected to det_I
-                ref_det_I_conn = list(self.connected_by_det[gen_det_I])
+                # Generate all singles and doubles of gen_det_I
+                det_I_sd = [det_J for det_J in gen_det_I.gen_all_connected_det(n_orb)]
+                ref_det_I_conn = []  # Empty list
+                for det_J in det_I_sd:
+                    if det_J not in psi:
+                        ref_det_I_conn.append(det_J)
+
                 # Filter out those that satisfy constraint C
                 ref_det_I_conn_by_C = [
-                    det_J for det_J in ref_det_I_conn if (self.check_constraint(det_J) == C)
+                    det_J for det_J in ref_det_I_conn if (check_constraint(det_J) == C)
                 ]
-                self.assertListEqual(sorted(ref_det_I_conn_by_C), sorted(det_I_conn_by_C))
+                ref_det_I_conn_by_C = sorted(ref_det_I_conn_by_C, key=lambda x: x.alpha)
+                ref_det_I_conn_by_C = sorted(ref_det_I_conn_by_C, key=lambda x: x.beta)
+
+                det_I_conn_by_C = sorted(det_I_conn_by_C, key=lambda x: x.alpha)
+                det_I_conn_by_C = sorted(det_I_conn_by_C, key=lambda x: x.beta)
+                self.assertListEqual(ref_det_I_conn_by_C, det_I_conn_by_C)
 
 
 class Test_Integral_Driven_Categories(Test_Minimal):

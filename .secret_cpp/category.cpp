@@ -13,6 +13,7 @@
 #include <qpx.hpp>
 #include <determinant.hpp>
 
+
 // Utils
 uint64_t binom(int n, int k) {
   if(k == 0 || k == n) return 1;
@@ -150,6 +151,7 @@ typedef float phase_t;
 typedef std::pair<std::pair<det_idx_t, det_idx_t>, phase_t> H_contribution_t;
 
 std::vector<H_contribution_t> category_A(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi) {
+  // Category A possibilties: i = k = j = l
   const auto& [i, j, k, l] = idx;
 
   auto occ = spin_occupancy_mask_t(N_orb);
@@ -162,6 +164,17 @@ std::vector<H_contribution_t> category_A(uint64_t N_orb, eri_4idx_t idx, std::ve
     result.push_back({{index, index}, 1});
   }
   return result;
+}
+
+TEST_CASE("testing category A") {
+  std::vector<det_t> psi{
+      {spin_det_t{"11001"}, spin_det_t{"11001"}},
+      {spin_det_t{"11001"}, spin_det_t{"11000"}},
+      {spin_det_t{"11000"}, spin_det_t{"11001"}},
+      {spin_det_t{"11001"}, spin_det_t{"11011"}},
+  };
+  CHECK ( category_A(5, {0,0,0,0}, psi) == std::vector<H_contribution_t>{ { {0,0}, 1 }, { {3,3}, 1 } } );
+
 }
 
 std::vector<H_contribution_t> category_B(uint64_t N_orb, eri_4idx_t idx, std::vector<det_t>& psi) {
